@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: autography
+    description: Synthetic Autography experience
 paths:
   /healthz:
     get:
@@ -24,7 +26,192 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /show:
+    get:
+      operationId: getShow
+      tags: [autography]
+      summary: Get the current synthetic episode
+      responses:
+        "200":
+          description: Show and episode context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Show"
+  /flood:
+    get:
+      operationId: getFlood
+      tags: [autography]
+      summary: Get the synthetic signal flood and clusters
+      responses:
+        "200":
+          description: Signal events grouped into clusters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FloodResponse"
+  /context:
+    get:
+      operationId: getContext
+      tags: [autography]
+      summary: Get the context repository
+      responses:
+        "200":
+          description: Context items used to draft claims
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextResponse"
+  /calls:
+    get:
+      operationId: getCalls
+      tags: [autography]
+      summary: Get all Calls
+      responses:
+        "200":
+          description: Calls
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Call"
+  /call/active:
+    get:
+      operationId: getActiveCall
+      tags: [autography]
+      summary: Get the active Call and computed clock state
+      responses:
+        "200":
+          description: Active Call state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveCall"
+  /pr/{id}:
+    get:
+      operationId: getPullRequest
+      tags: [autography]
+      summary: Get a staged response set
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Pull request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullRequest"
+        "404":
+          description: Not found
+  /pr/{id}/sign:
+    post:
+      operationId: signPullRequest
+      tags: [autography]
+      summary: Sign one staged move
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignPullRequestInput"
+      responses:
+        "200":
+          description: Evaluation and possible issued Drop
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignResult"
+  /evaluate:
+    post:
+      operationId: evaluatePolicy
+      tags: [autography]
+      summary: Evaluate a proposed action through the deterministic Velvet Rope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyEvaluationInput"
+      responses:
+        "200":
+          description: First policy failure or pass
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Evaluation"
+  /pr/{id}/dismiss:
+    post:
+      operationId: dismissPullRequest
+      tags: [autography]
+      summary: Close a Pull Request without publishing
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Dismissed Pull Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DismissResult"
+  /drop/{id}:
+    get:
+      operationId: getDrop
+      tags: [autography]
+      summary: Get an issued Drop
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Issued Drop
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Drop"
+        "404":
+          description: Not found
+  /verify:
+    post:
+      operationId: verifyDrop
+      tags: [autography]
+      summary: Verify a Drop id or hash
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyDropInput"
+      responses:
+        "200":
+          description: Registry lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResult"
+  /receipts:
+    get:
+      operationId: getReceipts
+      tags: [autography]
+      summary: Get the append-only Receipt log
+      responses:
+        "200":
+          description: Receipt entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Receipt"
 components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +220,298 @@ components:
           type: string
       required:
         - status
+    Show:
+      type: object
+      required: [title, episode, subtitle, aired_at, transcript_excerpt]
+      properties:
+        title: { type: string }
+        episode: { type: number }
+        subtitle: { type: string }
+        aired_at: { type: string }
+        transcript_excerpt: { type: string }
+    CallSubject:
+      type: object
+      required: [id, display]
+      properties:
+        id: { type: string }
+        display: { type: string }
+    CallIssuer:
+      type: object
+      required: [id, display]
+      properties:
+        id: { type: string }
+        display: { type: string }
+    CallEngagement:
+      type: object
+      required: [show, episode, capacity]
+      properties:
+        show: { type: string }
+        episode: { type: number }
+        capacity: { type: string }
+    CallWindow:
+      type: object
+      required: [valid_from, valid_until]
+      properties:
+        valid_from: { type: string }
+        valid_until: { type: string }
+    CallReach:
+      type: object
+      required: [territory, platform]
+      properties:
+        territory: { type: string }
+        platform: { type: string }
+    CallSignatures:
+      type: object
+      required: [issuer_sig]
+      properties:
+        issuer_sig: { type: string }
+        subject_countersig: { type: ["string", "null"] }
+    Call:
+      type: object
+      required: [call_id, subject, issuer, attestation, engagement, window, scopes, exclusions, reach, sig]
+      properties:
+        call_id: { type: string }
+        subject: { $ref: "#/components/schemas/CallSubject" }
+        issuer: { $ref: "#/components/schemas/CallIssuer" }
+        attestation: { type: string }
+        engagement: { $ref: "#/components/schemas/CallEngagement" }
+        window: { $ref: "#/components/schemas/CallWindow" }
+        scopes:
+          type: array
+          items: { type: string }
+        exclusions:
+          type: array
+          items: { type: string }
+        reach: { $ref: "#/components/schemas/CallReach" }
+        sig: { $ref: "#/components/schemas/CallSignatures" }
+    ActiveCall:
+      type: object
+      required: [call, state, seconds_remaining]
+      properties:
+        call: { $ref: "#/components/schemas/Call" }
+        state:
+          type: string
+          enum: [LIVE, INERT, DARK]
+        seconds_remaining: { type: number }
+    SignalAuthor:
+      type: object
+      required: [handle, account_age_days, followers]
+      properties:
+        handle: { type: string }
+        account_age_days: { type: number }
+        followers: { type: number }
+    SignalEngagement:
+      type: object
+      required: [likes, reposts]
+      properties:
+        likes: { type: number }
+        reposts: { type: number }
+    SignalEvent:
+      type: object
+      required: [id, text, author, posted_at, platform, engagement, cluster_id]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        author: { $ref: "#/components/schemas/SignalAuthor" }
+        posted_at: { type: string }
+        platform: { type: string }
+        engagement: { $ref: "#/components/schemas/SignalEngagement" }
+        cluster_id: { type: string }
+    CoordinationSignals:
+      type: object
+      required: [duplicate_phrasing, account_age_clustering, burst_window_seconds, cadence_irregularity]
+      properties:
+        duplicate_phrasing: { type: number }
+        account_age_clustering: { type: number }
+        burst_window_seconds: { type: number }
+        cadence_irregularity: { type: number }
+    Cluster:
+      type: object
+      required: [id, label, class, member_ids, coordination_signals, confidence, note, share_of_observed_volume]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        class: { type: string }
+        member_ids:
+          type: array
+          items: { type: string }
+        coordination_signals: { $ref: "#/components/schemas/CoordinationSignals" }
+        confidence: { type: string }
+        note: { type: string }
+        share_of_observed_volume: { type: number }
+    FloodResponse:
+      type: object
+      required: [observed_volume, events, clusters]
+      properties:
+        observed_volume: { type: number }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/SignalEvent" }
+        clusters:
+          type: array
+          items: { $ref: "#/components/schemas/Cluster" }
+    ContextItem:
+      type: object
+      required: [id, label, source_class, excerpt]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        source_class: { type: string }
+        excerpt: { type: string }
+    ContextResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ContextItem" }
+    ProjectedOutcome:
+      type: object
+      required: [headline, detail]
+      properties:
+        headline: { type: string }
+        detail: { type: string }
+    PullRequestMove:
+      type: object
+      required: [id, label, description, projected_outcome, context_refs, requested_action, target_platform]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        description: { type: string }
+        projected_outcome: { $ref: "#/components/schemas/ProjectedOutcome" }
+        context_refs:
+          type: array
+          items: { type: string }
+        requested_action: { type: string }
+        target_platform: { type: string }
+    PullRequestFinding:
+      type: object
+      required: [observed_volume, coordinated_share, authentic_concern, commercial_exposure]
+      properties:
+        observed_volume: { type: number }
+        coordinated_share: { type: number }
+        authentic_concern: { type: string }
+        commercial_exposure:
+          type: array
+          items: { type: string }
+    PullRequest:
+      type: object
+      required: [id, opened_at, finding, moves, state, merged_move_id]
+      properties:
+        id: { type: string }
+        opened_at: { type: string }
+        finding: { $ref: "#/components/schemas/PullRequestFinding" }
+        moves:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { $ref: "#/components/schemas/PullRequestMove" }
+        state: { type: string }
+        merged_move_id: { type: ["string", "null"] }
+    SignPullRequestInput:
+      type: object
+      required: [move_id]
+      properties:
+        move_id: { type: string }
+    Evaluation:
+      type: object
+      required: [pass, rule_id, reason, receipt_entry]
+      properties:
+        pass: { type: boolean }
+        rule_id: { type: string }
+        reason: { type: string }
+        receipt_entry: { type: string }
+    PolicyClaim:
+      type: object
+      required: [text, source_class, source_ref, is_third_party, tags]
+      properties:
+        text: { type: string }
+        source_class: { type: string }
+        source_ref: { type: ["string", "null"] }
+        is_third_party: { type: boolean }
+        tags:
+          type: array
+          items: { type: string }
+    PolicyEvaluationInput:
+      type: object
+      required: [action, target_platform, territory, claims]
+      properties:
+        action: { type: string }
+        target_platform: { type: string }
+        territory: { type: string }
+        claims:
+          type: array
+          items: { $ref: "#/components/schemas/PolicyClaim" }
+    DropClaim:
+      type: object
+      required: [text, source_class, source_ref]
+      properties:
+        text: { type: string }
+        source_class: { type: string }
+        source_ref: { type: string }
+    DropEdition:
+      type: object
+      required: [number, of]
+      properties:
+        number: { type: number }
+        of: { type: number }
+    DropSeal:
+      type: object
+      required: [issued_at, signed_by, scope_ref, signatures_simulated]
+      properties:
+        issued_at: { type: string }
+        signed_by: { type: string }
+        scope_ref: { type: string }
+        signatures_simulated: { type: boolean }
+    Drop:
+      type: object
+      required: [drop_id, call_id, title, edition, claims, hash, seal]
+      properties:
+        drop_id: { type: string }
+        call_id: { type: string }
+        title: { type: string }
+        edition: { $ref: "#/components/schemas/DropEdition" }
+        claims:
+          type: array
+          items: { $ref: "#/components/schemas/DropClaim" }
+        hash: { type: string }
+        seal: { $ref: "#/components/schemas/DropSeal" }
+    SignResult:
+      type: object
+      required: [evaluation, drop]
+      properties:
+        evaluation: { $ref: "#/components/schemas/Evaluation" }
+        drop: { $ref: "#/components/schemas/Drop" }
+    DismissResult:
+      type: object
+      required: [dismissed, receipt_entry]
+      properties:
+        dismissed: { type: boolean }
+        receipt_entry: { type: string }
+    VerifyDropInput:
+      type: object
+      required: [lookup]
+      properties:
+        lookup: { type: string }
+    VerifyResult:
+      type: object
+      required: [status, drop]
+      properties:
+        status:
+          type: string
+          enum: [SEALED, NOT_IN_REGISTRY]
+        drop:
+          oneOf:
+            - $ref: "#/components/schemas/Drop"
+            - type: "null"
+    Receipt:
+      type: object
+      required: [ts, actor, action, call_id, result, rule_fired]
+      properties:
+        ts: { type: string }
+        actor: { type: string }
+        action: { type: string }
+        call_id: { type: string }
+        result: { type: string }
+        rule_fired: { type: ["string", "null"] }
 

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Autography"
+description = "A synthetic broadcast-control-room experience for reading an episode's signal, staging scoped responses, issuing signed Drops, and proving exactly what was published."
+version = "1.0.0"
+id = "artifacts/autography"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25100
+
+[services.development]
+run = "pnpm --filter @workspace/autography run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/autography", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/autography/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25100"
+BASE_PATH = "/"
