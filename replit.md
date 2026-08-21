@@ -1,15 +1,15 @@
-# [Project name]
+# Autography
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Autography is a synthetic broadcast-control-room experience for staging, signing, sealing, and verifying a scoped post-episode response.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server
+- `pnpm --filter @workspace/autography run dev` — run the web experience
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `GEMINI_API_KEY` is required for the live four-stage read/classify/reconcile/draft enrichment flow.
 
 ## Stack
 
@@ -22,23 +22,34 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- API contract: `lib/api-spec/openapi.yaml`
+- Deterministic policy engine: `artifacts/api-server/src/policy/rope.ts`
+- Fixture-backed domain data and receipt registry: `artifacts/api-server/src/lib/autography-fixtures.ts`
+- Google Gemini four-stage flow: `artifacts/api-server/src/lib/agent-builder-flow.ts`
+- React routes and visual system: `artifacts/autography/src/`
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The Velvet Rope never calls Gemini. It is pure, deterministic policy evaluation with the first failing rule returned.
+- Gemini only reads, classifies, reconciles, and drafts. Its output is recorded as model inference and never publishes or alters fixture presentation data.
+- The app uses entirely synthetic fixtures and records. Coordination is shown as a likelihood with visible signals, never as a verdict.
+- A fixture fallback keeps the demo available if a live Gemini call fails; the failure is recorded in the Receipt instead of being hidden.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Board, Constellation, PR, Drop, public verification, and append-only Receipt views.
+- Tally and page saturation derive directly from the Call window.
+- Scoped response signing, refusal display, Drop sealing, and registry verification.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Follow the supplied Autography visual direction exactly: six colors, four type roles, no real people or footage, and no interface claims about public opinion.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Run API codegen after any `lib/api-spec/openapi.yaml` change.
+- Do not put the Gemini API key in browser code or logs.
+- Vite builds need workflow-provided `PORT` and `BASE_PATH`; use the artifact workflow rather than running a root `dev` script.
 
 ## Pointers
 

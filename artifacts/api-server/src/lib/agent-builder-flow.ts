@@ -9,7 +9,7 @@ import {
   show,
 } from "./autography-fixtures";
 
-const model = "gemini-2.5-flash";
+const model = "gemini-3.6-flash";
 
 type Stage = {
   id: string;

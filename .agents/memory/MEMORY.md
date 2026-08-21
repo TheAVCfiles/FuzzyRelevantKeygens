@@ -1,0 +1,1 @@
+- [Gemini direct API model](gemini-direct-api.md) — New API keys may reject older Gemini Flash models; use a currently supported model and keep fixture fallback explicit.
