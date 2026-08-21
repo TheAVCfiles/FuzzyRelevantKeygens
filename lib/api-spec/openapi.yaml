@@ -142,6 +142,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Evaluation"
+  /agent/run:
+    post:
+      operationId: runAgentFlow
+      tags: [autography]
+      summary: Run the four-stage read, classify, reconcile, and draft flow
+      responses:
+        "200":
+          description: Agent flow status; fixture data remains available for the demo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRunResult"
   /pr/{id}/dismiss:
     post:
       operationId: dismissPullRequest
@@ -442,6 +454,24 @@ components:
         claims:
           type: array
           items: { $ref: "#/components/schemas/PolicyClaim" }
+    AgentStage:
+      type: object
+      required: [id, role, status]
+      properties:
+        id: { type: string }
+        role: { type: string }
+        status: { type: string }
+    AgentRunResult:
+      type: object
+      required: [mode, stages, message]
+      properties:
+        mode:
+          type: string
+          enum: [gemini, fixture_fallback]
+        stages:
+          type: array
+          items: { $ref: "#/components/schemas/AgentStage" }
+        message: { type: string }
     DropClaim:
       type: object
       required: [text, source_class, source_ref]

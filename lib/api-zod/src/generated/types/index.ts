@@ -8,6 +8,9 @@
 
 export * from './activeCall';
 export * from './activeCallState';
+export * from './agentRunResult';
+export * from './agentRunResultMode';
+export * from './agentStage';
 export * from './call';
 export * from './callEngagement';
 export * from './callIssuer';

@@ -263,6 +263,20 @@ export const EvaluatePolicyResponse = zod.object({
 
 
 /**
+ * @summary Run the four-stage read, classify, reconcile, and draft flow
+ */
+export const RunAgentFlowResponse = zod.object({
+  "mode": zod.enum(['gemini', 'fixture_fallback']),
+  "stages": zod.array(zod.object({
+  "id": zod.string(),
+  "role": zod.string(),
+  "status": zod.string()
+})),
+  "message": zod.string()
+})
+
+
+/**
  * @summary Close a Pull Request without publishing
  */
 export const DismissPullRequestParams = zod.object({

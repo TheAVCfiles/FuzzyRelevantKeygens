@@ -21,6 +21,7 @@ import type {
 
 import type {
   ActiveCall,
+  AgentRunResult,
   Call,
   ContextResponse,
   DismissResult,
@@ -746,6 +747,77 @@ export const useEvaluatePolicy = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getEvaluatePolicyMutationOptions(options));
+    }
+
+export const getRunAgentFlowUrl = () => {
+
+
+
+
+  return `/api/agent/run`
+}
+
+/**
+ * @summary Run the four-stage read, classify, reconcile, and draft flow
+ */
+export const runAgentFlow = async ( options?: Parameters<typeof customFetch>[1]): Promise<AgentRunResult> => {
+
+  return customFetch<AgentRunResult>(getRunAgentFlowUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRunAgentFlowMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAgentFlow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runAgentFlow>>, TError,void, TContext> => {
+
+const mutationKey = ['runAgentFlow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runAgentFlow>>, void> = () => {
+
+
+          return  runAgentFlow(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunAgentFlowMutationResult = NonNullable<Awaited<ReturnType<typeof runAgentFlow>>>
+
+    export type RunAgentFlowMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Run the four-stage read, classify, reconcile, and draft flow
+ */
+export const useRunAgentFlow = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAgentFlow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runAgentFlow>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunAgentFlowMutationOptions(options));
     }
 
 export const getDismissPullRequestUrl = (id: string,) => {

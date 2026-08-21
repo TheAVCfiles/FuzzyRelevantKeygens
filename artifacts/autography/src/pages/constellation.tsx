@@ -28,10 +28,6 @@ export function Constellation() {
       
       {/* Map Area */}
       <div className="flex-1 relative overflow-hidden flex items-center justify-center p-8">
-        <div className="absolute inset-0 opacity-10" style={{
-          backgroundImage: "radial-gradient(circle at center, #6B5D52 1px, transparent 1px)",
-          backgroundSize: "24px 24px"
-        }} />
         
         <div className="relative w-full max-w-4xl aspect-video flex flex-wrap gap-4 items-center justify-center content-center z-10">
           {flood.clusters.map((cluster) => {
@@ -57,8 +53,8 @@ export function Constellation() {
                   style={{ width: size, height: size }}
                 >
                   <div className="absolute inset-0 bg-sepia/10 rounded-full animate-pulse" />
-                  <span className="font-system text-xs text-sepia relative z-10 opacity-50 px-2 text-center leading-tight">
-                    {Math.round(volumePct * 100)}%
+                    <span className="font-system text-xs text-sepia relative z-10 opacity-50 px-2 text-center leading-tight">
+                     {Math.round(volumePct * 100)}% OBSERVED
                   </span>
                 </button>
               );
@@ -75,9 +71,9 @@ export function Constellation() {
                 )}
                 style={{ width: size, height: size }}
               >
-                <span className="font-mono text-xl">{Math.round(volumePct * 100)}%</span>
+                  <span className="font-mono text-xl">{Math.round(volumePct * 100)}%</span>
                 <span className="font-system text-[10px] uppercase mt-2 max-w-[80%] text-center leading-tight opacity-70">
-                  {cluster.class.replace("_", " ")}
+                   SHARE OF OBSERVED VOLUME
                 </span>
               </button>
             )
@@ -125,8 +121,8 @@ export function Constellation() {
                   </div>
                   <p className="font-sans text-sm text-oyster/90 leading-relaxed">{event.text}</p>
                   <div className="mt-3 flex gap-3 text-sepia font-mono text-[10px]">
-                    <span>♡ {event.engagement.likes}</span>
-                    <span>↻ {event.engagement.reposts}</span>
+                    <span>LIKES {event.engagement.likes}</span>
+                    <span>REPOSTS {event.engagement.reposts}</span>
                   </div>
                 </div>
               ))}

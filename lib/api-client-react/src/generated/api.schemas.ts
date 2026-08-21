@@ -196,6 +196,26 @@ export interface PolicyEvaluationInput {
   claims: PolicyClaim[];
 }
 
+export interface AgentStage {
+  id: string;
+  role: string;
+  status: string;
+}
+
+export type AgentRunResultMode = typeof AgentRunResultMode[keyof typeof AgentRunResultMode];
+
+
+export const AgentRunResultMode = {
+  gemini: 'gemini',
+  fixture_fallback: 'fixture_fallback',
+} as const;
+
+export interface AgentRunResult {
+  mode: AgentRunResultMode;
+  stages: AgentStage[];
+  message: string;
+}
+
 export interface DropClaim {
   text: string;
   source_class: string;

@@ -14,6 +14,7 @@ import {
   GetPullRequestResponse,
   GetReceiptsResponse,
   GetShowResponse,
+  RunAgentFlowResponse,
   SignPullRequestBody,
   SignPullRequestParams,
   SignPullRequestResponse,
@@ -35,6 +36,7 @@ import {
   signMove,
   verifyDrop,
 } from "../lib/autography-fixtures";
+import { runAutographyAgentFlow } from "../lib/agent-builder-flow";
 
 const router: IRouter = Router();
 
@@ -97,6 +99,11 @@ router.post("/evaluate", (req, res): void => {
     return;
   }
   res.json(EvaluatePolicyResponse.parse(evaluate(body.data)));
+});
+
+router.post("/agent/run", async (_req, res): Promise<void> => {
+  const result = await runAutographyAgentFlow();
+  res.json(RunAgentFlowResponse.parse(result));
 });
 
 router.post("/pr/:id/dismiss", (req, res): void => {

@@ -1,10 +1,17 @@
-import { useGetActiveCall } from "@workspace/api-client-react";
+import { useGetActiveCall, useRunAgentFlow } from "@workspace/api-client-react";
 import { Tally } from "@/components/tally";
 import { Button } from "@/components/ui/button";
 import { formatTime } from "@/lib/utils";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 
 export function Board() {
+  const [, setLocation] = useLocation();
+  const runAgentFlow = useRunAgentFlow({
+    mutation: {
+      onSuccess: () => setLocation("/constellation"),
+      onError: () => setLocation("/constellation"),
+    },
+  });
   const { data: activeCall, isLoading } = useGetActiveCall({
     query: {
       queryKey: ["/api/call/active"],
@@ -67,11 +74,14 @@ export function Board() {
 
         <div>
           {isLive ? (
-            <Link href="/constellation" className="inline-block">
-              <Button size="lg" className="w-64 tracking-[0.1em] shadow-[0_0_20px_rgba(217,206,196,0.1)]">
-                READ THE ROOM
-              </Button>
-            </Link>
+            <Button
+              size="lg"
+              className="w-64 tracking-[0.1em] shadow-[0_0_20px_rgba(217,206,196,0.1)]"
+              disabled={runAgentFlow.isPending}
+              onClick={() => runAgentFlow.mutate()}
+            >
+              {runAgentFlow.isPending ? "READING THE ROOM" : "READ THE ROOM"}
+            </Button>
           ) : (
             <Button size="lg" disabled className="w-64 tracking-[0.1em] opacity-30">
               OFFLINE

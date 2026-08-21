@@ -445,6 +445,20 @@ function appendReceipt(
   });
 }
 
+export function recordAgentStage(
+  stage: string,
+  role: string,
+  input: string,
+  output: string,
+) {
+  appendReceipt(
+    `Gemini ${stage}`,
+    `${role} stage recorded`,
+    `model_inference · input: ${input} · output: ${output}`,
+    null,
+  );
+}
+
 export function evaluate(input: PolicyInput): Evaluation {
   const evaluation = evaluatePolicy(
     call,
