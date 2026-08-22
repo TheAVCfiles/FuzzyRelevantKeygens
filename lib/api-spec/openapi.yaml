@@ -117,6 +117,7 @@ paths:
       operationId: generatePodcastBrief
       tags: [autography]
       summary: Generate a source-backed podcast brief for human review
+      description: The generated brief is durably stored server-side so its provenance and review state survive an API restart.
       requestBody:
         required: true
         content:
@@ -155,6 +156,7 @@ paths:
       operationId: createPodcastScript
       tags: [autography]
       summary: Open a script-only workspace from an approved brief
+      description: The workspace and its provenance are durably stored server-side and remain gated by the persisted brief approval state.
       parameters:
         - $ref: "#/components/parameters/Id"
       responses:

@@ -1,4 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   PodcastBrief,
   PodcastScriptWorkspace,
@@ -96,6 +98,55 @@ let currentBrief: PodcastBrief | null = null;
 let currentScript: PodcastScriptWorkspace | null = null;
 const podcastBriefs = new Map<string, PodcastBrief>();
 const podcastScripts = new Map<string, PodcastScriptWorkspace>();
+
+const podcastStatePath = join(process.cwd(), ".podcast-room-state.json");
+type PersistedPodcastState = {
+  briefs: PodcastBrief[];
+  scripts: PodcastScriptWorkspace[];
+  currentBriefId: string | null;
+  currentScriptId: string | null;
+};
+
+function persistPodcastState() {
+  const temporaryPath = `${podcastStatePath}.tmp`;
+  writeFileSync(
+    temporaryPath,
+    JSON.stringify({
+      briefs: [...podcastBriefs.values()],
+      scripts: [...podcastScripts.values()],
+      currentBriefId: currentBrief?.id ?? null,
+      currentScriptId: currentScript?.id ?? null,
+    } satisfies PersistedPodcastState),
+    "utf8",
+  );
+  renameSync(temporaryPath, podcastStatePath);
+}
+
+/**
+ * Restore the complete podcast workspace repository on process startup.
+ * The status checks in the read/create functions remain the authorization
+ * boundary, so persisted drafts and rejected artifacts cannot be opened.
+ */
+export function restorePodcastState() {
+  if (!existsSync(podcastStatePath)) return;
+  try {
+    const saved = JSON.parse(readFileSync(podcastStatePath, "utf8")) as PersistedPodcastState;
+    podcastBriefs.clear();
+    podcastScripts.clear();
+    for (const brief of saved.briefs ?? []) {
+      if (brief?.id) podcastBriefs.set(brief.id, brief);
+    }
+    for (const script of saved.scripts ?? []) {
+      if (script?.id) podcastScripts.set(script.id, script);
+    }
+    currentBrief = saved.currentBriefId ? podcastBriefs.get(saved.currentBriefId) ?? null : null;
+    currentScript = saved.currentScriptId ? podcastScripts.get(saved.currentScriptId) ?? null : null;
+  } catch {
+    // A corrupt local state file must not prevent the API from booting.
+  }
+}
+
+restorePodcastState();
 
 type GeneratedPodcastDraft = Pick<
   PodcastBrief,
@@ -247,6 +298,7 @@ export function createPodcastScript(briefId: string) {
   currentBrief = brief;
   currentScript = podcastScripts.get(`script-${brief.id}`) ?? fixtureScript(brief);
   podcastScripts.set(currentScript.id, currentScript);
+  persistPodcastState();
   return { kind: "created" as const, script: currentScript };
 }
 
@@ -283,6 +335,7 @@ export function decidePodcastScript(id: string, decision: "approve" | "reject") 
         : "Rejected by a human script reviewer. No audio rendering or publishing is permitted.",
   };
   podcastScripts.set(currentScript.id, currentScript);
+  persistPodcastState();
   return currentScript;
 }
 
@@ -340,12 +393,14 @@ export async function generatePodcastBrief(conceptId: string, requestedSourceIds
       approval_note: fallback.approval_note,
     };
     podcastBriefs.set(currentBrief.id, currentBrief);
+    persistPodcastState();
     recordAgentStage("PODCAST-BRIEF", "draft", concept.title, response.text ?? "{}");
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Unknown Gemini runtime error.";
     recordAgentStage("PODCAST-BRIEF", "draft", concept.title, `fallback: ${reason}`);
     currentBrief = fallback;
     podcastBriefs.set(currentBrief.id, currentBrief);
+    persistPodcastState();
   }
   return currentBrief;
 }
@@ -369,6 +424,7 @@ export function decidePodcastBrief(id: string, decision: "approve" | "reject") {
         : "Rejected by a human reviewer. No script or audio rendering is permitted from this brief.",
   };
   podcastBriefs.set(currentBrief.id, currentBrief);
+  persistPodcastState();
   return currentBrief;
 }
 

@@ -12,6 +12,7 @@ import {
   getPodcastRoom,
   isPodcastEvidenceSufficient,
   podcastSources,
+  restorePodcastState,
 } from "./podcast-fixtures";
 
 test("brief fallback preserves URL and retrieval provenance", { concurrency: false }, async () => {
@@ -101,6 +102,39 @@ test("approved script workspaces can be retrieved by brief or workspace id", { c
 
   assert.deepEqual(getPodcastScriptByBriefId(brief.id), { kind: "found", script: created.script });
   assert.deepEqual(getPodcastScriptById(created.script.id), { kind: "found", script: created.script });
+});
+
+test("persisted approved workspaces restore with provenance and approval gates", { concurrency: false }, async () => {
+  const concept = getPodcastRoom().concepts[0];
+  assert.ok(concept);
+  const brief = await generatePodcastBrief(concept.id, concept.source_ids);
+  assert.ok(brief);
+  assert.equal(decidePodcastBrief(brief.id, "approve")?.status, "approved");
+  const created = createPodcastScript(brief.id);
+  assert.equal(created.kind, "created");
+  if (created.kind !== "created") return;
+  assert.equal(decidePodcastScript(created.script.id, "approve")?.status, "approved");
+
+  // Re-read the durable repository just as a newly started API process does.
+  restorePodcastState();
+  const restored = getPodcastScriptById(created.script.id);
+  assert.equal(restored.kind, "found");
+  if (restored.kind !== "found") return;
+  assert.equal(restored.script.status, "approved");
+  assert.deepEqual(restored.script.provenance, brief.source_links);
+  assert.equal(restored.script.sections[0]?.source_ids[0], brief.source_links[0]?.source_id);
+});
+
+test("restored draft and rejected briefs remain blocked from script workspaces", { concurrency: false }, async () => {
+  const concept = getPodcastRoom().concepts[2];
+  assert.ok(concept);
+  const brief = await generatePodcastBrief(concept.id, concept.source_ids);
+  assert.ok(brief);
+  restorePodcastState();
+  assert.equal(getPodcastScriptByBriefId(brief.id).kind, "brief_not_approved");
+  assert.equal(decidePodcastBrief(brief.id, "reject")?.status, "rejected");
+  restorePodcastState();
+  assert.equal(getPodcastScriptByBriefId(brief.id).kind, "brief_not_approved");
 });
 
 test("draft and rejected briefs cannot retrieve script workspaces", { concurrency: false }, async () => {
