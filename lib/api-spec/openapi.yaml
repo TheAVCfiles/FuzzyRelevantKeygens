@@ -447,11 +447,13 @@ components:
   schemas:
     HealthStatus:
       type: object
+      required: [status, storage]
       properties:
         status:
           type: string
-      required:
-        - status
+        storage:
+          type: string
+          enum: [healthy, degraded]
     Show:
       type: object
       required: [title, episode, subtitle, aired_at, transcript_excerpt]

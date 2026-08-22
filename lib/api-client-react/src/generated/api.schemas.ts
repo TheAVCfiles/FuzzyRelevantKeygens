@@ -5,8 +5,17 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type HealthStatusStorage = typeof HealthStatusStorage[keyof typeof HealthStatusStorage];
+
+
+export const HealthStatusStorage = {
+  healthy: 'healthy',
+  degraded: 'degraded',
+} as const;
+
 export interface HealthStatus {
   status: string;
+  storage: HealthStatusStorage;
 }
 
 export interface Show {
