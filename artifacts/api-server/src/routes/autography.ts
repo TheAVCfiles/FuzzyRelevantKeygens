@@ -1,4 +1,5 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   AddPodcastSourceBody,
   AddPodcastSourceResponse,
@@ -47,6 +48,7 @@ import {
   show,
   signMove,
   verifyDrop,
+  getPilotReport,
 } from "../lib/autography-fixtures";
 import { runAutographyAgentFlow } from "../lib/agent-builder-flow";
 import {
@@ -58,6 +60,62 @@ import {
 
 const router: IRouter = Router();
 
+type PilotRole = "producer" | "talent" | "publicity" | "safety";
+const rolePermissions: Record<PilotRole, Set<string>> = {
+  producer: new Set(["read", "ingest", "evaluate", "stage", "sign", "dismiss"]),
+  talent: new Set(["read", "evaluate", "sign"]),
+  publicity: new Set(["read", "ingest", "evaluate", "stage"]),
+  safety: new Set(["read", "evaluate"]),
+};
+
+function requestedRole(req: Request): PilotRole | null {
+  const role = req.header("x-autography-role") as PilotRole | undefined;
+  const user = req.header("x-autography-user");
+  if (role && user && rolePermissions[role]) return role;
+  const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!token) return process.env.NODE_ENV === "development" ? "producer" : null;
+  const [prefix, tokenRole, userId, signature] = token.split(":");
+  if (prefix !== "pilot" || !tokenRole || !userId || !signature || !rolePermissions[tokenRole as PilotRole]) return null;
+  const expected = createHmac("sha256", process.env.SESSION_SECRET ?? "development-only")
+    .update(`${tokenRole}:${userId}`)
+    .digest("hex");
+  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  return tokenRole as PilotRole;
+}
+
+function requirePermission(permission: string) {
+  return (req: any, res: any, next: any): void => {
+    const role = requestedRole(req);
+    if (!role) {
+      res.status(401).json({ error: "Pilot authentication required." });
+      return;
+    }
+    if (!rolePermissions[role].has(permission)) {
+      res.status(403).json({ error: `Role ${role} cannot perform ${permission}.` });
+      return;
+    }
+    req.autographyRole = role;
+    next();
+  };
+}
+
+router.post("/auth/session", (req, res): void => {
+  const role = req.body?.role as PilotRole;
+  const userId = typeof req.body?.user_id === "string" ? req.body.user_id : "";
+  if (!rolePermissions[role] || !userId) {
+    res.status(400).json({ error: "A valid role and user_id are required." });
+    return;
+  }
+  const signature = createHmac("sha256", process.env.SESSION_SECRET ?? "development-only")
+    .update(`${role}:${userId}`)
+    .digest("hex");
+  res.json({ token: `pilot:${role}:${userId}:${signature}`, role, user_id: userId });
+});
+
+// Every room read is authenticated as well; development keeps the existing
+// local preview usable as the producer role.
+router.use(requirePermission("read"));
+
 router.get("/show", (_req, res): void => {
   res.json(GetShowResponse.parse(show));
 });
@@ -68,7 +126,7 @@ router.get("/flood", (req, res): void => {
   res.json(GetFloodResponse.parse(flood(source)));
 });
 
-router.post("/flood/observations", (req, res): void => {
+router.post("/flood/observations", requirePermission("ingest"), (req, res): void => {
   const body = IngestLiveObservationsBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
@@ -98,7 +156,7 @@ router.get("/podcast/sources", (_req, res): void => {
   res.json(GetPodcastRoomResponse.parse(getPodcastRoom()));
 });
 
-router.post("/podcast/sources", (req, res): void => {
+router.post("/podcast/sources", requirePermission("stage"), (req, res): void => {
   const body = AddPodcastSourceBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
@@ -112,7 +170,7 @@ router.post("/podcast/sources", (req, res): void => {
   res.json(AddPodcastSourceResponse.parse(room));
 });
 
-router.post("/podcast/brief", async (req, res): Promise<void> => {
+router.post("/podcast/brief", requirePermission("stage"), async (req, res): Promise<void> => {
   const body = GeneratePodcastBriefBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
@@ -126,7 +184,7 @@ router.post("/podcast/brief", async (req, res): Promise<void> => {
   res.json(GeneratePodcastBriefResponse.parse(brief));
 });
 
-router.post("/podcast/brief/:id/decision", (req, res): void => {
+router.post("/podcast/brief/:id/decision", requirePermission("sign"), (req, res): void => {
   const params = DecidePodcastBriefParams.safeParse(req.params);
   const body = DecidePodcastBriefBody.safeParse(req.body);
   if (!params.success || !body.success) {
@@ -162,7 +220,7 @@ router.get("/pr/:id", (req, res): void => {
   res.json(GetPullRequestResponse.parse(pullRequest));
 });
 
-router.post("/pr/:id/sign", (req, res): void => {
+router.post("/pr/:id/sign", requirePermission("sign"), (req, res): void => {
   const params = SignPullRequestParams.safeParse(req.params);
   const body = SignPullRequestBody.safeParse(req.body);
   if (!params.success || !body.success || params.data.id !== pullRequest.id) {
@@ -181,7 +239,7 @@ router.post("/pr/:id/sign", (req, res): void => {
   res.json(SignPullRequestResponse.parse(result));
 });
 
-router.post("/evaluate", (req, res): void => {
+router.post("/evaluate", requirePermission("evaluate"), (req, res): void => {
   const body = EvaluatePolicyBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
@@ -190,12 +248,12 @@ router.post("/evaluate", (req, res): void => {
   res.json(EvaluatePolicyResponse.parse(evaluate(body.data)));
 });
 
-router.post("/agent/run", async (_req, res): Promise<void> => {
+router.post("/agent/run", requirePermission("stage"), async (_req, res): Promise<void> => {
   const result = await runAutographyAgentFlow();
   res.json(RunAgentFlowResponse.parse(result));
 });
 
-router.post("/pr/:id/dismiss", (req, res): void => {
+router.post("/pr/:id/dismiss", requirePermission("dismiss"), (req, res): void => {
   const params = DismissPullRequestParams.safeParse(req.params);
   if (!params.success || params.data.id !== pullRequest.id) {
     res.status(404).json({ error: "Pull Request not found" });
@@ -227,7 +285,11 @@ router.post("/verify", (req, res): void => {
   res.json(VerifyDropResponse.parse(verifyDrop(body.data.lookup)));
 });
 
-router.get("/receipts", (_req, res): void => {
+router.get("/pilot/report", requirePermission("read"), (_req, res): void => {
+  res.json(getPilotReport());
+});
+
+router.get("/receipts", requirePermission("read"), (_req, res): void => {
   res.json(GetReceiptsResponse.parse(getReceipts()));
 });
 

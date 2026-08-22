@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   evaluatePolicy,
@@ -135,6 +137,7 @@ let liveReceivedAt: string | null = null;
 export function ingestLiveObservations(batch: LiveObservationBatch) {
   liveBatch = batch;
   liveReceivedAt = new Date().toISOString();
+  persistRoomState();
   return flood("live");
 }
 
@@ -528,6 +531,48 @@ const receipts: Receipt[] = [
 
 const drops: Array<ReturnType<typeof makeDrop>> = [];
 
+const statePath = join(process.cwd(), ".autography-room-state.json");
+type PersistedRoomState = {
+  liveBatch: LiveObservationBatch | null;
+  liveReceivedAt: string | null;
+  receipts: Receipt[];
+  drops: Array<ReturnType<typeof makeDrop>>;
+  pullRequestState: string;
+  mergedMoveId: string | null;
+};
+
+function persistRoomState() {
+  writeFileSync(
+    statePath,
+    JSON.stringify({
+      liveBatch,
+      liveReceivedAt,
+      receipts,
+      drops,
+      pullRequestState: pullRequest.state,
+      mergedMoveId: pullRequest.merged_move_id,
+    } satisfies PersistedRoomState),
+    "utf8",
+  );
+}
+
+function restoreRoomState() {
+  if (!existsSync(statePath)) return;
+  try {
+    const saved = JSON.parse(readFileSync(statePath, "utf8")) as PersistedRoomState;
+    liveBatch = saved.liveBatch;
+    liveReceivedAt = saved.liveReceivedAt;
+    receipts.splice(0, receipts.length, ...(saved.receipts ?? []));
+    drops.splice(0, drops.length, ...(saved.drops ?? []));
+    if (saved.pullRequestState) pullRequest.state = saved.pullRequestState;
+    pullRequest.merged_move_id = saved.mergedMoveId ?? null;
+  } catch {
+    // A corrupt local state file must not prevent the read-only fixture room from booting.
+  }
+}
+
+restoreRoomState();
+
 function canonicalDropPayload(
   title: string,
   claims: Array<{ text: string; source_class: string; source_ref: string }>,
@@ -677,6 +722,32 @@ export function getReceipts() {
   return receipts;
 }
 
+export function getPilotReport() {
+  const triageStart = receipts.find((entry) => entry.action === "Signal flood read")?.ts;
+  const triageEnd = receipts.find((entry) => entry.action === "Action evaluated")?.ts;
+  const signed = receipts.filter((entry) => entry.action === "Drop issued").length;
+  const holds = receipts.filter((entry) => entry.rule_fired === "R5" || entry.result === "HUMAN HOLD").length;
+  const sourceRefs = new Set(evidence.map((item) => item.source_ref).filter(Boolean));
+  const coveredRefs = new Set(
+    drops.flatMap((drop) => drop.claims.map((claim) => claim.source_ref)),
+  );
+  return {
+    call_id: call.call_id,
+    time_to_triage_seconds:
+      triageStart && triageEnd
+        ? Math.max(0, Math.round((new Date(triageEnd).getTime() - new Date(triageStart).getTime()) / 1000))
+        : null,
+    source_coverage: {
+      covered: [...coveredRefs].filter((ref) => sourceRefs.has(ref)).length,
+      available: sourceRefs.size,
+    },
+    holds,
+    signed_outcomes: signed,
+    receipt_count: receipts.length,
+    generated_at: new Date().toISOString(),
+  };
+}
+
 function appendReceipt(
   actor: string,
   action: string,
@@ -691,6 +762,7 @@ function appendReceipt(
     result,
     rule_fired,
   });
+  persistRoomState();
 }
 
 export function recordAgentStage(
@@ -766,12 +838,14 @@ export function signMove(moveId: string) {
   pullRequest.state = "merged";
   pullRequest.merged_move_id = moveId;
   appendReceipt("Lola Vantz", "Drop issued", "House Seal applied", null);
+  persistRoomState();
   return { evaluation, drop };
 }
 
 export function dismissPullRequest() {
   pullRequest.state = "closed";
   appendReceipt("Lola Vantz", "PR dismissed", "not my look", null);
+  persistRoomState();
   return {
     dismissed: true,
     receipt_entry: "The PR closed unmerged. Nothing was published.",
