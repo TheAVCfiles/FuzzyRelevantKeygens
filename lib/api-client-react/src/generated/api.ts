@@ -37,6 +37,8 @@ import type {
   PodcastBrief,
   PodcastBriefDecisionInput,
   PodcastRoom,
+  PodcastScriptDecisionInput,
+  PodcastScriptWorkspace,
   PolicyEvaluationInput,
   PullRequest,
   Receipt,
@@ -677,6 +679,149 @@ export const useDecidePodcastBrief = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDecidePodcastBriefMutationOptions(options));
+    }
+
+export const getCreatePodcastScriptUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/brief/${id}/script`
+}
+
+/**
+ * @summary Open a script-only workspace from an approved brief
+ */
+export const createPodcastScript = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PodcastScriptWorkspace> => {
+
+  return customFetch<PodcastScriptWorkspace>(getCreatePodcastScriptUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreatePodcastScriptMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPodcastScript>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPodcastScript>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['createPodcastScript'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPodcastScript>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  createPodcastScript(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePodcastScriptMutationResult = NonNullable<Awaited<ReturnType<typeof createPodcastScript>>>
+
+    export type CreatePodcastScriptMutationError = ErrorType<void>
+
+    /**
+ * @summary Open a script-only workspace from an approved brief
+ */
+export const useCreatePodcastScript = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPodcastScript>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPodcastScript>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getCreatePodcastScriptMutationOptions(options));
+    }
+
+export const getDecidePodcastScriptUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/script/${id}/decision`
+}
+
+/**
+ * @summary Approve or reject a podcast script before audio work
+ */
+export const decidePodcastScript = async (id: string,
+    podcastScriptDecisionInput: PodcastScriptDecisionInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastScriptWorkspace> => {
+
+  return customFetch<PodcastScriptWorkspace>(getDecidePodcastScriptUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(podcastScriptDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getDecidePodcastScriptMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decidePodcastScript>>, TError,{id: string;data: BodyType<PodcastScriptDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof decidePodcastScript>>, TError,{id: string;data: BodyType<PodcastScriptDecisionInput>}, TContext> => {
+
+const mutationKey = ['decidePodcastScript'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof decidePodcastScript>>, {id: string;data: BodyType<PodcastScriptDecisionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  decidePodcastScript(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DecidePodcastScriptMutationResult = NonNullable<Awaited<ReturnType<typeof decidePodcastScript>>>
+    export type DecidePodcastScriptMutationBody = BodyType<PodcastScriptDecisionInput>
+    export type DecidePodcastScriptMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Approve or reject a podcast script before audio work
+ */
+export const useDecidePodcastScript = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decidePodcastScript>>, TError,{id: string;data: BodyType<PodcastScriptDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof decidePodcastScript>>,
+        TError,
+        {id: string;data: BodyType<PodcastScriptDecisionInput>},
+        TContext
+      > => {
+      return useMutation(getDecidePodcastScriptMutationOptions(options));
     }
 
 export const getGetContextUrl = () => {

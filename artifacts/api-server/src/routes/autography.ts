@@ -6,6 +6,11 @@ import {
   DecidePodcastBriefBody,
   DecidePodcastBriefParams,
   DecidePodcastBriefResponse,
+  CreatePodcastScriptResponse,
+  CreatePodcastScriptParams,
+  DecidePodcastScriptBody,
+  DecidePodcastScriptParams,
+  DecidePodcastScriptResponse,
   DismissPullRequestParams,
   DismissPullRequestResponse,
   EvaluatePolicyBody,
@@ -54,6 +59,8 @@ import { runAutographyAgentFlow } from "../lib/agent-builder-flow";
 import {
   addPodcastSource,
   decidePodcastBrief,
+  createPodcastScript,
+  decidePodcastScript,
   generatePodcastBrief,
   getPodcastRoom,
   isPodcastEvidenceSufficient,
@@ -207,6 +214,39 @@ router.post("/podcast/brief/:id/decision", requirePermission("sign"), (req, res)
     return;
   }
   res.json(DecidePodcastBriefResponse.parse(brief));
+});
+
+router.post("/podcast/brief/:id/script", requirePermission("stage"), (req, res): void => {
+  const params = CreatePodcastScriptParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid podcast brief id" });
+    return;
+  }
+  const result = createPodcastScript(params.data.id);
+  if (result.kind === "not_found") {
+    res.status(404).json({ error: "Podcast brief not found" });
+    return;
+  }
+  if (result.kind === "brief_not_approved") {
+    res.status(409).json({ error: "Only an approved podcast brief can open a script workspace." });
+    return;
+  }
+  res.status(201).json(CreatePodcastScriptResponse.parse(result.script));
+});
+
+router.post("/podcast/script/:id/decision", requirePermission("sign"), (req, res): void => {
+  const params = DecidePodcastScriptParams.safeParse(req.params);
+  const body = DecidePodcastScriptBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Invalid podcast script decision" });
+    return;
+  }
+  const script = decidePodcastScript(params.data.id, body.data.decision);
+  if (!script) {
+    res.status(404).json({ error: "Podcast script workspace not found" });
+    return;
+  }
+  res.json(DecidePodcastScriptResponse.parse(script));
 });
 
 router.get("/context", (_req, res): void => {

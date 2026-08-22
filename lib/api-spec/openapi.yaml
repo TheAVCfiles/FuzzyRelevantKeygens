@@ -150,6 +150,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PodcastBrief"
+  /podcast/brief/{id}/script:
+    post:
+      operationId: createPodcastScript
+      tags: [autography]
+      summary: Open a script-only workspace from an approved brief
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          description: Gated podcast script workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastScriptWorkspace"
+        "409":
+          description: Brief is not approved
+  /podcast/script/{id}/decision:
+    post:
+      operationId: decidePodcastScript
+      tags: [autography]
+      summary: Approve or reject a podcast script before audio work
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastScriptDecisionInput"
+      responses:
+        "200":
+          description: Reviewed podcast script workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastScriptWorkspace"
   /context:
     get:
       operationId: getContext
@@ -706,6 +742,49 @@ components:
         suggested_title: { type: string }
         approval_note: { type: string }
     PodcastBriefDecisionInput:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+    PodcastScriptSection:
+      type: object
+      required: [segment, script, source_ids]
+      properties:
+        segment: { type: string }
+        script: { type: string }
+        source_ids:
+          type: array
+          items: { type: string }
+    PodcastScriptWorkspace:
+      type: object
+      required: [id, brief_id, status, title, sections, provenance, safety_note, review_note, audio_status]
+      properties:
+        id: { type: string }
+        brief_id: { type: string }
+        status:
+          type: string
+          enum: [draft, approved, rejected]
+        title: { type: string }
+        sections:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastScriptSection" }
+        provenance:
+          type: array
+          items:
+            type: object
+            required: [source_id, url, label]
+            properties:
+              source_id: { type: string }
+              url: { type: string }
+              label: { type: string }
+        safety_note: { type: string }
+        review_note: { type: string }
+        audio_status:
+          type: string
+          enum: [blocked_until_script_approval]
+    PodcastScriptDecisionInput:
       type: object
       required: [decision]
       properties:

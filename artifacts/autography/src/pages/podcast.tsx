@@ -19,12 +19,15 @@ import {
   getGetPodcastRoomQueryKey,
   useAddPodcastSource,
   useDecidePodcastBrief,
+  useCreatePodcastScript,
+  useDecidePodcastScript,
   useGeneratePodcastBrief,
   useGetPodcastRoom,
   type PodcastBrief,
   type PodcastConcept,
   type PodcastRoom,
   type PodcastSource,
+  type PodcastScriptWorkspace,
 } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -286,6 +289,81 @@ function RoomSkeleton() {
   );
 }
 
+function ScriptWorkspacePanel({
+  script,
+  onCreate,
+  onDecide,
+  isCreating,
+  isDeciding,
+  canCreate,
+}: {
+  script: PodcastScriptWorkspace | null;
+  onCreate: () => void;
+  onDecide: (decision: 'approve' | 'reject') => void;
+  isCreating: boolean;
+  isDeciding: boolean;
+  canCreate: boolean;
+}) {
+  if (!script) {
+    return (
+      <section className="podcast-panel border-l-2 border-[#365f67] p-5" data-testid="panel-script-gate">
+        <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-[#365f67]" strokeWidth={1.5} /><p className="podcast-kicker">Script workspace / gate 02</p></div>
+        <h2 className="mt-2 font-serif text-2xl text-[#201b19]">Brief first. Script second.</h2>
+        <p className="mt-3 text-sm leading-6 text-[#5f554e]">Only an approved brief can open this script-only workspace. Every section will retain its source trail, and audio remains blocked until a separate review.</p>
+        <Button type="button" className="mt-5 w-full bg-[#365f67] text-[#f0e8de] hover:bg-[#2d5057] disabled:opacity-40" disabled={!canCreate || isCreating} onClick={onCreate} data-testid="button-open-script-workspace">
+          {isCreating ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <ChevronRight className="mr-2 h-4 w-4" />}
+          {isCreating ? 'Opening workspace' : canCreate ? 'Open script workspace' : 'Awaiting brief approval'}
+        </Button>
+        <p className="mt-3 font-mono text-[9px] uppercase leading-4 tracking-[0.08em] text-[#73675f]">No audio render or publish action is available here</p>
+      </section>
+    );
+  }
+
+  const isDecided = script.status !== 'draft';
+  return (
+    <section className="podcast-panel-dark p-5 sm:p-6" data-testid="panel-script-workspace">
+      <div className="flex items-start justify-between gap-4 border-b border-[#4f4944] pb-5">
+        <div><p className="podcast-kicker !text-[#d8a36c]">Script-only workspace</p><p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[#80756c]" data-testid="text-script-id">{script.id}</p></div>
+        <span className={`border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] ${script.status === 'approved' ? 'border-[#87a895] text-[#9bc8a9]' : script.status === 'rejected' ? 'border-[#c27a68] text-[#e39a86]' : 'border-[#d8a36c] text-[#d8a36c]'}`} data-testid="status-script">{script.status}</span>
+      </div>
+      <h2 className="mt-5 font-serif text-[28px] leading-[1.1] text-[#f0e8de]" data-testid="text-script-title">{script.title}</h2>
+      <div className="mt-5 space-y-4 border-y border-[#4f4944] py-2">
+        {script.sections.map((section, index) => (
+          <div key={`${section.segment}-${index}`} className="border-b border-[#4f4944] py-4 last:border-b-0" data-testid={`section-script-${index}`}>
+            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#c7a481]">{section.segment}</p>
+            <p className="mt-2 text-sm leading-6 text-[#f0e8de]">{section.script}</p>
+            <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] text-[#9bc8a9]">sources: {section.source_ids.join(', ')}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 border border-[#577964] bg-[#294338] p-4" data-testid="panel-script-safety">
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[#b7d7c0]"><ShieldCheck className="h-3.5 w-3.5" /> Safe drafting boundary</div>
+        <p className="mt-2 text-xs leading-5 text-[#d4e7d8]">{script.safety_note}</p>
+      </div>
+      <div className="mt-5">
+        <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Script review gate</p>
+        <p className="mb-4 text-xs leading-5 text-[#b7aaa0]">{script.review_note}</p>
+        {isDecided ? (
+          <div className={`flex items-center gap-2 border px-3 py-3 font-mono text-[10px] uppercase tracking-[0.08em] ${script.status === 'approved' ? 'border-[#577964] text-[#9bc8a9]' : 'border-[#895948] text-[#e39a86]'}`} data-testid="status-script-decision-final">
+            {script.status === 'approved' ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+            {script.status === 'approved' ? 'Reviewed — audio remains separately gated' : 'Rejected — revision required'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" size="sm" disabled={isDeciding} onClick={() => onDecide('approve')} className="bg-[#d8a36c] text-[#2c2927] hover:bg-[#e5b77e]" data-testid="button-approve-script"><ShieldCheck className="mr-2 h-3.5 w-3.5" /> Approve script</Button>
+            <Button type="button" variant="outline" size="sm" disabled={isDeciding} onClick={() => onDecide('reject')} className="border-[#806057] text-[#e4a38d] hover:bg-[#482e29]" data-testid="button-reject-script"><X className="mr-2 h-3.5 w-3.5" /> Reject</Button>
+          </div>
+        )}
+      </div>
+      <div className="mt-5 flex items-center justify-between border-t border-[#4f4944] pt-4 font-mono text-[10px] uppercase tracking-[0.08em] text-[#80756c]"><span>Audio status</span><span className="text-[#e4a38d]" data-testid="status-audio-gate">{statusLabel(script.audio_status)}</span></div>
+      <div className="mt-5">
+        <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Attached provenance</p>
+        <div className="space-y-2">{script.provenance.map((source) => <a key={source.source_id} href={source.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 border border-[#4f4944] px-3 py-3 text-xs text-[#d8cbc1] hover:border-[#d8a36c]" data-testid={`link-script-source-${source.source_id}`}><span className="truncate">{source.label}</span><ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-[#d8a36c]" /></a>)}</div>
+      </div>
+    </section>
+  );
+}
+
 export function Podcast() {
   const queryClient = useQueryClient();
   const roomQuery = useGetPodcastRoom({ query: { queryKey: getGetPodcastRoomQueryKey() } });
@@ -293,6 +371,7 @@ export function Podcast() {
   const [sourceUrl, setSourceUrl] = useState('');
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
   const [brief, setBrief] = useState<PodcastBrief | null>(null);
+  const [script, setScript] = useState<PodcastScriptWorkspace | null>(null);
   const [localError, setLocalError] = useState('');
 
   const concepts = room?.concepts ?? [];
@@ -324,8 +403,19 @@ export function Podcast() {
     mutation: {
       onSuccess: (nextBrief) => {
         setBrief(nextBrief);
+        if (nextBrief.status !== 'approved') setScript(null);
         queryClient.invalidateQueries({ queryKey: getGetPodcastRoomQueryKey() });
       },
+    },
+  });
+  const createScript = useCreatePodcastScript({
+    mutation: {
+      onSuccess: (nextScript) => { setScript(nextScript); setLocalError(''); },
+    },
+  });
+  const decideScript = useDecidePodcastScript({
+    mutation: {
+      onSuccess: (nextScript) => { setScript(nextScript); setLocalError(''); },
     },
   });
 
@@ -347,7 +437,7 @@ export function Podcast() {
   };
 
   const roomError = roomQuery.error ? 'The intelligence room could not be loaded. Try again to reconnect to the source desk.' : '';
-  const mutationError = localError || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '');
+  const mutationError = localError || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '');
   const evidenceSufficient = brief ? hasSufficientEvidence(brief, sources) : false;
 
   return (
@@ -448,7 +538,8 @@ export function Podcast() {
               </section>
 
               <div className="space-y-4">
-                <BriefPanel brief={brief} concept={selectedConcept} onDecide={(decision) => brief && decideBrief.mutate({ id: brief.id, data: { decision } })} isDeciding={decideBrief.isPending} evidenceSufficient={evidenceSufficient} />
+                 <BriefPanel brief={brief} concept={selectedConcept} onDecide={(decision) => brief && decideBrief.mutate({ id: brief.id, data: { decision } })} isDeciding={decideBrief.isPending} evidenceSufficient={evidenceSufficient} />
+                 <ScriptWorkspacePanel script={script} canCreate={brief?.status === 'approved'} isCreating={createScript.isPending} isDeciding={decideScript.isPending} onCreate={() => brief && createScript.mutate({ id: brief.id })} onDecide={(decision) => script && decideScript.mutate({ id: script.id, data: { decision } })} />
                 <div className="podcast-panel p-5" data-testid="panel-next-action">
                   <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#b34b36]" strokeWidth={1.5} /><p className="podcast-kicker">Next editorial action</p></div>
                   <p className="mt-3 text-sm leading-6 text-[#5f554e]">You are looking at <strong className="font-medium text-[#201b19]">{selectedConcept?.title || 'the shortlist'}</strong>. Generate its brief only when the source trail is sufficient for a producer review.</p>

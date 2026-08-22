@@ -389,6 +389,58 @@ export interface PodcastBriefDecisionInput {
   decision: PodcastBriefDecisionInputDecision;
 }
 
+export interface PodcastScriptSection {
+  segment: string;
+  script: string;
+  source_ids: string[];
+}
+
+export type PodcastScriptWorkspaceStatus = typeof PodcastScriptWorkspaceStatus[keyof typeof PodcastScriptWorkspaceStatus];
+
+
+export const PodcastScriptWorkspaceStatus = {
+  draft: 'draft',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export type PodcastScriptWorkspaceProvenanceItem = {
+  source_id: string;
+  url: string;
+  label: string;
+};
+
+export type PodcastScriptWorkspaceAudioStatus = typeof PodcastScriptWorkspaceAudioStatus[keyof typeof PodcastScriptWorkspaceAudioStatus];
+
+
+export const PodcastScriptWorkspaceAudioStatus = {
+  blocked_until_script_approval: 'blocked_until_script_approval',
+} as const;
+
+export interface PodcastScriptWorkspace {
+  id: string;
+  brief_id: string;
+  status: PodcastScriptWorkspaceStatus;
+  title: string;
+  sections: PodcastScriptSection[];
+  provenance: PodcastScriptWorkspaceProvenanceItem[];
+  safety_note: string;
+  review_note: string;
+  audio_status: PodcastScriptWorkspaceAudioStatus;
+}
+
+export type PodcastScriptDecisionInputDecision = typeof PodcastScriptDecisionInputDecision[keyof typeof PodcastScriptDecisionInputDecision];
+
+
+export const PodcastScriptDecisionInputDecision = {
+  approve: 'approve',
+  reject: 'reject',
+} as const;
+
+export interface PodcastScriptDecisionInput {
+  decision: PodcastScriptDecisionInputDecision;
+}
+
 export interface ContextResponse {
   items: ContextItem[];
 }

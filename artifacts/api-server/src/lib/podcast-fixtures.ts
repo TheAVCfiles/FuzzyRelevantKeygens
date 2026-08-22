@@ -1,5 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
-import type { PodcastBrief, PodcastSource } from "@workspace/api-zod";
+import type {
+  PodcastBrief,
+  PodcastScriptWorkspace,
+  PodcastSource,
+} from "@workspace/api-zod";
 
 import { recordAgentStage } from "./autography-fixtures";
 
@@ -83,6 +87,7 @@ export const podcastConcepts = [
 ];
 
 let currentBrief: PodcastBrief | null = null;
+let currentScript: PodcastScriptWorkspace | null = null;
 
 function fixtureBrief(conceptId: string): PodcastBrief {
   return {
@@ -132,6 +137,50 @@ export function getPodcastRoom() {
     rendering_status: "blocked_until_approval" as const,
     selected_brief_id: currentBrief?.id ?? null,
   };
+}
+
+function fixtureScript(brief: PodcastBrief): PodcastScriptWorkspace {
+  const sourceIds = brief.source_links.map((link) => link.source_id);
+  return {
+    id: `script-${brief.id}`,
+    brief_id: brief.id,
+    status: "draft",
+    title: brief.suggested_title,
+    sections: brief.episode_outline.map((item, index) => ({
+      segment: item.segment,
+      script:
+        index === 0
+          ? `Open with the shared question behind this episode: what does the edit make visible, and what does it leave for the audience to reconstruct?`
+          : `${item.purpose} Frame this as a pattern across public discussions, not a claim about any individual. Name uncertainty where the source trail cannot resolve the timeline.`,
+      source_ids: sourceIds,
+    })),
+    provenance: brief.source_links,
+    safety_note:
+      "Draft language summarizes recurring public patterns. It contains no verbatim Reddit comments, personal targeting, or unsupported audience-wide claims.",
+    review_note:
+      "Draft only. A separate human script review is required before any audio workflow.",
+    audio_status: "blocked_until_script_approval",
+  };
+}
+
+export function createPodcastScript(briefId: string) {
+  if (!currentBrief || currentBrief.id !== briefId) return { kind: "not_found" as const };
+  if (currentBrief.status !== "approved") return { kind: "brief_not_approved" as const };
+  currentScript = fixtureScript(currentBrief);
+  return { kind: "created" as const, script: currentScript };
+}
+
+export function decidePodcastScript(id: string, decision: "approve" | "reject") {
+  if (!currentScript || currentScript.id !== id) return null;
+  currentScript = {
+    ...currentScript,
+    status: decision === "approve" ? "approved" : "rejected",
+    review_note:
+      decision === "approve"
+        ? "Approved by a human script reviewer. Audio work remains a separate production decision."
+        : "Rejected by a human script reviewer. No audio rendering or publishing is permitted.",
+  };
+  return currentScript;
 }
 
 export function addPodcastSource(sourceUrl: string) {

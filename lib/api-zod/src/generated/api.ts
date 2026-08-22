@@ -401,6 +401,66 @@ export const DecidePodcastBriefResponse = zod.object({
 
 
 /**
+ * @summary Open a script-only workspace from an approved brief
+ */
+export const CreatePodcastScriptParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const CreatePodcastScriptResponse = zod.object({
+  "id": zod.string(),
+  "brief_id": zod.string(),
+  "status": zod.enum(['draft', 'approved', 'rejected']),
+  "title": zod.string(),
+  "sections": zod.array(zod.object({
+  "segment": zod.string(),
+  "script": zod.string(),
+  "source_ids": zod.array(zod.string())
+})),
+  "provenance": zod.array(zod.object({
+  "source_id": zod.string(),
+  "url": zod.string(),
+  "label": zod.string()
+})),
+  "safety_note": zod.string(),
+  "review_note": zod.string(),
+  "audio_status": zod.enum(['blocked_until_script_approval'])
+})
+
+
+/**
+ * @summary Approve or reject a podcast script before audio work
+ */
+export const DecidePodcastScriptParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DecidePodcastScriptBody = zod.object({
+  "decision": zod.enum(['approve', 'reject'])
+})
+
+export const DecidePodcastScriptResponse = zod.object({
+  "id": zod.string(),
+  "brief_id": zod.string(),
+  "status": zod.enum(['draft', 'approved', 'rejected']),
+  "title": zod.string(),
+  "sections": zod.array(zod.object({
+  "segment": zod.string(),
+  "script": zod.string(),
+  "source_ids": zod.array(zod.string())
+})),
+  "provenance": zod.array(zod.object({
+  "source_id": zod.string(),
+  "url": zod.string(),
+  "label": zod.string()
+})),
+  "safety_note": zod.string(),
+  "review_note": zod.string(),
+  "audio_status": zod.enum(['blocked_until_script_approval'])
+})
+
+
+/**
  * @summary Get the context repository
  */
 export const GetContextResponse = zod.object({
