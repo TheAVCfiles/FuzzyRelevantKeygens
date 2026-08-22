@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ObservationProvenance } from './observationProvenance';
 import type { SignalAuthor } from './signalAuthor';
 import type { SignalEngagement } from './signalEngagement';
 
@@ -16,4 +17,5 @@ export interface SignalEvent {
   platform: string;
   engagement: SignalEngagement;
   cluster_id: string;
+  provenance?: ObservationProvenance;
 }

@@ -25,7 +25,7 @@ export function Board() {
       refetchInterval: 1000,
     },
   });
-  const { data: flood } = useGetFlood({ query: { queryKey: ["/api/flood"] } });
+  const { data: flood } = useGetFlood(undefined, { query: { queryKey: ["/api/flood"] } });
   const { data: context } = useGetContext({ query: { queryKey: ["/api/context"] } });
   const { data: pullRequest } = useGetPullRequest("pr_001", {
     query: { queryKey: ["/api/pr/pr_001"] },

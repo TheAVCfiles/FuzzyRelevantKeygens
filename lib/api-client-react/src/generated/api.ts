@@ -30,7 +30,10 @@ import type {
   Evaluation,
   FloodResponse,
   GeneratePodcastBriefInput,
+  GetFloodParams,
   HealthStatus,
+  LiveObservationBatch,
+  LiveObservationReceipt,
   PodcastBrief,
   PodcastBriefDecisionInput,
   PodcastRoom,
@@ -226,20 +229,27 @@ export function useGetShow<TData = Awaited<ReturnType<typeof getShow>>, TError =
 
 
 
-export const getGetFloodUrl = () => {
+export const getGetFloodUrl = (params?: GetFloodParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/flood`
+  return stringifiedParams.length > 0 ? `/api/flood?${stringifiedParams}` : `/api/flood`
 }
 
 /**
- * @summary Get the synthetic signal flood and clusters
+ * @summary Get the Signal Room flood and clusters
  */
-export const getFlood = async ( options?: Parameters<typeof customFetch>[1]): Promise<FloodResponse> => {
+export const getFlood = async (params?: GetFloodParams, options?: Parameters<typeof customFetch>[1]): Promise<FloodResponse> => {
 
-  return customFetch<FloodResponse>(getGetFloodUrl(),
+  return customFetch<FloodResponse>(getGetFloodUrl(params),
   {
     ...options,
     method: 'GET'
@@ -252,23 +262,23 @@ export const getFlood = async ( options?: Parameters<typeof customFetch>[1]): Pr
 
 
 
-export const getGetFloodQueryKey = () => {
+export const getGetFloodQueryKey = (params?: GetFloodParams,) => {
     return [
-    `/api/flood`
+    `/api/flood`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetFloodQueryOptions = <TData = Awaited<ReturnType<typeof getFlood>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFlood>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetFloodQueryOptions = <TData = Awaited<ReturnType<typeof getFlood>>, TError = ErrorType<unknown>>(params?: GetFloodParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFlood>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetFloodQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetFloodQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFlood>>> = ({ signal }) => getFlood({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFlood>>> = ({ signal }) => getFlood(params, { signal, ...requestOptions });
 
 
 
@@ -282,15 +292,15 @@ export type GetFloodQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get the synthetic signal flood and clusters
+ * @summary Get the Signal Room flood and clusters
  */
 
 export function useGetFlood<TData = Awaited<ReturnType<typeof getFlood>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFlood>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetFloodParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFlood>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetFloodQueryOptions(options)
+  const queryOptions = getGetFloodQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -302,6 +312,81 @@ export function useGetFlood<TData = Awaited<ReturnType<typeof getFlood>>, TError
 
 
 
+
+export const getIngestLiveObservationsUrl = () => {
+
+
+
+
+  return `/api/flood/observations`
+}
+
+/**
+ * Connector boundary for the policy-reviewed pilot source `consented-newsroom-v1`.
+ * The source must send its consent and policy review references. Identity fields are
+ * intentionally not accepted. Content is retained only for server-side grouping and
+ * is de-amplified in the Signal Room response.
+ * @summary Ingest observations from the approved consented newsroom connector
+ */
+export const ingestLiveObservations = async (liveObservationBatch: LiveObservationBatch, options?: Parameters<typeof customFetch>[1]): Promise<LiveObservationReceipt> => {
+
+  return customFetch<LiveObservationReceipt>(getIngestLiveObservationsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(liveObservationBatch)
+  }
+);}
+
+
+
+
+
+export const getIngestLiveObservationsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestLiveObservations>>, TError,{data: BodyType<LiveObservationBatch>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof ingestLiveObservations>>, TError,{data: BodyType<LiveObservationBatch>}, TContext> => {
+
+const mutationKey = ['ingestLiveObservations'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ingestLiveObservations>>, {data: BodyType<LiveObservationBatch>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  ingestLiveObservations(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IngestLiveObservationsMutationResult = NonNullable<Awaited<ReturnType<typeof ingestLiveObservations>>>
+    export type IngestLiveObservationsMutationBody = BodyType<LiveObservationBatch>
+    export type IngestLiveObservationsMutationError = ErrorType<void>
+
+    /**
+ * @summary Ingest observations from the approved consented newsroom connector
+ */
+export const useIngestLiveObservations = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestLiveObservations>>, TError,{data: BodyType<LiveObservationBatch>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof ingestLiveObservations>>,
+        TError,
+        {data: BodyType<LiveObservationBatch>},
+        TContext
+      > => {
+      return useMutation(getIngestLiveObservationsMutationOptions(options));
+    }
 
 export const getGetPodcastRoomUrl = () => {
 

@@ -1,33 +1,36 @@
 import { Router, type IRouter } from "express";
 import {
+  AddPodcastSourceBody,
+  AddPodcastSourceResponse,
+  DecidePodcastBriefBody,
+  DecidePodcastBriefParams,
+  DecidePodcastBriefResponse,
   DismissPullRequestParams,
   DismissPullRequestResponse,
   EvaluatePolicyBody,
   EvaluatePolicyResponse,
+  GeneratePodcastBriefBody,
+  GeneratePodcastBriefResponse,
   GetActiveCallResponse,
   GetCallsResponse,
   GetContextResponse,
   GetDropParams,
   GetDropResponse,
+  GetFloodQueryParams,
   GetFloodResponse,
+  GetPodcastRoomResponse,
   GetPullRequestParams,
   GetPullRequestResponse,
   GetReceiptsResponse,
   GetShowResponse,
+  IngestLiveObservationsBody,
+  IngestLiveObservationsResponse,
   RunAgentFlowResponse,
   SignPullRequestBody,
   SignPullRequestParams,
   SignPullRequestResponse,
   VerifyDropBody,
   VerifyDropResponse,
-  AddPodcastSourceBody,
-  AddPodcastSourceResponse,
-  GeneratePodcastBriefBody,
-  GeneratePodcastBriefResponse,
-  GetPodcastRoomResponse,
-  DecidePodcastBriefBody,
-  DecidePodcastBriefParams,
-  DecidePodcastBriefResponse,
 } from "@workspace/api-zod";
 
 import {
@@ -39,6 +42,7 @@ import {
   flood,
   getDrop,
   getReceipts,
+  ingestLiveObservations,
   pullRequest,
   show,
   signMove,
@@ -58,8 +62,36 @@ router.get("/show", (_req, res): void => {
   res.json(GetShowResponse.parse(show));
 });
 
-router.get("/flood", (_req, res): void => {
-  res.json(GetFloodResponse.parse(flood()));
+router.get("/flood", (req, res): void => {
+  const parsed = GetFloodQueryParams.safeParse(req.query);
+  const source = parsed.success && parsed.data.source === "live" ? "live" : "fixture";
+  res.json(GetFloodResponse.parse(flood(source)));
+});
+
+router.post("/flood/observations", (req, res): void => {
+  const body = IngestLiveObservationsBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const liveFlood = ingestLiveObservations({
+    ...body.data,
+    observations: body.data.observations.map((observation) => ({
+      ...observation,
+      observed_at: observation.observed_at.toISOString(),
+      observation_window: {
+        start: observation.observation_window.start.toISOString(),
+        end: observation.observation_window.end.toISOString(),
+      },
+    })),
+  });
+  res.status(202).json(IngestLiveObservationsResponse.parse({
+    accepted: true,
+    source_id: body.data.source_id,
+    received_at: new Date().toISOString(),
+    observation_count: body.data.observations.length,
+    flood: liveFlood,
+  }));
 });
 
 router.get("/podcast/sources", (_req, res): void => {
@@ -103,7 +135,7 @@ router.post("/podcast/brief/:id/decision", (req, res): void => {
   }
   const brief = decidePodcastBrief(params.data.id, body.data.decision);
   if (!brief) {
-    res.status(404).json({ error: "Podcast brief not found" });
+    res.status(404).json({ error: "Podcast concept not found" });
     return;
   }
   res.json(DecidePodcastBriefResponse.parse(brief));
@@ -137,17 +169,13 @@ router.post("/pr/:id/sign", (req, res): void => {
     res.status(400).json({ error: "Invalid Pull Request signature" });
     return;
   }
-
   const result = signMove(body.data.move_id);
   if (!result) {
     res.status(400).json({ error: "Move not found" });
     return;
   }
   if (!result.drop) {
-    res.status(200).json({
-      evaluation: result.evaluation,
-      drop: null,
-    });
+    res.status(200).json({ evaluation: result.evaluation, drop: null });
     return;
   }
   res.json(SignPullRequestResponse.parse(result));

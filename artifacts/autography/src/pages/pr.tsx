@@ -11,7 +11,7 @@ export function PR() {
   const { data: pr, isLoading } = useGetPullRequest(id, {
     query: { queryKey: ["/api/pr", id] }
   });
-  const { data: flood } = useGetFlood({ query: { queryKey: ["/api/flood"] } });
+  const { data: flood } = useGetFlood(undefined, { query: { queryKey: ["/api/flood"] } });
 
   const signMutation = useSignPullRequest({
     mutation: {

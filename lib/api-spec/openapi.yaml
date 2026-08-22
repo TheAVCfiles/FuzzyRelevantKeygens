@@ -42,7 +42,15 @@ paths:
     get:
       operationId: getFlood
       tags: [autography]
-      summary: Get the synthetic signal flood and clusters
+      summary: Get the Signal Room flood and clusters
+      parameters:
+        - name: source
+          in: query
+          required: false
+          description: Use the approved live connector, or the synthetic fixture fallback.
+          schema:
+            type: string
+            enum: [fixture, live]
       responses:
         "200":
           description: Signal events grouped into clusters
@@ -50,6 +58,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FloodResponse"
+  /flood/observations:
+    post:
+      operationId: ingestLiveObservations
+      tags: [autography]
+      summary: Ingest observations from the approved consented newsroom connector
+      description: |
+        Connector boundary for the policy-reviewed pilot source `consented-newsroom-v1`.
+        The source must send its consent and policy review references. Identity fields are
+        intentionally not accepted. Content is retained only for server-side grouping and
+        is de-amplified in the Signal Room response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveObservationBatch"
+      responses:
+        "202":
+          description: Observations accepted and normalized into the live room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveObservationReceipt"
+        "400":
+          description: The source envelope is invalid or not approved
   /podcast/sources:
     get:
       operationId: getPodcastRoom
@@ -396,6 +429,65 @@ components:
         platform: { type: string }
         engagement: { $ref: "#/components/schemas/SignalEngagement" }
         cluster_id: { type: string }
+        provenance: { $ref: "#/components/schemas/ObservationProvenance" }
+    ObservationProvenance:
+      type: object
+      required: [source_id, source_class, consent_ref, observation_window, received_at, freshness, confidence]
+      properties:
+        source_id: { type: string }
+        source_class: { type: string }
+        consent_ref: { type: string }
+        observation_window:
+          type: object
+          required: [start, end]
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+        received_at: { type: string, format: date-time }
+        freshness: { type: string }
+        confidence: { type: string }
+    LiveObservation:
+      type: object
+      required: [id, text, observed_at, observation_window, confidence]
+      properties:
+        id: { type: string }
+        text: { type: string, minLength: 1, maxLength: 2000 }
+        observed_at: { type: string, format: date-time }
+        observation_window:
+          type: object
+          required: [start, end]
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+        confidence:
+          type: string
+          enum: [low, medium, high]
+    LiveObservationBatch:
+      type: object
+      required: [source_id, source_class, consent_ref, policy_review_ref, observations]
+      properties:
+        source_id:
+          type: string
+          enum: [consented-newsroom-v1]
+        source_class:
+          type: string
+          enum: [consented_newsroom]
+        consent_ref: { type: string, minLength: 1 }
+        policy_review_ref: { type: string, minLength: 1 }
+        observations:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/LiveObservation" }
+    LiveObservationReceipt:
+      type: object
+      required: [accepted, source_id, received_at, observation_count, flood]
+      properties:
+        accepted: { type: boolean }
+        source_id: { type: string }
+        received_at: { type: string, format: date-time }
+        observation_count: { type: number }
+        flood: { $ref: "#/components/schemas/FloodResponse" }
     TimelinePulse:
       type: object
       required: [id, label, timestamp, intensity, cluster_id, source_class, freshness, confidence]

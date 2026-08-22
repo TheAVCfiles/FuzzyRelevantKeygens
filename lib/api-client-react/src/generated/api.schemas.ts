@@ -88,6 +88,21 @@ export interface SignalEngagement {
   reposts: number;
 }
 
+export type ObservationProvenanceObservationWindow = {
+  start: string;
+  end: string;
+};
+
+export interface ObservationProvenance {
+  source_id: string;
+  source_class: string;
+  consent_ref: string;
+  observation_window: ObservationProvenanceObservationWindow;
+  received_at: string;
+  freshness: string;
+  confidence: string;
+}
+
 export interface SignalEvent {
   id: string;
   text: string;
@@ -96,6 +111,79 @@ export interface SignalEvent {
   platform: string;
   engagement: SignalEngagement;
   cluster_id: string;
+  provenance?: ObservationProvenance;
+}
+
+export type LiveObservationObservationWindow = {
+  start: string;
+  end: string;
+};
+
+export type LiveObservationConfidence = typeof LiveObservationConfidence[keyof typeof LiveObservationConfidence];
+
+
+export const LiveObservationConfidence = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+} as const;
+
+export interface LiveObservation {
+  id: string;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  text: string;
+  observed_at: string;
+  observation_window: LiveObservationObservationWindow;
+  confidence: LiveObservationConfidence;
+}
+
+export type LiveObservationBatchSourceId = typeof LiveObservationBatchSourceId[keyof typeof LiveObservationBatchSourceId];
+
+
+export const LiveObservationBatchSourceId = {
+  'consented-newsroom-v1': 'consented-newsroom-v1',
+} as const;
+
+export type LiveObservationBatchSourceClass = typeof LiveObservationBatchSourceClass[keyof typeof LiveObservationBatchSourceClass];
+
+
+export const LiveObservationBatchSourceClass = {
+  consented_newsroom: 'consented_newsroom',
+} as const;
+
+export interface LiveObservationBatch {
+  source_id: LiveObservationBatchSourceId;
+  source_class: LiveObservationBatchSourceClass;
+  /** @minLength 1 */
+  consent_ref: string;
+  /** @minLength 1 */
+  policy_review_ref: string;
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  observations: LiveObservation[];
+}
+
+export interface CoordinationSignals {
+  duplicate_phrasing: number;
+  account_age_clustering: number;
+  burst_window_seconds: number;
+  cadence_irregularity: number;
+}
+
+export interface Cluster {
+  id: string;
+  label: string;
+  class: string;
+  member_ids: string[];
+  coordination_signals: CoordinationSignals;
+  confidence: string;
+  note: string;
+  share_of_observed_volume: number;
 }
 
 export interface TimelinePulse {
@@ -147,24 +235,6 @@ export interface RolePermission {
   emphasis: string[];
 }
 
-export interface CoordinationSignals {
-  duplicate_phrasing: number;
-  account_age_clustering: number;
-  burst_window_seconds: number;
-  cadence_irregularity: number;
-}
-
-export interface Cluster {
-  id: string;
-  label: string;
-  class: string;
-  member_ids: string[];
-  coordination_signals: CoordinationSignals;
-  confidence: string;
-  note: string;
-  share_of_observed_volume: number;
-}
-
 export interface FloodResponse {
   observed_volume: number;
   events: SignalEvent[];
@@ -175,6 +245,14 @@ export interface FloodResponse {
   safety_holds: SafetyHold[];
   role_permissions: RolePermission[];
   data_notice: string;
+}
+
+export interface LiveObservationReceipt {
+  accepted: boolean;
+  source_id: string;
+  received_at: string;
+  observation_count: number;
+  flood: FloodResponse;
 }
 
 export interface ContextItem {
@@ -462,4 +540,19 @@ export interface Receipt {
   /** @nullable */
   rule_fired: string | null;
 }
+
+export type GetFloodParams = {
+/**
+ * Use the approved live connector, or the synthetic fixture fallback.
+ */
+source?: GetFloodSource;
+};
+
+export type GetFloodSource = typeof GetFloodSource[keyof typeof GetFloodSource];
+
+
+export const GetFloodSource = {
+  fixture: 'fixture',
+  live: 'live',
+} as const;
 

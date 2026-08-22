@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function Constellation() {
-  const { data: flood, isLoading } = useGetFlood({
-    query: { queryKey: ["/api/flood"] }
-  });
-
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState("producer");
   const [activePulseId, setActivePulseId] = useState<string | null>(null);
+  const [source, setSource] = useState<"fixture" | "live">("fixture");
+  const { data: flood, isLoading } = useGetFlood({ source }, {
+    query: { queryKey: ["/api/flood", source], staleTime: 15_000, refetchInterval: source === "live" ? 15_000 : false }
+  });
 
   if (isLoading) {
     return (
@@ -38,8 +38,20 @@ export function Constellation() {
               A de-amplified view of what is moving, what is supported, and what should stay in a human hold.
             </p>
           </div>
-          <div className="font-mono text-xs text-sepia border border-sepia/30 px-3 py-2 whitespace-nowrap">
-            OBSERVATION WINDOW / NOW
+          <div className="flex flex-col items-stretch gap-2">
+            <div className="flex border border-sepia/30">
+              {(["fixture", "live"] as const).map((option) => (
+                <button key={option} onClick={() => { setSource(option); setSelectedClusterId(null); setActivePulseId(null); }} className={cn(
+                  "font-system text-[10px] tracking-[0.12em] px-3 py-2 transition-colors",
+                  source === option ? "bg-brass/15 text-brass" : "text-sepia hover:text-oyster",
+                )}>
+                  {option === "fixture" ? "SYNTHETIC FIXTURE" : "APPROVED LIVE SOURCE"}
+                </button>
+              ))}
+            </div>
+            <div className="font-mono text-[9px] text-sepia text-right">
+              {source === "live" ? "CONSENTED NEWSROOM / IDENTITY UNAVAILABLE" : "DEMO RECOVERY PATH / SYNTHETIC"}
+            </div>
           </div>
         </div>
         <div className="mt-7 flex flex-col xl:flex-row gap-5 xl:items-end">
@@ -191,14 +203,21 @@ export function Constellation() {
             </div>
 
             <div className="space-y-4">
-              <div className="font-system text-sepia text-xs">RAW SIGNAL EXAMPLES</div>
+              <div className="font-system text-sepia text-xs">{source === "live" ? "DE-AMPLIFIED OBSERVATIONS" : "RAW SIGNAL EXAMPLES"}</div>
               {flood.events.filter(e => e.cluster_id === selectedCluster.id).slice(0, 3).map(event => (
                 <div key={event.id} className="border border-sepia/20 p-4 bg-house/50">
                   <div className="flex justify-between items-start mb-2">
-                    <div className="font-mono text-xs text-brass">{event.author.handle}</div>
-                    <div className="font-system text-[10px] text-sepia">AGE {event.author.account_age_days}d</div>
+                    <div className="font-mono text-xs text-brass">{event.provenance ? "IDENTITY UNAVAILABLE" : event.author.handle}</div>
+                    <div className="font-system text-[10px] text-sepia">{event.provenance ? "CONTENT WITHHELD FROM AMPLIFICATION" : `AGE ${event.author.account_age_days}d`}</div>
                   </div>
                   <p className="font-sans text-sm text-oyster/90 leading-relaxed">{event.text}</p>
+                  {event.provenance && (
+                    <div className="mt-3 border-t border-sepia/20 pt-2 space-y-1">
+                      <p className="font-mono text-[9px] text-sepia">SOURCE / {event.provenance.source_id} · {event.provenance.source_class}</p>
+                      <p className="font-mono text-[9px] text-sepia">WINDOW / {event.provenance.observation_window.start} → {event.provenance.observation_window.end}</p>
+                      <p className="font-mono text-[9px] text-brass">FRESHNESS / {event.provenance.freshness} · CONFIDENCE / {event.provenance.confidence}</p>
+                    </div>
+                  )}
                   <div className="mt-3 flex gap-3 text-sepia font-mono text-[10px]">
                     <span>LIKES {event.engagement.likes}</span>
                     <span>REPOSTS {event.engagement.reposts}</span>

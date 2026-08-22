@@ -115,6 +115,29 @@ const timeline = [
   },
 ];
 
+type LiveObservationBatch = {
+  source_id: "consented-newsroom-v1";
+  source_class: "consented_newsroom";
+  consent_ref: string;
+  policy_review_ref: string;
+  observations: Array<{
+    id: string;
+    text: string;
+    observed_at: string;
+    observation_window: { start: string; end: string };
+    confidence: "low" | "medium" | "high";
+  }>;
+};
+
+let liveBatch: LiveObservationBatch | null = null;
+let liveReceivedAt: string | null = null;
+
+export function ingestLiveObservations(batch: LiveObservationBatch) {
+  liveBatch = batch;
+  liveReceivedAt = new Date().toISOString();
+  return flood("live");
+}
+
 const evidence = [
   {
     id: "ev_01",
@@ -578,7 +601,64 @@ export function activeCall() {
   };
 }
 
-export function flood() {
+export function flood(source: "fixture" | "live" = "fixture") {
+  const batch = liveBatch;
+  const receivedAt = liveReceivedAt;
+  if (source === "live" && batch && receivedAt) {
+    const liveEvents = batch.observations.map((observation) => ({
+      id: observation.id,
+      text: "[grouped observation withheld from amplification]",
+      author: { handle: "identity unavailable", account_age_days: 0, followers: 0 },
+      posted_at: observation.observed_at,
+      platform: "consented newsroom",
+      engagement: { likes: 0, reposts: 0 },
+      cluster_id: "live_observed",
+      provenance: {
+        source_id: batch.source_id,
+        source_class: batch.source_class,
+        consent_ref: batch.consent_ref,
+        observation_window: observation.observation_window,
+        received_at: receivedAt,
+        freshness: `${Math.max(0, Math.round((Date.now() - new Date(observation.observed_at).getTime()) / 60000))}m old`,
+        confidence: observation.confidence,
+      },
+    }));
+    const start = batch.observations[0]?.observation_window.start ?? receivedAt;
+    const end = batch.observations[batch.observations.length - 1]?.observation_window.end ?? receivedAt;
+    return {
+      ...fixtureFlood(),
+      observed_volume: liveEvents.length,
+      events: liveEvents,
+      clusters: [{
+        id: "live_observed",
+        label: "Consented newsroom observations",
+        class: "observed_signal",
+        member_ids: liveEvents.map((event) => event.id),
+        coordination_signals: { duplicate_phrasing: 0, account_age_clustering: 0, burst_window_seconds: 0, cadence_irregularity: 0 },
+        confidence: batch.observations.every((observation) => observation.confidence === "high") ? "high" : "medium",
+        note: "Aggregate-only view. No identity resolution or coordination finding is available.",
+        share_of_observed_volume: 1,
+      }],
+      timeline: [{
+        id: "live_window",
+        label: "Live newsroom window",
+        timestamp: receivedAt,
+        intensity: Math.min(1, liveEvents.length / 20),
+        cluster_id: "live_observed",
+        source_class: batch.source_class,
+        freshness: "received just now",
+        confidence: liveEvents.length ? liveEvents[0].provenance.confidence : "low",
+        observation_window: { start, end },
+      }],
+      evidence: [],
+      questions: [],
+      data_notice: "Approved live source · consented newsroom observations are grouped, de-amplified, and never identity-resolved.",
+    };
+  }
+  return fixtureFlood();
+}
+
+function fixtureFlood() {
   return {
     observed_volume: 1284,
     events,

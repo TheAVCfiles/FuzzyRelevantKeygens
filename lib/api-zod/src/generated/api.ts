@@ -30,8 +30,12 @@ export const GetShowResponse = zod.object({
 
 
 /**
- * @summary Get the synthetic signal flood and clusters
+ * @summary Get the Signal Room flood and clusters
  */
+export const GetFloodQueryParams = zod.object({
+  "source": zod.enum(['fixture', 'live']).optional().describe('Use the approved live connector, or the synthetic fixture fallback.')
+})
+
 export const GetFloodResponse = zod.object({
   "observed_volume": zod.number(),
   "events": zod.array(zod.object({
@@ -48,7 +52,19 @@ export const GetFloodResponse = zod.object({
   "likes": zod.number(),
   "reposts": zod.number()
 }),
-  "cluster_id": zod.string()
+  "cluster_id": zod.string(),
+  "provenance": zod.object({
+  "source_id": zod.string(),
+  "source_class": zod.string(),
+  "consent_ref": zod.string(),
+  "observation_window": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}),
+  "received_at": zod.coerce.date(),
+  "freshness": zod.string(),
+  "confidence": zod.string()
+}).optional()
 })),
   "clusters": zod.array(zod.object({
   "id": zod.string(),
@@ -110,6 +126,137 @@ export const GetFloodResponse = zod.object({
   "emphasis": zod.array(zod.string())
 })),
   "data_notice": zod.string()
+})
+
+
+/**
+ * Connector boundary for the policy-reviewed pilot source `consented-newsroom-v1`.
+ * The source must send its consent and policy review references. Identity fields are
+ * intentionally not accepted. Content is retained only for server-side grouping and
+ * is de-amplified in the Signal Room response.
+ * @summary Ingest observations from the approved consented newsroom connector
+ */
+
+
+export const ingestLiveObservationsBodyObservationsItemTextMax = 2000;
+
+export const ingestLiveObservationsBodyObservationsMax = 100;
+
+
+
+export const IngestLiveObservationsBody = zod.object({
+  "source_id": zod.enum(['consented-newsroom-v1']),
+  "source_class": zod.enum(['consented_newsroom']),
+  "consent_ref": zod.string().min(1),
+  "policy_review_ref": zod.string().min(1),
+  "observations": zod.array(zod.object({
+  "id": zod.string(),
+  "text": zod.string().min(1).max(ingestLiveObservationsBodyObservationsItemTextMax),
+  "observed_at": zod.coerce.date(),
+  "observation_window": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}),
+  "confidence": zod.enum(['low', 'medium', 'high'])
+})).min(1).max(ingestLiveObservationsBodyObservationsMax)
+})
+
+export const IngestLiveObservationsResponse = zod.object({
+  "accepted": zod.boolean(),
+  "source_id": zod.string(),
+  "received_at": zod.coerce.date(),
+  "observation_count": zod.number(),
+  "flood": zod.object({
+  "observed_volume": zod.number(),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "text": zod.string(),
+  "author": zod.object({
+  "handle": zod.string(),
+  "account_age_days": zod.number(),
+  "followers": zod.number()
+}),
+  "posted_at": zod.string(),
+  "platform": zod.string(),
+  "engagement": zod.object({
+  "likes": zod.number(),
+  "reposts": zod.number()
+}),
+  "cluster_id": zod.string(),
+  "provenance": zod.object({
+  "source_id": zod.string(),
+  "source_class": zod.string(),
+  "consent_ref": zod.string(),
+  "observation_window": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}),
+  "received_at": zod.coerce.date(),
+  "freshness": zod.string(),
+  "confidence": zod.string()
+}).optional()
+})),
+  "clusters": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "class": zod.string(),
+  "member_ids": zod.array(zod.string()),
+  "coordination_signals": zod.object({
+  "duplicate_phrasing": zod.number(),
+  "account_age_clustering": zod.number(),
+  "burst_window_seconds": zod.number(),
+  "cadence_irregularity": zod.number()
+}),
+  "confidence": zod.string(),
+  "note": zod.string(),
+  "share_of_observed_volume": zod.number()
+})),
+  "timeline": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "timestamp": zod.string(),
+  "intensity": zod.number(),
+  "cluster_id": zod.string(),
+  "source_class": zod.string(),
+  "freshness": zod.string(),
+  "confidence": zod.string()
+})),
+  "evidence": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "source_class": zod.string(),
+  "source_ref": zod.string(),
+  "observation_window": zod.string(),
+  "freshness": zod.string(),
+  "confidence": zod.string(),
+  "excerpt": zod.string()
+})),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "prompt": zod.string(),
+  "grouped_count": zod.number(),
+  "cluster_id": zod.string(),
+  "answerability": zod.string(),
+  "context_refs": zod.array(zod.string())
+})),
+  "safety_holds": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "severity": zod.string(),
+  "reason": zod.string(),
+  "status": zod.string(),
+  "safe_action": zod.string()
+})),
+  "role_permissions": zod.array(zod.object({
+  "role": zod.string(),
+  "label": zod.string(),
+  "can_view": zod.boolean(),
+  "can_stage": zod.boolean(),
+  "can_sign": zod.boolean(),
+  "emphasis": zod.array(zod.string())
+})),
+  "data_notice": zod.string()
+})
 })
 
 
