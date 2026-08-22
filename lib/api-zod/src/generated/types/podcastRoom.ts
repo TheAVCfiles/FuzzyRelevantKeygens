@@ -6,12 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { PodcastConcept } from './podcastConcept';
+import type { PodcastFilterPreset } from './podcastFilterPreset';
 import type { PodcastRoomRenderingStatus } from './podcastRoomRenderingStatus';
 import type { PodcastSource } from './podcastSource';
 
 export interface PodcastRoom {
   sources: PodcastSource[];
   concepts: PodcastConcept[];
+  filter_presets: PodcastFilterPreset[];
   data_notice: string;
   rendering_status: PodcastRoomRenderingStatus;
   /** @nullable */

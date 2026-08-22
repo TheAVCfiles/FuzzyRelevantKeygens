@@ -3,6 +3,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   AddPodcastSourceBody,
   AddPodcastSourceResponse,
+  CreatePodcastFilterPresetBody,
+  CreatePodcastFilterPresetResponse,
   DecidePodcastBriefBody,
   DecidePodcastBriefParams,
   DecidePodcastBriefResponse,
@@ -25,6 +27,10 @@ import {
   GetFloodQueryParams,
   GetFloodResponse,
   GetPodcastRoomResponse,
+  RenamePodcastFilterPresetBody,
+  RenamePodcastFilterPresetParams,
+  RenamePodcastFilterPresetResponse,
+  DeletePodcastFilterPresetParams,
   GetPullRequestParams,
   GetPullRequestResponse,
   GetReceiptsResponse,
@@ -58,6 +64,8 @@ import {
 import { runAutographyAgentFlow } from "../lib/agent-builder-flow";
 import {
   addPodcastSource,
+  createPodcastFilterPreset,
+  deletePodcastFilterPreset,
   decidePodcastBrief,
   createPodcastScript,
   decidePodcastScript,
@@ -67,6 +75,7 @@ import {
   getPodcastScriptById,
   isPodcastEvidenceSufficient,
   recordPodcastDecision,
+  renamePodcastFilterPreset,
 } from "../lib/podcast-fixtures";
 
 const router: IRouter = Router();
@@ -179,6 +188,47 @@ router.post("/podcast/sources", requirePermission("stage"), (req, res): void => 
     return;
   }
   res.json(AddPodcastSourceResponse.parse(room));
+});
+
+router.post("/podcast/presets", requirePermission("stage"), (req, res): void => {
+  const body = CreatePodcastFilterPresetBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  res.status(201).json(CreatePodcastFilterPresetResponse.parse(createPodcastFilterPreset(
+    body.data.name,
+    body.data.platforms,
+    body.data.communities,
+  )));
+});
+
+router.patch("/podcast/presets/:id", requirePermission("stage"), (req, res): void => {
+  const params = RenamePodcastFilterPresetParams.safeParse(req.params);
+  const body = RenamePodcastFilterPresetBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Invalid podcast filter preset rename" });
+    return;
+  }
+  const preset = renamePodcastFilterPreset(params.data.id, body.data.name);
+  if (!preset) {
+    res.status(404).json({ error: "Podcast filter preset not found" });
+    return;
+  }
+  res.json(RenamePodcastFilterPresetResponse.parse(preset));
+});
+
+router.delete("/podcast/presets/:id", requirePermission("stage"), (req, res): void => {
+  const params = DeletePodcastFilterPresetParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid podcast filter preset id" });
+    return;
+  }
+  if (!deletePodcastFilterPreset(params.data.id)) {
+    res.status(404).json({ error: "Podcast filter preset not found" });
+    return;
+  }
+  res.status(204).send();
 });
 
 router.post("/podcast/brief", requirePermission("stage"), async (req, res): Promise<void> => {

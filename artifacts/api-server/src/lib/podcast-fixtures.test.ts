@@ -3,7 +3,9 @@ import { test } from "node:test";
 
 import {
   buildSafePodcastDraft,
+  createPodcastFilterPreset,
   createPodcastScript,
+  deletePodcastFilterPreset,
   decidePodcastBrief,
   decidePodcastScript,
   generatePodcastBrief,
@@ -12,8 +14,23 @@ import {
   getPodcastRoom,
   isPodcastEvidenceSufficient,
   podcastSources,
+  renamePodcastFilterPreset,
   restorePodcastState,
 } from "./podcast-fixtures";
+
+test("comparison filter presets persist, can be renamed, and do not alter source counts", { concurrency: false }, () => {
+  const before = getPodcastRoom();
+  const preset = createPodcastFilterPreset("Reddit communities", ["Reddit"], ["r/television"]);
+  assert.deepEqual(preset.platforms, ["Reddit"]);
+  assert.deepEqual(preset.communities, ["r/television"]);
+  assert.equal(getPodcastRoom().sources.length, before.sources.length);
+  assert.equal(getPodcastRoom().filter_presets.some((item) => item.id === preset.id), true);
+
+  const renamed = renamePodcastFilterPreset(preset.id, "Television signal");
+  assert.equal(renamed?.name, "Television signal");
+  assert.equal(deletePodcastFilterPreset(preset.id), true);
+  assert.equal(getPodcastRoom().filter_presets.some((item) => item.id === preset.id), false);
+});
 
 test("brief fallback preserves URL and retrieval provenance", { concurrency: false }, async () => {
   const originalKey = process.env.GEMINI_API_KEY;

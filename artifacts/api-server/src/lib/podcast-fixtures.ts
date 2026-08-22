@@ -3,6 +3,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   PodcastBrief,
+  PodcastFilterPreset,
   PodcastScriptWorkspace,
   PodcastSource,
 } from "@workspace/api-zod";
@@ -98,11 +99,13 @@ let currentBrief: PodcastBrief | null = null;
 let currentScript: PodcastScriptWorkspace | null = null;
 const podcastBriefs = new Map<string, PodcastBrief>();
 const podcastScripts = new Map<string, PodcastScriptWorkspace>();
+const podcastFilterPresets = new Map<string, PodcastFilterPreset>();
 
 const podcastStatePath = join(process.cwd(), ".podcast-room-state.json");
 type PersistedPodcastState = {
   briefs: PodcastBrief[];
   scripts: PodcastScriptWorkspace[];
+  filterPresets?: PodcastFilterPreset[];
   currentBriefId: string | null;
   currentScriptId: string | null;
 };
@@ -114,6 +117,7 @@ function persistPodcastState() {
     JSON.stringify({
       briefs: [...podcastBriefs.values()],
       scripts: [...podcastScripts.values()],
+      filterPresets: [...podcastFilterPresets.values()],
       currentBriefId: currentBrief?.id ?? null,
       currentScriptId: currentScript?.id ?? null,
     } satisfies PersistedPodcastState),
@@ -133,11 +137,15 @@ export function restorePodcastState() {
     const saved = JSON.parse(readFileSync(podcastStatePath, "utf8")) as PersistedPodcastState;
     podcastBriefs.clear();
     podcastScripts.clear();
+    podcastFilterPresets.clear();
     for (const brief of saved.briefs ?? []) {
       if (brief?.id) podcastBriefs.set(brief.id, brief);
     }
     for (const script of saved.scripts ?? []) {
       if (script?.id) podcastScripts.set(script.id, script);
+    }
+    for (const preset of saved.filterPresets ?? []) {
+      if (preset?.id) podcastFilterPresets.set(preset.id, preset);
     }
     currentBrief = saved.currentBriefId ? podcastBriefs.get(saved.currentBriefId) ?? null : null;
     currentScript = saved.currentScriptId ? podcastScripts.get(saved.currentScriptId) ?? null : null;
@@ -260,11 +268,43 @@ export function getPodcastRoom() {
   return {
     sources: podcastSources,
     concepts: podcastConcepts,
+    filter_presets: [...podcastFilterPresets.values()],
     data_notice:
       "Public-source path only · summaries are pattern-level · comments are never copied verbatim · provenance is retained per item.",
     rendering_status: "blocked_until_approval" as const,
     selected_brief_id: currentBrief?.id ?? null,
   };
+}
+
+export function createPodcastFilterPreset(
+  name: string,
+  platforms: string[],
+  communities: string[],
+) {
+  const preset: PodcastFilterPreset = {
+    id: `preset-${Date.now()}`,
+    name: name.trim(),
+    platforms: [...new Set(platforms)],
+    communities: [...new Set(communities)],
+  };
+  podcastFilterPresets.set(preset.id, preset);
+  persistPodcastState();
+  return preset;
+}
+
+export function renamePodcastFilterPreset(id: string, name: string) {
+  const preset = podcastFilterPresets.get(id);
+  if (!preset) return null;
+  const renamed = { ...preset, name: name.trim() };
+  podcastFilterPresets.set(id, renamed);
+  persistPodcastState();
+  return renamed;
+}
+
+export function deletePodcastFilterPreset(id: string) {
+  if (!podcastFilterPresets.delete(id)) return false;
+  persistPodcastState();
+  return true;
 }
 
 function fixtureScript(brief: PodcastBrief): PodcastScriptWorkspace {

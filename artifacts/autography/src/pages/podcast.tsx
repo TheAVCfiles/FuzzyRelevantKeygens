@@ -19,14 +19,18 @@ import {
   getGetPodcastRoomQueryKey,
   getGetPodcastScriptByBriefQueryKey,
   useAddPodcastSource,
+  useCreatePodcastFilterPreset,
+  useDeletePodcastFilterPreset,
   useDecidePodcastBrief,
   useCreatePodcastScript,
   useDecidePodcastScript,
   useGeneratePodcastBrief,
   useGetPodcastScriptByBrief,
   useGetPodcastRoom,
+  useRenamePodcastFilterPreset,
   type PodcastBrief,
   type PodcastConcept,
+  type PodcastFilterPreset,
   type PodcastRoom,
   type PodcastSource,
   type PodcastScriptWorkspace,
@@ -112,12 +116,20 @@ function ConceptCard({
   selected,
   onSelect,
   onVisibleSourcesChange,
+  presets,
+  onSavePreset,
+  onRenamePreset,
+  onDeletePreset,
 }: {
   concept: PodcastConcept;
   sources: PodcastSource[];
   selected: boolean;
   onSelect: () => void;
   onVisibleSourcesChange: (sourceIds: string[]) => void;
+  presets: PodcastFilterPreset[];
+  onSavePreset: (platforms: string[], communities: string[]) => void;
+  onRenamePreset: (preset: PodcastFilterPreset) => void;
+  onDeletePreset: (preset: PodcastFilterPreset) => void;
 }) {
   const compositeScore = Math.round((concept.relevance * 0.4) + (concept.urgency * 0.3) + (concept.engagement * 0.3));
   return (
@@ -148,7 +160,7 @@ function ConceptCard({
         <div className="border-r border-[#c7b9aa] px-3 py-3"><span className="block text-[9px]">source diversity</span><strong className={`mt-1 block font-mono text-sm ${scoreTone(concept.source_diversity)}`}>{concept.source_diversity}</strong></div>
         <div className="bg-[#2c2927] px-3 py-3 text-[#f0e8de]"><span className="block text-[9px] text-[#baaca0]">desk score</span><strong className="mt-1 block font-mono text-sm text-[#d8a36c]" data-testid={`text-concept-score-${concept.id}`}>{compositeScore}</strong></div>
       </div>
-      {selected && <ConceptSourceComparison concept={concept} sources={sources} onVisibleSourcesChange={onVisibleSourcesChange} />}
+      {selected && <ConceptSourceComparison concept={concept} sources={sources} onVisibleSourcesChange={onVisibleSourcesChange} presets={presets} onSavePreset={onSavePreset} onRenamePreset={onRenamePreset} onDeletePreset={onDeletePreset} />}
     </div>
   );
 }
@@ -157,10 +169,18 @@ function ConceptSourceComparison({
   concept,
   sources,
   onVisibleSourcesChange,
+  presets,
+  onSavePreset,
+  onRenamePreset,
+  onDeletePreset,
 }: {
   concept: PodcastConcept;
   sources: PodcastSource[];
   onVisibleSourcesChange: (sourceIds: string[]) => void;
+  presets: PodcastFilterPreset[];
+  onSavePreset: (platforms: string[], communities: string[]) => void;
+  onRenamePreset: (preset: PodcastFilterPreset) => void;
+  onDeletePreset: (preset: PodcastFilterPreset) => void;
 }) {
   const grouped = concept.source_ids.map((id) => sources.find((source) => source.id === id)).filter(Boolean) as PodcastSource[];
   const [platforms, setPlatforms] = useState<string[]>([]);
@@ -184,6 +204,10 @@ function ConceptSourceComparison({
     update(current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
   };
   const hasFilter = platforms.length > 0 || communityFilters.length > 0;
+  const applyPreset = (preset: PodcastFilterPreset) => {
+    setPlatforms(preset.platforms.filter((item) => availablePlatforms.includes(item)));
+    setCommunityFilters(preset.communities.filter((item) => availableCommunities.includes(item)));
+  };
   return (
     <div className="border-t border-[#c7b9aa] bg-[#f4eee5] p-4 sm:p-5" data-testid={`panel-comparison-${concept.id}`}>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
@@ -213,6 +237,17 @@ function ConceptSourceComparison({
             {hasFilter ? `Active filter · ${filtered.length} of ${grouped.length} sources visible` : `All ${grouped.length} sources visible`}
           </span>
           {hasFilter && <button type="button" onClick={() => { setPlatforms([]); setCommunityFilters([]); }} className="text-[#365f67] underline underline-offset-2" data-testid={`button-clear-filters-${concept.id}`}>Clear filters</button>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-t border-[#c7b9aa] pt-3">
+          <span className="w-20 font-mono text-[9px] uppercase tracking-[0.1em] text-[#73675f]">Presets</span>
+          {presets.map((preset) => (
+            <div key={preset.id} className="flex items-center border border-[#b8a99b]">
+              <button type="button" onClick={() => applyPreset(preset)} className="px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[#365f67] hover:bg-[#e4dbd0]" data-testid={`button-apply-preset-${preset.id}`}>{preset.name}</button>
+              <button type="button" onClick={() => onRenamePreset(preset)} className="border-l border-[#b8a99b] px-1.5 py-1 text-[#73675f] hover:text-[#b34b36]" aria-label={`Rename preset ${preset.name}`} data-testid={`button-rename-preset-${preset.id}`}>rename</button>
+              <button type="button" onClick={() => onDeletePreset(preset)} className="border-l border-[#b8a99b] px-1.5 py-1 text-[#73675f] hover:text-[#b34b36]" aria-label={`Remove preset ${preset.name}`} data-testid={`button-delete-preset-${preset.id}`}>×</button>
+            </div>
+          ))}
+          <button type="button" disabled={!hasFilter} onClick={() => onSavePreset(platforms, communityFilters)} className="border border-[#365f67] px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[#365f67] hover:bg-[#dce7e5] disabled:cursor-not-allowed disabled:opacity-40" data-testid={`button-save-preset-${concept.id}`}>+ save current</button>
         </div>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
@@ -477,6 +512,30 @@ export function Podcast() {
   const concepts = room?.concepts ?? [];
   const sources = room?.sources ?? [];
   const selectedConcept = useMemo(() => concepts.find((concept) => concept.id === selectedConceptId) ?? concepts[0], [concepts, selectedConceptId]);
+  const createPreset = useCreatePodcastFilterPreset({
+    mutation: {
+      onSuccess: () => {
+        setLocalError('');
+        queryClient.invalidateQueries({ queryKey: getGetPodcastRoomQueryKey() });
+      },
+    },
+  });
+  const renamePreset = useRenamePodcastFilterPreset({
+    mutation: {
+      onSuccess: () => {
+        setLocalError('');
+        queryClient.invalidateQueries({ queryKey: getGetPodcastRoomQueryKey() });
+      },
+    },
+  });
+  const deletePreset = useDeletePodcastFilterPreset({
+    mutation: {
+      onSuccess: () => {
+        setLocalError('');
+        queryClient.invalidateQueries({ queryKey: getGetPodcastRoomQueryKey() });
+      },
+    },
+  });
   const handleVisibleSourcesChange = useCallback((sourceIds: string[]) => {
     setVisibleSourceIds((current) => current.join(',') === sourceIds.join(',') ? current : sourceIds);
   }, []);
@@ -551,7 +610,7 @@ export function Podcast() {
   };
 
   const roomError = roomQuery.error ? 'The intelligence room could not be loaded. Try again to reconnect to the source desk.' : '';
-   const mutationError = localError || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '') || (scriptWorkspaceQuery.error && room?.selected_brief_id ? 'The saved script workspace could not be retrieved. It may no longer be approved.' : '');
+  const mutationError = localError || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (createPreset.error ? 'This comparison preset could not be saved.' : '') || (renamePreset.error ? 'This comparison preset could not be renamed.' : '') || (deletePreset.error ? 'This comparison preset could not be removed.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '') || (scriptWorkspaceQuery.error && room?.selected_brief_id ? 'The saved script workspace could not be retrieved. It may no longer be approved.' : '');
   const evidenceSufficient = brief ? hasSufficientEvidence(brief, sources) : false;
 
   return (
@@ -629,7 +688,7 @@ export function Podcast() {
 
                 {concepts.length ? (
                   <div className="space-y-3" data-testid="list-concepts">
-                     {concepts.map((concept) => <ConceptCard key={concept.id} concept={concept} sources={sources} selected={concept.id === selectedConcept?.id} onSelect={() => { setSelectedConceptId(concept.id); setVisibleSourceIds(concept.source_ids); setBrief(null); setScript(null); }} onVisibleSourcesChange={handleVisibleSourcesChange} />)}
+                     {concepts.map((concept) => <ConceptCard key={concept.id} concept={concept} sources={sources} presets={room?.filter_presets ?? []} selected={concept.id === selectedConcept?.id} onSelect={() => { setSelectedConceptId(concept.id); setVisibleSourceIds(concept.source_ids); setBrief(null); setScript(null); }} onVisibleSourcesChange={handleVisibleSourcesChange} onSavePreset={(platforms, communities) => { const name = window.prompt('Name this comparison preset'); if (name?.trim()) createPreset.mutate({ data: { name: name.trim(), platforms, communities } }); }} onRenamePreset={(preset) => { const name = window.prompt('Rename comparison preset', preset.name); if (name?.trim()) renamePreset.mutate({ id: preset.id, data: { name: name.trim() } }); }} onDeletePreset={(preset) => { if (window.confirm(`Remove preset “${preset.name}”?`)) deletePreset.mutate({ id: preset.id }); }} />)}
                   </div>
                 ) : (
                   <div className="podcast-panel p-8 text-center" data-testid="empty-concepts">

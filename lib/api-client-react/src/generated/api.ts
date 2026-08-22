@@ -36,6 +36,9 @@ import type {
   LiveObservationReceipt,
   PodcastBrief,
   PodcastBriefDecisionInput,
+  PodcastFilterPreset,
+  PodcastFilterPresetInput,
+  PodcastFilterPresetRenameInput,
   PodcastRoom,
   PodcastScriptDecisionInput,
   PodcastScriptWorkspace,
@@ -538,6 +541,220 @@ export const useAddPodcastSource = <TError = ErrorType<unknown>,
       return useMutation(getAddPodcastSourceMutationOptions(options));
     }
 
+export const getCreatePodcastFilterPresetUrl = () => {
+
+
+
+
+  return `/api/podcast/presets`
+}
+
+/**
+ * @summary Save a reusable podcast comparison filter preset
+ */
+export const createPodcastFilterPreset = async (podcastFilterPresetInput: PodcastFilterPresetInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastFilterPreset> => {
+
+  return customFetch<PodcastFilterPreset>(getCreatePodcastFilterPresetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(podcastFilterPresetInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePodcastFilterPresetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPodcastFilterPreset>>, TError,{data: BodyType<PodcastFilterPresetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPodcastFilterPreset>>, TError,{data: BodyType<PodcastFilterPresetInput>}, TContext> => {
+
+const mutationKey = ['createPodcastFilterPreset'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPodcastFilterPreset>>, {data: BodyType<PodcastFilterPresetInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPodcastFilterPreset(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePodcastFilterPresetMutationResult = NonNullable<Awaited<ReturnType<typeof createPodcastFilterPreset>>>
+    export type CreatePodcastFilterPresetMutationBody = BodyType<PodcastFilterPresetInput>
+    export type CreatePodcastFilterPresetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Save a reusable podcast comparison filter preset
+ */
+export const useCreatePodcastFilterPreset = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPodcastFilterPreset>>, TError,{data: BodyType<PodcastFilterPresetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPodcastFilterPreset>>,
+        TError,
+        {data: BodyType<PodcastFilterPresetInput>},
+        TContext
+      > => {
+      return useMutation(getCreatePodcastFilterPresetMutationOptions(options));
+    }
+
+export const getRenamePodcastFilterPresetUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/presets/${id}`
+}
+
+/**
+ * @summary Rename a podcast comparison filter preset
+ */
+export const renamePodcastFilterPreset = async (id: string,
+    podcastFilterPresetRenameInput: PodcastFilterPresetRenameInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastFilterPreset> => {
+
+  return customFetch<PodcastFilterPreset>(getRenamePodcastFilterPresetUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(podcastFilterPresetRenameInput)
+  }
+);}
+
+
+
+
+
+export const getRenamePodcastFilterPresetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renamePodcastFilterPreset>>, TError,{id: string;data: BodyType<PodcastFilterPresetRenameInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof renamePodcastFilterPreset>>, TError,{id: string;data: BodyType<PodcastFilterPresetRenameInput>}, TContext> => {
+
+const mutationKey = ['renamePodcastFilterPreset'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof renamePodcastFilterPreset>>, {id: string;data: BodyType<PodcastFilterPresetRenameInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  renamePodcastFilterPreset(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RenamePodcastFilterPresetMutationResult = NonNullable<Awaited<ReturnType<typeof renamePodcastFilterPreset>>>
+    export type RenamePodcastFilterPresetMutationBody = BodyType<PodcastFilterPresetRenameInput>
+    export type RenamePodcastFilterPresetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Rename a podcast comparison filter preset
+ */
+export const useRenamePodcastFilterPreset = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renamePodcastFilterPreset>>, TError,{id: string;data: BodyType<PodcastFilterPresetRenameInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof renamePodcastFilterPreset>>,
+        TError,
+        {id: string;data: BodyType<PodcastFilterPresetRenameInput>},
+        TContext
+      > => {
+      return useMutation(getRenamePodcastFilterPresetMutationOptions(options));
+    }
+
+export const getDeletePodcastFilterPresetUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/presets/${id}`
+}
+
+/**
+ * @summary Remove a podcast comparison filter preset
+ */
+export const deletePodcastFilterPreset = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeletePodcastFilterPresetUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeletePodcastFilterPresetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePodcastFilterPreset>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePodcastFilterPreset>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deletePodcastFilterPreset'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePodcastFilterPreset>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deletePodcastFilterPreset(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePodcastFilterPresetMutationResult = NonNullable<Awaited<ReturnType<typeof deletePodcastFilterPreset>>>
+
+    export type DeletePodcastFilterPresetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove a podcast comparison filter preset
+ */
+export const useDeletePodcastFilterPreset = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePodcastFilterPreset>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePodcastFilterPreset>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeletePodcastFilterPresetMutationOptions(options));
+    }
+
 export const getGeneratePodcastBriefUrl = () => {
 
 
@@ -547,6 +764,7 @@ export const getGeneratePodcastBriefUrl = () => {
 }
 
 /**
+ * The generated brief is durably stored server-side so its provenance and review state survive an API restart.
  * @summary Generate a source-backed podcast brief for human review
  */
 export const generatePodcastBrief = async (generatePodcastBriefInput: GeneratePodcastBriefInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastBrief> => {
@@ -690,6 +908,7 @@ export const getCreatePodcastScriptUrl = (id: string,) => {
 }
 
 /**
+ * The workspace and its provenance are durably stored server-side and remain gated by the persisted brief approval state.
  * @summary Open a script-only workspace from an approved brief
  */
 export const createPodcastScript = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PodcastScriptWorkspace> => {

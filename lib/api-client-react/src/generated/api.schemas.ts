@@ -319,13 +319,33 @@ export const PodcastRoomRenderingStatus = {
   blocked_until_approval: 'blocked_until_approval',
 } as const;
 
+export interface PodcastFilterPreset {
+  id: string;
+  name: string;
+  platforms: string[];
+  communities: string[];
+}
+
 export interface PodcastRoom {
   sources: PodcastSource[];
   concepts: PodcastConcept[];
+  filter_presets: PodcastFilterPreset[];
   data_notice: string;
   rendering_status: PodcastRoomRenderingStatus;
   /** @nullable */
   selected_brief_id: string | null;
+}
+
+export interface PodcastFilterPresetInput {
+  /** @minLength 1 */
+  name: string;
+  platforms: string[];
+  communities: string[];
+}
+
+export interface PodcastFilterPresetRenameInput {
+  /** @minLength 1 */
+  name: string;
 }
 
 export interface AddPodcastSourceInput {

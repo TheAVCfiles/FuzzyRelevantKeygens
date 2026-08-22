@@ -294,6 +294,12 @@ export const GetPodcastRoomResponse = zod.object({
   "source_ids": zod.array(zod.string()).min(1),
   "status": zod.enum(['ready', 'needs_review'])
 })),
+  "filter_presets": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "platforms": zod.array(zod.string()),
+  "communities": zod.array(zod.string())
+})),
   "data_notice": zod.string(),
   "rendering_status": zod.enum(['blocked_until_approval']),
   "selected_brief_id": zod.string().nullable()
@@ -338,6 +344,12 @@ export const AddPodcastSourceResponse = zod.object({
   "source_ids": zod.array(zod.string()).min(1),
   "status": zod.enum(['ready', 'needs_review'])
 })),
+  "filter_presets": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "platforms": zod.array(zod.string()),
+  "communities": zod.array(zod.string())
+})),
   "data_notice": zod.string(),
   "rendering_status": zod.enum(['blocked_until_approval']),
   "selected_brief_id": zod.string().nullable()
@@ -345,6 +357,59 @@ export const AddPodcastSourceResponse = zod.object({
 
 
 /**
+ * @summary Save a reusable podcast comparison filter preset
+ */
+
+
+
+export const CreatePodcastFilterPresetBody = zod.object({
+  "name": zod.string().min(1),
+  "platforms": zod.array(zod.string()),
+  "communities": zod.array(zod.string())
+})
+
+export const CreatePodcastFilterPresetResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "platforms": zod.array(zod.string()),
+  "communities": zod.array(zod.string())
+})
+
+
+/**
+ * @summary Rename a podcast comparison filter preset
+ */
+export const RenamePodcastFilterPresetParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+
+
+export const RenamePodcastFilterPresetBody = zod.object({
+  "name": zod.string().min(1)
+})
+
+export const RenamePodcastFilterPresetResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "platforms": zod.array(zod.string()),
+  "communities": zod.array(zod.string())
+})
+
+
+/**
+ * @summary Remove a podcast comparison filter preset
+ */
+export const DeletePodcastFilterPresetParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeletePodcastFilterPresetResponse = zod.void()
+
+
+/**
+ * The generated brief is durably stored server-side so its provenance and review state survive an API restart.
  * @summary Generate a source-backed podcast brief for human review
  */
 
@@ -419,6 +484,7 @@ export const DecidePodcastBriefResponse = zod.object({
 
 
 /**
+ * The workspace and its provenance are durably stored server-side and remain gated by the persisted brief approval state.
  * @summary Open a script-only workspace from an approved brief
  */
 export const CreatePodcastScriptParams = zod.object({

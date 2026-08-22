@@ -112,6 +112,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PodcastRoom"
+  /podcast/presets:
+    post:
+      operationId: createPodcastFilterPreset
+      tags: [autography]
+      summary: Save a reusable podcast comparison filter preset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastFilterPresetInput"
+      responses:
+        "201":
+          description: Saved comparison filter preset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastFilterPreset"
+  /podcast/presets/{id}:
+    patch:
+      operationId: renamePodcastFilterPreset
+      tags: [autography]
+      summary: Rename a podcast comparison filter preset
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastFilterPresetRenameInput"
+      responses:
+        "200":
+          description: Renamed comparison filter preset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastFilterPreset"
+    delete:
+      operationId: deletePodcastFilterPreset
+      tags: [autography]
+      summary: Remove a podcast comparison filter preset
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Comparison filter preset removed
   /podcast/brief:
     post:
       operationId: generatePodcastBrief
@@ -718,7 +765,7 @@ components:
           enum: [ready, needs_review]
     PodcastRoom:
       type: object
-      required: [sources, concepts, data_notice, rendering_status, selected_brief_id]
+      required: [sources, concepts, filter_presets, data_notice, rendering_status, selected_brief_id]
       properties:
         sources:
           type: array
@@ -726,11 +773,42 @@ components:
         concepts:
           type: array
           items: { $ref: "#/components/schemas/PodcastConcept" }
+        filter_presets:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastFilterPreset" }
         data_notice: { type: string }
         rendering_status:
           type: string
           enum: [blocked_until_approval]
         selected_brief_id: { type: ["string", "null"] }
+    PodcastFilterPreset:
+      type: object
+      required: [id, name, platforms, communities]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        platforms:
+          type: array
+          items: { type: string }
+        communities:
+          type: array
+          items: { type: string }
+    PodcastFilterPresetInput:
+      type: object
+      required: [name, platforms, communities]
+      properties:
+        name: { type: string, minLength: 1 }
+        platforms:
+          type: array
+          items: { type: string }
+        communities:
+          type: array
+          items: { type: string }
+    PodcastFilterPresetRenameInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
     AddPodcastSourceInput:
       type: object
       required: [source_url]
