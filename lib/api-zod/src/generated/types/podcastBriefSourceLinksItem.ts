@@ -10,4 +10,5 @@ export type PodcastBriefSourceLinksItem = {
   source_id: string;
   url: string;
   label: string;
+  retrieved_at: string;
 };

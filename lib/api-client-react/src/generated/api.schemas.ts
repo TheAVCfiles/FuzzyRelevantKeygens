@@ -358,6 +358,7 @@ export type PodcastBriefSourceLinksItem = {
   source_id: string;
   url: string;
   label: string;
+  retrieved_at: string;
 };
 
 export type PodcastBriefEpisodeOutlineItem = {
@@ -413,6 +414,7 @@ export type PodcastScriptWorkspaceProvenanceItem = {
   source_id: string;
   url: string;
   label: string;
+  retrieved_at: string;
 };
 
 export type PodcastScriptWorkspaceAudioStatus = typeof PodcastScriptWorkspaceAudioStatus[keyof typeof PodcastScriptWorkspaceAudioStatus];

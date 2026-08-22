@@ -779,6 +779,20 @@ export function recordAgentStage(
   );
 }
 
+export function recordHumanDecision(
+  artifact: "brief" | "script",
+  id: string,
+  decision: "approve" | "reject",
+  reviewer: string,
+) {
+  appendReceipt(
+    reviewer,
+    `Podcast ${artifact} ${decision} decision`,
+    `decision_recorded · id: ${id} · artifact_creation: none`,
+    null,
+  );
+}
+
 export function evaluate(input: PolicyInput): Evaluation {
   const evaluation = evaluatePolicy(
     call,

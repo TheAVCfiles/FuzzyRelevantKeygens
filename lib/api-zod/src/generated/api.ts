@@ -365,7 +365,8 @@ export const GeneratePodcastBriefResponse = zod.object({
   "source_links": zod.array(zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
-  "label": zod.string()
+  "label": zod.string(),
+  "retrieved_at": zod.string()
 })),
   "risk_notes": zod.array(zod.string()),
   "episode_outline": zod.array(zod.object({
@@ -401,7 +402,8 @@ export const DecidePodcastBriefResponse = zod.object({
   "source_links": zod.array(zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
-  "label": zod.string()
+  "label": zod.string(),
+  "retrieved_at": zod.string()
 })),
   "risk_notes": zod.array(zod.string()),
   "episode_outline": zod.array(zod.object({
@@ -433,7 +435,8 @@ export const CreatePodcastScriptResponse = zod.object({
   "provenance": zod.array(zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
-  "label": zod.string()
+  "label": zod.string(),
+  "retrieved_at": zod.string()
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),
@@ -465,7 +468,8 @@ export const DecidePodcastScriptResponse = zod.object({
   "provenance": zod.array(zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
-  "label": zod.string()
+  "label": zod.string(),
+  "retrieved_at": zod.string()
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),

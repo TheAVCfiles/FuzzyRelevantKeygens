@@ -5,7 +5,7 @@ import type {
   PodcastSource,
 } from "@workspace/api-zod";
 
-import { recordAgentStage } from "./autography-fixtures";
+import { recordAgentStage, recordHumanDecision } from "./autography-fixtures";
 
 const model = "gemini-3.6-flash";
 
@@ -95,6 +95,17 @@ export const podcastConcepts = [
 let currentBrief: PodcastBrief | null = null;
 let currentScript: PodcastScriptWorkspace | null = null;
 
+type GeneratedPodcastDraft = Pick<
+  PodcastBrief,
+  | "topic_angle"
+  | "audience_pain"
+  | "why_now"
+  | "key_tensions"
+  | "risk_notes"
+  | "episode_outline"
+  | "suggested_title"
+>;
+
 function fixtureBrief(conceptId: string, sourceIds: string[]): PodcastBrief {
   return {
     id: `brief-${conceptId}`,
@@ -117,6 +128,7 @@ function fixtureBrief(conceptId: string, sourceIds: string[]): PodcastBrief {
       source_id: source.id,
       url: source.source_url,
       label: `${source.community} · ${source.post_title}`,
+      retrieved_at: source.retrieved_at,
     })),
     risk_notes: [
       "Do not quote comments verbatim or imply that a Reddit discussion represents the whole audience.",
@@ -132,6 +144,62 @@ function fixtureBrief(conceptId: string, sourceIds: string[]): PodcastBrief {
     ],
     suggested_title: "The Scene Between the Scenes",
     approval_note: "Draft only. Human approval is required before any script or audio rendering.",
+  };
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function containsSourceText(value: string, sources: PodcastSource[]) {
+  const normalized = value.trim().toLowerCase();
+  return sources.some((source) => {
+    const title = source.post_title.trim().toLowerCase();
+    return title.length > 20 && normalized.includes(title);
+  });
+}
+
+/**
+ * Keep model output at summary level. A malformed response or text that repeats
+ * source material is rejected field-by-field, leaving the known-safe fixture.
+ */
+export function buildSafePodcastDraft(
+  parsed: unknown,
+  fallback: GeneratedPodcastDraft,
+  sources: PodcastSource[],
+): GeneratedPodcastDraft {
+  const candidate = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+  const safeText = (value: unknown, fallbackValue: string) =>
+    nonEmptyString(value) && !containsSourceText(value, sources) ? value : fallbackValue;
+  const safeStringArray = (value: unknown, fallbackValue: string[]) =>
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((item) => nonEmptyString(item) && !containsSourceText(item, sources))
+      ? value
+      : fallbackValue;
+  const safeOutline = (value: unknown) =>
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        nonEmptyString((item as { segment?: unknown }).segment) &&
+        nonEmptyString((item as { purpose?: unknown }).purpose) &&
+        !containsSourceText((item as { segment: string }).segment, sources) &&
+        !containsSourceText((item as { purpose: string }).purpose, sources),
+    )
+      ? value as PodcastBrief["episode_outline"]
+      : fallback.episode_outline;
+
+  return {
+    topic_angle: safeText(candidate.topic_angle, fallback.topic_angle),
+    audience_pain: safeText(candidate.audience_pain, fallback.audience_pain),
+    why_now: safeText(candidate.why_now, fallback.why_now),
+    key_tensions: safeStringArray(candidate.key_tensions, fallback.key_tensions),
+    risk_notes: safeStringArray(candidate.risk_notes, fallback.risk_notes),
+    episode_outline: safeOutline(candidate.episode_outline),
+    suggested_title: safeText(candidate.suggested_title, fallback.suggested_title),
   };
 }
 
@@ -234,43 +302,7 @@ export async function generatePodcastBrief(conceptId: string, requestedSourceIds
       config: { responseMimeType: "application/json" },
     });
     const parsed = JSON.parse(response.text ?? "{}");
-    const safeDraft = {
-      topic_angle:
-        typeof parsed.topic_angle === "string"
-          ? parsed.topic_angle
-          : fallback.topic_angle,
-      audience_pain:
-        typeof parsed.audience_pain === "string"
-          ? parsed.audience_pain
-          : fallback.audience_pain,
-      why_now:
-        typeof parsed.why_now === "string" ? parsed.why_now : fallback.why_now,
-      key_tensions:
-        Array.isArray(parsed.key_tensions) &&
-        parsed.key_tensions.every((item: unknown) => typeof item === "string")
-          ? parsed.key_tensions
-          : fallback.key_tensions,
-      risk_notes:
-        Array.isArray(parsed.risk_notes) &&
-        parsed.risk_notes.every((item: unknown) => typeof item === "string")
-          ? parsed.risk_notes
-          : fallback.risk_notes,
-      episode_outline:
-        Array.isArray(parsed.episode_outline) &&
-        parsed.episode_outline.every(
-          (item: unknown) =>
-            typeof item === "object" &&
-            item !== null &&
-            typeof (item as { segment?: unknown }).segment === "string" &&
-            typeof (item as { purpose?: unknown }).purpose === "string",
-        )
-          ? parsed.episode_outline
-          : fallback.episode_outline,
-      suggested_title:
-        typeof parsed.suggested_title === "string"
-          ? parsed.suggested_title
-          : fallback.suggested_title,
-    };
+    const safeDraft = buildSafePodcastDraft(parsed, fallback, selectedSources);
     currentBrief = {
       ...fallback,
       ...safeDraft,
@@ -307,6 +339,15 @@ export function decidePodcastBrief(id: string, decision: "approve" | "reject") {
         : "Rejected by a human reviewer. No script or audio rendering is permitted from this brief.",
   };
   return currentBrief;
+}
+
+export function recordPodcastDecision(
+  kind: "brief" | "script",
+  id: string,
+  decision: "approve" | "reject",
+  reviewer: string,
+) {
+  recordHumanDecision(kind, id, decision, reviewer);
 }
 
 export function isPodcastEvidenceSufficient(brief: PodcastBrief) {

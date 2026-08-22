@@ -273,7 +273,7 @@ function BriefPanel({
         <div className="space-y-2">
           {(brief.source_links ?? []).map((source) => (
             <a key={source.source_id} href={source.url} target="_blank" rel="noreferrer" className="group flex items-center justify-between gap-3 border border-[#4f4944] px-3 py-3 text-xs text-[#d8cbc1] transition-colors hover:border-[#d8a36c]" data-testid={`link-brief-source-${source.source_id}`}>
-              <span className="truncate">{source.label || source.source_id}</span>
+               <span className="min-w-0 truncate">{source.label || source.source_id}<span className="ml-2 text-[9px] uppercase tracking-[0.08em] text-[#80756c]">retrieved {formatDate(source.retrieved_at)}</span></span>
               <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-[#d8a36c] group-hover:translate-x-0.5 group-hover:-translate-y-0.5" strokeWidth={1.5} />
             </a>
           ))}
@@ -397,7 +397,7 @@ function ScriptWorkspacePanel({
       <div className="mt-5 flex items-center justify-between border-t border-[#4f4944] pt-4 font-mono text-[10px] uppercase tracking-[0.08em] text-[#80756c]"><span>Audio status</span><span className="text-[#e4a38d]" data-testid="status-audio-gate">{statusLabel(script.audio_status)}</span></div>
       <div className="mt-5">
         <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Attached provenance</p>
-        <div className="space-y-2">{script.provenance.map((source) => <a key={source.source_id} href={source.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 border border-[#4f4944] px-3 py-3 text-xs text-[#d8cbc1] hover:border-[#d8a36c]" data-testid={`link-script-source-${source.source_id}`}><span className="truncate">{source.label}</span><ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-[#d8a36c]" /></a>)}</div>
+       <div className="space-y-2">{script.provenance.map((source) => <a key={source.source_id} href={source.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 border border-[#4f4944] px-3 py-3 text-xs text-[#d8cbc1] hover:border-[#d8a36c]" data-testid={`link-script-source-${source.source_id}`}><span className="min-w-0 truncate">{source.label}<span className="ml-2 text-[9px] uppercase tracking-[0.08em] text-[#80756c]">retrieved {formatDate(source.retrieved_at)}</span></span><ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-[#d8a36c]" /></a>)}</div>
       </div>
     </section>
   );

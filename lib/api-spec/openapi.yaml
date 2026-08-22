@@ -732,11 +732,12 @@ components:
           type: array
           items:
             type: object
-            required: [source_id, url, label]
+            required: [source_id, url, label, retrieved_at]
             properties:
               source_id: { type: string }
               url: { type: string }
               label: { type: string }
+              retrieved_at: { type: string }
         risk_notes:
           type: array
           items: { type: string }
@@ -783,11 +784,12 @@ components:
           type: array
           items:
             type: object
-            required: [source_id, url, label]
+            required: [source_id, url, label, retrieved_at]
             properties:
               source_id: { type: string }
               url: { type: string }
               label: { type: string }
+              retrieved_at: { type: string }
         safety_note: { type: string }
         review_note: { type: string }
         audio_status:

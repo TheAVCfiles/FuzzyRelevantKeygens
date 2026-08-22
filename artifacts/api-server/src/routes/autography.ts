@@ -64,6 +64,7 @@ import {
   generatePodcastBrief,
   getPodcastRoom,
   isPodcastEvidenceSufficient,
+  recordPodcastDecision,
 } from "../lib/podcast-fixtures";
 
 const router: IRouter = Router();
@@ -213,6 +214,12 @@ router.post("/podcast/brief/:id/decision", requirePermission("sign"), (req, res)
     });
     return;
   }
+  recordPodcastDecision(
+    "brief",
+    brief.id,
+    body.data.decision,
+    (req as Request & { autographyRole?: string }).autographyRole ?? "human reviewer",
+  );
   res.json(DecidePodcastBriefResponse.parse(brief));
 });
 
@@ -246,6 +253,12 @@ router.post("/podcast/script/:id/decision", requirePermission("sign"), (req, res
     res.status(404).json({ error: "Podcast script workspace not found" });
     return;
   }
+  recordPodcastDecision(
+    "script",
+    script.id,
+    body.data.decision,
+    (req as Request & { autographyRole?: string }).autographyRole ?? "human reviewer",
+  );
   res.json(DecidePodcastScriptResponse.parse(script));
 });
 
