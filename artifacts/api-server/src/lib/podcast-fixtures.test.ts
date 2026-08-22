@@ -7,6 +7,8 @@ import {
   decidePodcastBrief,
   decidePodcastScript,
   generatePodcastBrief,
+  getPodcastScriptByBriefId,
+  getPodcastScriptById,
   getPodcastRoom,
   isPodcastEvidenceSufficient,
   podcastSources,
@@ -85,4 +87,28 @@ test("brief and script decisions are explicit gates and do not create artifacts"
   const rejectedScript = decidePodcastScript(created.script.id, "reject");
   assert.equal(rejectedScript?.status, "rejected");
   assert.equal(rejectedScript?.audio_status, "blocked_until_script_approval");
+});
+
+test("approved script workspaces can be retrieved by brief or workspace id", { concurrency: false }, async () => {
+  const concept = getPodcastRoom().concepts[0];
+  assert.ok(concept);
+  const brief = await generatePodcastBrief(concept.id, concept.source_ids);
+  assert.ok(brief);
+  assert.equal(decidePodcastBrief(brief.id, "approve")?.status, "approved");
+  const created = createPodcastScript(brief.id);
+  assert.equal(created.kind, "created");
+  if (created.kind !== "created") return;
+
+  assert.deepEqual(getPodcastScriptByBriefId(brief.id), { kind: "found", script: created.script });
+  assert.deepEqual(getPodcastScriptById(created.script.id), { kind: "found", script: created.script });
+});
+
+test("draft and rejected briefs cannot retrieve script workspaces", { concurrency: false }, async () => {
+  const concept = getPodcastRoom().concepts[2];
+  assert.ok(concept);
+  const brief = await generatePodcastBrief(concept.id, concept.source_ids);
+  assert.ok(brief);
+  assert.equal(getPodcastScriptByBriefId(brief.id).kind, "brief_not_approved");
+  assert.equal(decidePodcastBrief(brief.id, "reject")?.status, "rejected");
+  assert.equal(getPodcastScriptByBriefId(brief.id).kind, "brief_not_approved");
 });

@@ -63,6 +63,8 @@ import {
   decidePodcastScript,
   generatePodcastBrief,
   getPodcastRoom,
+  getPodcastScriptByBriefId,
+  getPodcastScriptById,
   isPodcastEvidenceSufficient,
   recordPodcastDecision,
 } from "../lib/podcast-fixtures";
@@ -239,6 +241,42 @@ router.post("/podcast/brief/:id/script", requirePermission("stage"), (req, res):
     return;
   }
   res.status(201).json(CreatePodcastScriptResponse.parse(result.script));
+});
+
+router.get("/podcast/brief/:id/script", (req, res): void => {
+  const params = CreatePodcastScriptParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid podcast brief id" });
+    return;
+  }
+  const result = getPodcastScriptByBriefId(params.data.id);
+  if (result.kind === "not_found") {
+    res.status(404).json({ error: "Podcast script workspace not found" });
+    return;
+  }
+  if (result.kind === "brief_not_approved") {
+    res.status(409).json({ error: "Only an approved podcast brief can retrieve a script workspace." });
+    return;
+  }
+  res.json(CreatePodcastScriptResponse.parse(result.script));
+});
+
+router.get("/podcast/script/:id", (req, res): void => {
+  const params = DecidePodcastScriptParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid podcast script workspace id" });
+    return;
+  }
+  const result = getPodcastScriptById(params.data.id);
+  if (result.kind === "not_found") {
+    res.status(404).json({ error: "Podcast script workspace not found" });
+    return;
+  }
+  if (result.kind === "brief_not_approved") {
+    res.status(409).json({ error: "Only a script from an approved podcast brief can be retrieved." });
+    return;
+  }
+  res.json(CreatePodcastScriptResponse.parse(result.script));
 });
 
 router.post("/podcast/script/:id/decision", requirePermission("sign"), (req, res): void => {

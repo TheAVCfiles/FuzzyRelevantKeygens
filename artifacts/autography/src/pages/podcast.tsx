@@ -17,11 +17,13 @@ import {
 } from 'lucide-react';
 import {
   getGetPodcastRoomQueryKey,
+  getGetPodcastScriptByBriefQueryKey,
   useAddPodcastSource,
   useDecidePodcastBrief,
   useCreatePodcastScript,
   useDecidePodcastScript,
   useGeneratePodcastBrief,
+  useGetPodcastScriptByBrief,
   useGetPodcastRoom,
   type PodcastBrief,
   type PodcastConcept,
@@ -407,6 +409,13 @@ export function Podcast() {
   const queryClient = useQueryClient();
   const roomQuery = useGetPodcastRoom({ query: { queryKey: getGetPodcastRoomQueryKey() } });
   const room = roomQuery.data as PodcastRoom | undefined;
+  const scriptWorkspaceQuery = useGetPodcastScriptByBrief(room?.selected_brief_id ?? '', {
+    query: {
+      queryKey: getGetPodcastScriptByBriefQueryKey(room?.selected_brief_id ?? ''),
+      enabled: Boolean(room?.selected_brief_id),
+      staleTime: 0,
+    },
+  });
   const [sourceUrl, setSourceUrl] = useState('');
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
   const [brief, setBrief] = useState<PodcastBrief | null>(null);
@@ -420,6 +429,14 @@ export function Podcast() {
   useEffect(() => {
     if (!selectedConceptId && concepts[0]) setSelectedConceptId(concepts[0].id);
   }, [concepts, selectedConceptId]);
+
+  useEffect(() => {
+    if (scriptWorkspaceQuery.data) {
+      setScript(scriptWorkspaceQuery.data);
+      return;
+    }
+    if (!room?.selected_brief_id || scriptWorkspaceQuery.error) setScript(null);
+  }, [room?.selected_brief_id, scriptWorkspaceQuery.data, scriptWorkspaceQuery.error]);
 
   const addSource = useAddPodcastSource({
     mutation: {
@@ -476,7 +493,7 @@ export function Podcast() {
   };
 
   const roomError = roomQuery.error ? 'The intelligence room could not be loaded. Try again to reconnect to the source desk.' : '';
-  const mutationError = localError || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '');
+   const mutationError = localError || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '') || (scriptWorkspaceQuery.error && room?.selected_brief_id ? 'The saved script workspace could not be retrieved. It may no longer be approved.' : '');
   const evidenceSufficient = brief ? hasSufficientEvidence(brief, sources) : false;
 
   return (
@@ -554,7 +571,7 @@ export function Podcast() {
 
                 {concepts.length ? (
                   <div className="space-y-3" data-testid="list-concepts">
-                    {concepts.map((concept) => <ConceptCard key={concept.id} concept={concept} sources={sources} selected={concept.id === selectedConcept?.id} onSelect={() => { setSelectedConceptId(concept.id); setBrief(null); }} />)}
+                     {concepts.map((concept) => <ConceptCard key={concept.id} concept={concept} sources={sources} selected={concept.id === selectedConcept?.id} onSelect={() => { setSelectedConceptId(concept.id); setBrief(null); setScript(null); }} />)}
                   </div>
                 ) : (
                   <div className="podcast-panel p-8 text-center" data-testid="empty-concepts">

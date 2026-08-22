@@ -94,6 +94,8 @@ export const podcastConcepts = [
 
 let currentBrief: PodcastBrief | null = null;
 let currentScript: PodcastScriptWorkspace | null = null;
+const podcastBriefs = new Map<string, PodcastBrief>();
+const podcastScripts = new Map<string, PodcastScriptWorkspace>();
 
 type GeneratedPodcastDraft = Pick<
   PodcastBrief,
@@ -239,22 +241,48 @@ function fixtureScript(brief: PodcastBrief): PodcastScriptWorkspace {
 }
 
 export function createPodcastScript(briefId: string) {
-  if (!currentBrief || currentBrief.id !== briefId) return { kind: "not_found" as const };
-  if (currentBrief.status !== "approved") return { kind: "brief_not_approved" as const };
-  currentScript = fixtureScript(currentBrief);
+  const brief = podcastBriefs.get(briefId) ?? (currentBrief?.id === briefId ? currentBrief : null);
+  if (!brief) return { kind: "not_found" as const };
+  if (brief.status !== "approved") return { kind: "brief_not_approved" as const };
+  currentBrief = brief;
+  currentScript = podcastScripts.get(`script-${brief.id}`) ?? fixtureScript(brief);
+  podcastScripts.set(currentScript.id, currentScript);
   return { kind: "created" as const, script: currentScript };
 }
 
+export function getPodcastScriptByBriefId(briefId: string) {
+  const brief = podcastBriefs.get(briefId) ?? (currentBrief?.id === briefId ? currentBrief : null);
+  if (!brief) return { kind: "not_found" as const };
+  if (brief.status !== "approved") return { kind: "brief_not_approved" as const };
+  const script = podcastScripts.get(`script-${brief.id}`);
+  if (!script) return { kind: "not_found" as const };
+  currentBrief = brief;
+  currentScript = script;
+  return { kind: "found" as const, script };
+}
+
+export function getPodcastScriptById(scriptId: string) {
+  const script = podcastScripts.get(scriptId) ?? (currentScript?.id === scriptId ? currentScript : null);
+  if (!script) return { kind: "not_found" as const };
+  const brief = podcastBriefs.get(script.brief_id);
+  if (!brief || brief.status !== "approved") return { kind: "brief_not_approved" as const };
+  currentBrief = brief;
+  currentScript = script;
+  return { kind: "found" as const, script };
+}
+
 export function decidePodcastScript(id: string, decision: "approve" | "reject") {
-  if (!currentScript || currentScript.id !== id) return null;
+  const script = podcastScripts.get(id) ?? (currentScript?.id === id ? currentScript : null);
+  if (!script) return null;
   currentScript = {
-    ...currentScript,
+    ...script,
     status: decision === "approve" ? "approved" : "rejected",
     review_note:
       decision === "approve"
         ? "Approved by a human script reviewer. Audio work remains a separate production decision."
         : "Rejected by a human script reviewer. No audio rendering or publishing is permitted.",
   };
+  podcastScripts.set(currentScript.id, currentScript);
   return currentScript;
 }
 
@@ -311,11 +339,13 @@ export async function generatePodcastBrief(conceptId: string, requestedSourceIds
       status: "draft",
       approval_note: fallback.approval_note,
     };
+    podcastBriefs.set(currentBrief.id, currentBrief);
     recordAgentStage("PODCAST-BRIEF", "draft", concept.title, response.text ?? "{}");
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Unknown Gemini runtime error.";
     recordAgentStage("PODCAST-BRIEF", "draft", concept.title, `fallback: ${reason}`);
     currentBrief = fallback;
+    podcastBriefs.set(currentBrief.id, currentBrief);
   }
   return currentBrief;
 }
@@ -338,6 +368,7 @@ export function decidePodcastBrief(id: string, decision: "approve" | "reject") {
         ? "Approved by a human reviewer. Script and audio rendering may be considered in a later, separately gated workflow."
         : "Rejected by a human reviewer. No script or audio rendering is permitted from this brief.",
   };
+  podcastBriefs.set(currentBrief.id, currentBrief);
   return currentBrief;
 }
 

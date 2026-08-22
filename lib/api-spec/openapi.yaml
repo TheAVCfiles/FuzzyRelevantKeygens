@@ -166,6 +166,41 @@ paths:
                 $ref: "#/components/schemas/PodcastScriptWorkspace"
         "409":
           description: Brief is not approved
+    get:
+      operationId: getPodcastScriptByBrief
+      tags: [autography]
+      summary: Retrieve a script workspace by its approved brief
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Previously created script workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastScriptWorkspace"
+        "404":
+          description: Script workspace not found
+        "409":
+          description: Brief is not approved
+  /podcast/script/{id}:
+    get:
+      operationId: getPodcastScript
+      tags: [autography]
+      summary: Retrieve a script workspace by workspace ID
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Previously created script workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastScriptWorkspace"
+        "404":
+          description: Script workspace not found
+        "409":
+          description: Brief is not approved
   /podcast/script/{id}/decision:
     post:
       operationId: decidePodcastScript

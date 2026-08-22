@@ -752,6 +752,160 @@ export const useCreatePodcastScript = <TError = ErrorType<void>,
       return useMutation(getCreatePodcastScriptMutationOptions(options));
     }
 
+export const getGetPodcastScriptByBriefUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/brief/${id}/script`
+}
+
+/**
+ * @summary Retrieve a script workspace by its approved brief
+ */
+export const getPodcastScriptByBrief = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PodcastScriptWorkspace> => {
+
+  return customFetch<PodcastScriptWorkspace>(getGetPodcastScriptByBriefUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPodcastScriptByBriefQueryKey = (id: string,) => {
+    return [
+    `/api/podcast/brief/${id}/script`
+    ] as const;
+    }
+
+
+export const getGetPodcastScriptByBriefQueryOptions = <TData = Awaited<ReturnType<typeof getPodcastScriptByBrief>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastScriptByBrief>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPodcastScriptByBriefQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPodcastScriptByBrief>>> = ({ signal }) => getPodcastScriptByBrief(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPodcastScriptByBrief>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPodcastScriptByBriefQueryResult = NonNullable<Awaited<ReturnType<typeof getPodcastScriptByBrief>>>
+export type GetPodcastScriptByBriefQueryError = ErrorType<void>
+
+
+/**
+ * @summary Retrieve a script workspace by its approved brief
+ */
+
+export function useGetPodcastScriptByBrief<TData = Awaited<ReturnType<typeof getPodcastScriptByBrief>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastScriptByBrief>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPodcastScriptByBriefQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPodcastScriptUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/script/${id}`
+}
+
+/**
+ * @summary Retrieve a script workspace by workspace ID
+ */
+export const getPodcastScript = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PodcastScriptWorkspace> => {
+
+  return customFetch<PodcastScriptWorkspace>(getGetPodcastScriptUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPodcastScriptQueryKey = (id: string,) => {
+    return [
+    `/api/podcast/script/${id}`
+    ] as const;
+    }
+
+
+export const getGetPodcastScriptQueryOptions = <TData = Awaited<ReturnType<typeof getPodcastScript>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastScript>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPodcastScriptQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPodcastScript>>> = ({ signal }) => getPodcastScript(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPodcastScript>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPodcastScriptQueryResult = NonNullable<Awaited<ReturnType<typeof getPodcastScript>>>
+export type GetPodcastScriptQueryError = ErrorType<void>
+
+
+/**
+ * @summary Retrieve a script workspace by workspace ID
+ */
+
+export function useGetPodcastScript<TData = Awaited<ReturnType<typeof getPodcastScript>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastScript>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPodcastScriptQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getDecidePodcastScriptUrl = (id: string,) => {
 
 
