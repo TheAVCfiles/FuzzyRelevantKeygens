@@ -47,5 +47,6 @@ Thumbs.db
 # Replit
 .cache/
 .autography-room-state.json
+.podcast-room-state.json
 **/.test-dist/
 .local/
