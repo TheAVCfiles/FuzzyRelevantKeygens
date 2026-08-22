@@ -44,6 +44,18 @@ function statusLabel(status?: string) {
   return (status ?? 'unknown').replaceAll('_', ' ');
 }
 
+function hasSufficientEvidence(brief: PodcastBrief, sources: PodcastSource[]) {
+  if (!brief.source_links?.length) return false;
+  return brief.source_links.every((link) => {
+    const source = sources.find((item) => item.id === link.source_id);
+    return Boolean(
+      source &&
+      source.access_mode !== 'manual_url' &&
+      !source.post_title.toLowerCase().includes('retrieval pending'),
+    );
+  });
+}
+
 function scoreTone(value: number) {
   if (value >= 80) return 'text-[#9e3e2d]';
   if (value >= 60) return 'text-[#365f67]';
@@ -140,11 +152,13 @@ function BriefPanel({
   concept,
   onDecide,
   isDeciding,
+  evidenceSufficient,
 }: {
   brief: PodcastBrief | null;
   concept?: PodcastConcept;
   onDecide: (decision: 'approve' | 'reject') => void;
   isDeciding: boolean;
+  evidenceSufficient: boolean;
 }) {
   if (!brief) {
     return (
@@ -241,13 +255,18 @@ function BriefPanel({
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2">
-            <Button type="button" variant="default" size="sm" disabled={isDeciding} onClick={() => onDecide('approve')} className="bg-[#d8a36c] text-[#2c2927] hover:bg-[#e5b77e]" data-testid="button-approve-brief">
+            <Button type="button" variant="default" size="sm" disabled={isDeciding || !evidenceSufficient} onClick={() => onDecide('approve')} className="bg-[#d8a36c] text-[#2c2927] hover:bg-[#e5b77e] disabled:cursor-not-allowed disabled:opacity-40" data-testid="button-approve-brief" aria-describedby={!evidenceSufficient ? 'approval-evidence-warning' : undefined}>
               {isDeciding ? <LoaderCircle className="mr-2 h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="mr-2 h-3.5 w-3.5" />} Approve
             </Button>
             <Button type="button" variant="outline" size="sm" disabled={isDeciding} onClick={() => onDecide('reject')} className="border-[#806057] text-[#e4a38d] hover:bg-[#482e29]" data-testid="button-reject-brief">
               <X className="mr-2 h-3.5 w-3.5" /> Reject
             </Button>
           </div>
+        )}
+        {!isDecided && !evidenceSufficient && (
+          <p id="approval-evidence-warning" className="mt-3 border border-[#895948] bg-[#482e29] px-3 py-3 text-xs leading-5 text-[#e4a38d]" data-testid="text-approval-evidence-warning">
+            Approval unavailable until evidence trail is sufficient.
+          </p>
         )}
       </div>
     </aside>
@@ -329,6 +348,7 @@ export function Podcast() {
 
   const roomError = roomQuery.error ? 'The intelligence room could not be loaded. Try again to reconnect to the source desk.' : '';
   const mutationError = localError || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '');
+  const evidenceSufficient = brief ? hasSufficientEvidence(brief, sources) : false;
 
   return (
     <div className="podcast-room min-h-[100dvh]">
@@ -428,7 +448,7 @@ export function Podcast() {
               </section>
 
               <div className="space-y-4">
-                <BriefPanel brief={brief} concept={selectedConcept} onDecide={(decision) => brief && decideBrief.mutate({ id: brief.id, data: { decision } })} isDeciding={decideBrief.isPending} />
+                <BriefPanel brief={brief} concept={selectedConcept} onDecide={(decision) => brief && decideBrief.mutate({ id: brief.id, data: { decision } })} isDeciding={decideBrief.isPending} evidenceSufficient={evidenceSufficient} />
                 <div className="podcast-panel p-5" data-testid="panel-next-action">
                   <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#b34b36]" strokeWidth={1.5} /><p className="podcast-kicker">Next editorial action</p></div>
                   <p className="mt-3 text-sm leading-6 text-[#5f554e]">You are looking at <strong className="font-medium text-[#201b19]">{selectedConcept?.title || 'the shortlist'}</strong>. Generate its brief only when the source trail is sufficient for a producer review.</p>
