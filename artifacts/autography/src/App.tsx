@@ -18,6 +18,7 @@ import { PR } from '@/pages/pr';
 import { DropView } from '@/pages/drop';
 import { Verify } from '@/pages/verify';
 import { Receipts } from '@/pages/receipts';
+import Podcast from '@/pages/podcast';
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,7 @@ function Router() {
           <Route path="/drop/:id" component={DropView} />
           <Route path="/verify" component={Verify} />
           <Route path="/receipts" component={Receipts} />
+          <Route path="/podcast" component={Podcast} />
           <Route component={NotFound} />
         </Switch>
       </RoutedErrorBoundary>

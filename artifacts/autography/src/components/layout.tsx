@@ -44,6 +44,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/receipts" className="font-system tracking-[0.1em] text-sepia hover:text-oyster transition-colors">
             RECEIPTS
           </Link>
+          <Link href="/podcast" className={`font-system tracking-[0.1em] transition-colors ${location === "/podcast" ? "text-oyster" : "text-sepia hover:text-oyster"}`}>
+            PODCAST ROOM
+          </Link>
         </div>
         <div className="ml-auto">
           <Link href="/verify" className="font-system tracking-[0.1em] text-brass hover:text-white transition-colors">

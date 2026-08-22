@@ -184,6 +184,133 @@ export interface ContextItem {
   excerpt: string;
 }
 
+export type PodcastSourceEngagement = {
+  score: number;
+  comments: number;
+};
+
+export type PodcastSourceAccessMode = typeof PodcastSourceAccessMode[keyof typeof PodcastSourceAccessMode];
+
+
+export const PodcastSourceAccessMode = {
+  fixture: 'fixture',
+  public_url: 'public_url',
+  manual_url: 'manual_url',
+} as const;
+
+export interface PodcastSource {
+  id: string;
+  source_url: string;
+  platform: string;
+  community: string;
+  post_title: string;
+  timestamp: string;
+  retrieved_at: string;
+  engagement: PodcastSourceEngagement;
+  /** @nullable */
+  source_id: string | null;
+  access_mode: PodcastSourceAccessMode;
+}
+
+export type PodcastConceptStatus = typeof PodcastConceptStatus[keyof typeof PodcastConceptStatus];
+
+
+export const PodcastConceptStatus = {
+  ready: 'ready',
+  needs_review: 'needs_review',
+} as const;
+
+export interface PodcastConcept {
+  id: string;
+  title: string;
+  summary: string;
+  relevance: number;
+  urgency: number;
+  engagement: number;
+  source_ids: string[];
+  status: PodcastConceptStatus;
+}
+
+export type PodcastRoomRenderingStatus = typeof PodcastRoomRenderingStatus[keyof typeof PodcastRoomRenderingStatus];
+
+
+export const PodcastRoomRenderingStatus = {
+  blocked_until_approval: 'blocked_until_approval',
+} as const;
+
+export interface PodcastRoom {
+  sources: PodcastSource[];
+  concepts: PodcastConcept[];
+  data_notice: string;
+  rendering_status: PodcastRoomRenderingStatus;
+  /** @nullable */
+  selected_brief_id: string | null;
+}
+
+export interface AddPodcastSourceInput {
+  source_url: string;
+}
+
+export interface GeneratePodcastBriefInput {
+  concept_id: string;
+}
+
+export type PodcastBriefStatus = typeof PodcastBriefStatus[keyof typeof PodcastBriefStatus];
+
+
+export const PodcastBriefStatus = {
+  draft: 'draft',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export type PodcastBriefGeneratedMode = typeof PodcastBriefGeneratedMode[keyof typeof PodcastBriefGeneratedMode];
+
+
+export const PodcastBriefGeneratedMode = {
+  gemini: 'gemini',
+  fixture_fallback: 'fixture_fallback',
+} as const;
+
+export type PodcastBriefSourceLinksItem = {
+  source_id: string;
+  url: string;
+  label: string;
+};
+
+export type PodcastBriefEpisodeOutlineItem = {
+  segment: string;
+  purpose: string;
+};
+
+export interface PodcastBrief {
+  id: string;
+  concept_id: string;
+  status: PodcastBriefStatus;
+  generated_mode: PodcastBriefGeneratedMode;
+  topic_angle: string;
+  audience_pain: string;
+  why_now: string;
+  key_tensions: string[];
+  source_links: PodcastBriefSourceLinksItem[];
+  risk_notes: string[];
+  episode_outline: PodcastBriefEpisodeOutlineItem[];
+  suggested_title: string;
+  approval_note: string;
+}
+
+export type PodcastBriefDecisionInputDecision = typeof PodcastBriefDecisionInputDecision[keyof typeof PodcastBriefDecisionInputDecision];
+
+
+export const PodcastBriefDecisionInputDecision = {
+  approve: 'approve',
+  reject: 'reject',
+} as const;
+
+export interface PodcastBriefDecisionInput {
+  decision: PodcastBriefDecisionInputDecision;
+}
+
 export interface ContextResponse {
   items: ContextItem[];
 }

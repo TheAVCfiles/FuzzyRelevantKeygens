@@ -50,6 +50,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FloodResponse"
+  /podcast/sources:
+    get:
+      operationId: getPodcastRoom
+      tags: [autography]
+      summary: Get podcast intelligence sources and ranked concepts
+      responses:
+        "200":
+          description: Podcast intelligence room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastRoom"
+    post:
+      operationId: addPodcastSource
+      tags: [autography]
+      summary: Add a consented public or manually supplied source URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPodcastSourceInput"
+      responses:
+        "200":
+          description: Updated podcast intelligence room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastRoom"
+  /podcast/brief:
+    post:
+      operationId: generatePodcastBrief
+      tags: [autography]
+      summary: Generate a source-backed podcast brief for human review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeneratePodcastBriefInput"
+      responses:
+        "200":
+          description: Draft podcast brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastBrief"
+  /podcast/brief/{id}/decision:
+    post:
+      operationId: decidePodcastBrief
+      tags: [autography]
+      summary: Approve or reject a podcast brief before rendering
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastBriefDecisionInput"
+      responses:
+        "200":
+          description: Updated podcast brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastBrief"
   /context:
     get:
       operationId: getContext
@@ -444,6 +511,115 @@ components:
         label: { type: string }
         source_class: { type: string }
         excerpt: { type: string }
+    PodcastSource:
+      type: object
+      required: [id, source_url, platform, community, post_title, timestamp, retrieved_at, engagement, source_id, access_mode]
+      properties:
+        id: { type: string }
+        source_url: { type: string }
+        platform: { type: string }
+        community: { type: string }
+        post_title: { type: string }
+        timestamp: { type: string }
+        retrieved_at: { type: string }
+        engagement:
+          type: object
+          required: [score, comments]
+          properties:
+            score: { type: number }
+            comments: { type: number }
+        source_id: { type: ["string", "null"] }
+        access_mode:
+          type: string
+          enum: [fixture, public_url, manual_url]
+    PodcastConcept:
+      type: object
+      required: [id, title, summary, relevance, urgency, engagement, source_ids, status]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        summary: { type: string }
+        relevance: { type: number }
+        urgency: { type: number }
+        engagement: { type: number }
+        source_ids:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [ready, needs_review]
+    PodcastRoom:
+      type: object
+      required: [sources, concepts, data_notice, rendering_status, selected_brief_id]
+      properties:
+        sources:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastSource" }
+        concepts:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastConcept" }
+        data_notice: { type: string }
+        rendering_status:
+          type: string
+          enum: [blocked_until_approval]
+        selected_brief_id: { type: ["string", "null"] }
+    AddPodcastSourceInput:
+      type: object
+      required: [source_url]
+      properties:
+        source_url: { type: string }
+    GeneratePodcastBriefInput:
+      type: object
+      required: [concept_id]
+      properties:
+        concept_id: { type: string }
+    PodcastBrief:
+      type: object
+      required: [id, concept_id, status, generated_mode, topic_angle, audience_pain, why_now, key_tensions, source_links, risk_notes, episode_outline, suggested_title, approval_note]
+      properties:
+        id: { type: string }
+        concept_id: { type: string }
+        status:
+          type: string
+          enum: [draft, approved, rejected]
+        generated_mode:
+          type: string
+          enum: [gemini, fixture_fallback]
+        topic_angle: { type: string }
+        audience_pain: { type: string }
+        why_now: { type: string }
+        key_tensions:
+          type: array
+          items: { type: string }
+        source_links:
+          type: array
+          items:
+            type: object
+            required: [source_id, url, label]
+            properties:
+              source_id: { type: string }
+              url: { type: string }
+              label: { type: string }
+        risk_notes:
+          type: array
+          items: { type: string }
+        episode_outline:
+          type: array
+          items:
+            type: object
+            required: [segment, purpose]
+            properties:
+              segment: { type: string }
+              purpose: { type: string }
+        suggested_title: { type: string }
+        approval_note: { type: string }
+    PodcastBriefDecisionInput:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
     ContextResponse:
       type: object
       required: [items]

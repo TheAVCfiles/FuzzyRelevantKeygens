@@ -21,6 +21,7 @@ import type {
 
 import type {
   ActiveCall,
+  AddPodcastSourceInput,
   AgentRunResult,
   Call,
   ContextResponse,
@@ -28,7 +29,11 @@ import type {
   Drop,
   Evaluation,
   FloodResponse,
+  GeneratePodcastBriefInput,
   HealthStatus,
+  PodcastBrief,
+  PodcastBriefDecisionInput,
+  PodcastRoom,
   PolicyEvaluationInput,
   PullRequest,
   Receipt,
@@ -297,6 +302,297 @@ export function useGetFlood<TData = Awaited<ReturnType<typeof getFlood>>, TError
 
 
 
+
+export const getGetPodcastRoomUrl = () => {
+
+
+
+
+  return `/api/podcast/sources`
+}
+
+/**
+ * @summary Get podcast intelligence sources and ranked concepts
+ */
+export const getPodcastRoom = async ( options?: Parameters<typeof customFetch>[1]): Promise<PodcastRoom> => {
+
+  return customFetch<PodcastRoom>(getGetPodcastRoomUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPodcastRoomQueryKey = () => {
+    return [
+    `/api/podcast/sources`
+    ] as const;
+    }
+
+
+export const getGetPodcastRoomQueryOptions = <TData = Awaited<ReturnType<typeof getPodcastRoom>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastRoom>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPodcastRoomQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPodcastRoom>>> = ({ signal }) => getPodcastRoom({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPodcastRoom>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPodcastRoomQueryResult = NonNullable<Awaited<ReturnType<typeof getPodcastRoom>>>
+export type GetPodcastRoomQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get podcast intelligence sources and ranked concepts
+ */
+
+export function useGetPodcastRoom<TData = Awaited<ReturnType<typeof getPodcastRoom>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastRoom>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPodcastRoomQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddPodcastSourceUrl = () => {
+
+
+
+
+  return `/api/podcast/sources`
+}
+
+/**
+ * @summary Add a consented public or manually supplied source URL
+ */
+export const addPodcastSource = async (addPodcastSourceInput: AddPodcastSourceInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastRoom> => {
+
+  return customFetch<PodcastRoom>(getAddPodcastSourceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addPodcastSourceInput)
+  }
+);}
+
+
+
+
+
+export const getAddPodcastSourceMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addPodcastSource>>, TError,{data: BodyType<AddPodcastSourceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addPodcastSource>>, TError,{data: BodyType<AddPodcastSourceInput>}, TContext> => {
+
+const mutationKey = ['addPodcastSource'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addPodcastSource>>, {data: BodyType<AddPodcastSourceInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  addPodcastSource(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddPodcastSourceMutationResult = NonNullable<Awaited<ReturnType<typeof addPodcastSource>>>
+    export type AddPodcastSourceMutationBody = BodyType<AddPodcastSourceInput>
+    export type AddPodcastSourceMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add a consented public or manually supplied source URL
+ */
+export const useAddPodcastSource = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addPodcastSource>>, TError,{data: BodyType<AddPodcastSourceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addPodcastSource>>,
+        TError,
+        {data: BodyType<AddPodcastSourceInput>},
+        TContext
+      > => {
+      return useMutation(getAddPodcastSourceMutationOptions(options));
+    }
+
+export const getGeneratePodcastBriefUrl = () => {
+
+
+
+
+  return `/api/podcast/brief`
+}
+
+/**
+ * @summary Generate a source-backed podcast brief for human review
+ */
+export const generatePodcastBrief = async (generatePodcastBriefInput: GeneratePodcastBriefInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastBrief> => {
+
+  return customFetch<PodcastBrief>(getGeneratePodcastBriefUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(generatePodcastBriefInput)
+  }
+);}
+
+
+
+
+
+export const getGeneratePodcastBriefMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generatePodcastBrief>>, TError,{data: BodyType<GeneratePodcastBriefInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generatePodcastBrief>>, TError,{data: BodyType<GeneratePodcastBriefInput>}, TContext> => {
+
+const mutationKey = ['generatePodcastBrief'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generatePodcastBrief>>, {data: BodyType<GeneratePodcastBriefInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  generatePodcastBrief(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GeneratePodcastBriefMutationResult = NonNullable<Awaited<ReturnType<typeof generatePodcastBrief>>>
+    export type GeneratePodcastBriefMutationBody = BodyType<GeneratePodcastBriefInput>
+    export type GeneratePodcastBriefMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Generate a source-backed podcast brief for human review
+ */
+export const useGeneratePodcastBrief = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generatePodcastBrief>>, TError,{data: BodyType<GeneratePodcastBriefInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generatePodcastBrief>>,
+        TError,
+        {data: BodyType<GeneratePodcastBriefInput>},
+        TContext
+      > => {
+      return useMutation(getGeneratePodcastBriefMutationOptions(options));
+    }
+
+export const getDecidePodcastBriefUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/brief/${id}/decision`
+}
+
+/**
+ * @summary Approve or reject a podcast brief before rendering
+ */
+export const decidePodcastBrief = async (id: string,
+    podcastBriefDecisionInput: PodcastBriefDecisionInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastBrief> => {
+
+  return customFetch<PodcastBrief>(getDecidePodcastBriefUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(podcastBriefDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getDecidePodcastBriefMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decidePodcastBrief>>, TError,{id: string;data: BodyType<PodcastBriefDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof decidePodcastBrief>>, TError,{id: string;data: BodyType<PodcastBriefDecisionInput>}, TContext> => {
+
+const mutationKey = ['decidePodcastBrief'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof decidePodcastBrief>>, {id: string;data: BodyType<PodcastBriefDecisionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  decidePodcastBrief(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DecidePodcastBriefMutationResult = NonNullable<Awaited<ReturnType<typeof decidePodcastBrief>>>
+    export type DecidePodcastBriefMutationBody = BodyType<PodcastBriefDecisionInput>
+    export type DecidePodcastBriefMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Approve or reject a podcast brief before rendering
+ */
+export const useDecidePodcastBrief = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decidePodcastBrief>>, TError,{id: string;data: BodyType<PodcastBriefDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof decidePodcastBrief>>,
+        TError,
+        {id: string;data: BodyType<PodcastBriefDecisionInput>},
+        TContext
+      > => {
+      return useMutation(getDecidePodcastBriefMutationOptions(options));
+    }
 
 export const getGetContextUrl = () => {
 

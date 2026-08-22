@@ -114,6 +114,146 @@ export const GetFloodResponse = zod.object({
 
 
 /**
+ * @summary Get podcast intelligence sources and ranked concepts
+ */
+export const GetPodcastRoomResponse = zod.object({
+  "sources": zod.array(zod.object({
+  "id": zod.string(),
+  "source_url": zod.string(),
+  "platform": zod.string(),
+  "community": zod.string(),
+  "post_title": zod.string(),
+  "timestamp": zod.string(),
+  "retrieved_at": zod.string(),
+  "engagement": zod.object({
+  "score": zod.number(),
+  "comments": zod.number()
+}),
+  "source_id": zod.string().nullable(),
+  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url'])
+})),
+  "concepts": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "summary": zod.string(),
+  "relevance": zod.number(),
+  "urgency": zod.number(),
+  "engagement": zod.number(),
+  "source_ids": zod.array(zod.string()),
+  "status": zod.enum(['ready', 'needs_review'])
+})),
+  "data_notice": zod.string(),
+  "rendering_status": zod.enum(['blocked_until_approval']),
+  "selected_brief_id": zod.string().nullable()
+})
+
+
+/**
+ * @summary Add a consented public or manually supplied source URL
+ */
+export const AddPodcastSourceBody = zod.object({
+  "source_url": zod.string()
+})
+
+export const AddPodcastSourceResponse = zod.object({
+  "sources": zod.array(zod.object({
+  "id": zod.string(),
+  "source_url": zod.string(),
+  "platform": zod.string(),
+  "community": zod.string(),
+  "post_title": zod.string(),
+  "timestamp": zod.string(),
+  "retrieved_at": zod.string(),
+  "engagement": zod.object({
+  "score": zod.number(),
+  "comments": zod.number()
+}),
+  "source_id": zod.string().nullable(),
+  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url'])
+})),
+  "concepts": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "summary": zod.string(),
+  "relevance": zod.number(),
+  "urgency": zod.number(),
+  "engagement": zod.number(),
+  "source_ids": zod.array(zod.string()),
+  "status": zod.enum(['ready', 'needs_review'])
+})),
+  "data_notice": zod.string(),
+  "rendering_status": zod.enum(['blocked_until_approval']),
+  "selected_brief_id": zod.string().nullable()
+})
+
+
+/**
+ * @summary Generate a source-backed podcast brief for human review
+ */
+export const GeneratePodcastBriefBody = zod.object({
+  "concept_id": zod.string()
+})
+
+export const GeneratePodcastBriefResponse = zod.object({
+  "id": zod.string(),
+  "concept_id": zod.string(),
+  "status": zod.enum(['draft', 'approved', 'rejected']),
+  "generated_mode": zod.enum(['gemini', 'fixture_fallback']),
+  "topic_angle": zod.string(),
+  "audience_pain": zod.string(),
+  "why_now": zod.string(),
+  "key_tensions": zod.array(zod.string()),
+  "source_links": zod.array(zod.object({
+  "source_id": zod.string(),
+  "url": zod.string(),
+  "label": zod.string()
+})),
+  "risk_notes": zod.array(zod.string()),
+  "episode_outline": zod.array(zod.object({
+  "segment": zod.string(),
+  "purpose": zod.string()
+})),
+  "suggested_title": zod.string(),
+  "approval_note": zod.string()
+})
+
+
+/**
+ * @summary Approve or reject a podcast brief before rendering
+ */
+export const DecidePodcastBriefParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DecidePodcastBriefBody = zod.object({
+  "decision": zod.enum(['approve', 'reject'])
+})
+
+export const DecidePodcastBriefResponse = zod.object({
+  "id": zod.string(),
+  "concept_id": zod.string(),
+  "status": zod.enum(['draft', 'approved', 'rejected']),
+  "generated_mode": zod.enum(['gemini', 'fixture_fallback']),
+  "topic_angle": zod.string(),
+  "audience_pain": zod.string(),
+  "why_now": zod.string(),
+  "key_tensions": zod.array(zod.string()),
+  "source_links": zod.array(zod.object({
+  "source_id": zod.string(),
+  "url": zod.string(),
+  "label": zod.string()
+})),
+  "risk_notes": zod.array(zod.string()),
+  "episode_outline": zod.array(zod.object({
+  "segment": zod.string(),
+  "purpose": zod.string()
+})),
+  "suggested_title": zod.string(),
+  "approval_note": zod.string()
+})
+
+
+/**
  * @summary Get the context repository
  */
 export const GetContextResponse = zod.object({

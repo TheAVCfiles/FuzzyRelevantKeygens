@@ -20,6 +20,14 @@ import {
   SignPullRequestResponse,
   VerifyDropBody,
   VerifyDropResponse,
+  AddPodcastSourceBody,
+  AddPodcastSourceResponse,
+  GeneratePodcastBriefBody,
+  GeneratePodcastBriefResponse,
+  GetPodcastRoomResponse,
+  DecidePodcastBriefBody,
+  DecidePodcastBriefParams,
+  DecidePodcastBriefResponse,
 } from "@workspace/api-zod";
 
 import {
@@ -37,6 +45,12 @@ import {
   verifyDrop,
 } from "../lib/autography-fixtures";
 import { runAutographyAgentFlow } from "../lib/agent-builder-flow";
+import {
+  addPodcastSource,
+  decidePodcastBrief,
+  generatePodcastBrief,
+  getPodcastRoom,
+} from "../lib/podcast-fixtures";
 
 const router: IRouter = Router();
 
@@ -46,6 +60,53 @@ router.get("/show", (_req, res): void => {
 
 router.get("/flood", (_req, res): void => {
   res.json(GetFloodResponse.parse(flood()));
+});
+
+router.get("/podcast/sources", (_req, res): void => {
+  res.json(GetPodcastRoomResponse.parse(getPodcastRoom()));
+});
+
+router.post("/podcast/sources", (req, res): void => {
+  const body = AddPodcastSourceBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const room = addPodcastSource(body.data.source_url);
+  if (!room) {
+    res.status(400).json({ error: "Only valid public http(s) source URLs are accepted." });
+    return;
+  }
+  res.json(AddPodcastSourceResponse.parse(room));
+});
+
+router.post("/podcast/brief", async (req, res): Promise<void> => {
+  const body = GeneratePodcastBriefBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const brief = await generatePodcastBrief(body.data.concept_id);
+  if (!brief) {
+    res.status(404).json({ error: "Podcast concept not found" });
+    return;
+  }
+  res.json(GeneratePodcastBriefResponse.parse(brief));
+});
+
+router.post("/podcast/brief/:id/decision", (req, res): void => {
+  const params = DecidePodcastBriefParams.safeParse(req.params);
+  const body = DecidePodcastBriefBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Invalid podcast brief decision" });
+    return;
+  }
+  const brief = decidePodcastBrief(params.data.id, body.data.decision);
+  if (!brief) {
+    res.status(404).json({ error: "Podcast brief not found" });
+    return;
+  }
+  res.json(DecidePodcastBriefResponse.parse(brief));
 });
 
 router.get("/context", (_req, res): void => {
