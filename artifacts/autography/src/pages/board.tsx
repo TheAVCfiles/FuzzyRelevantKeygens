@@ -1,6 +1,13 @@
-import { useGetActiveCall, useRunAgentFlow } from "@workspace/api-client-react";
+import {
+  useGetActiveCall,
+  useGetContext,
+  useGetFlood,
+  useGetPullRequest,
+  useRunAgentFlow,
+} from "@workspace/api-client-react";
 import { Tally } from "@/components/tally";
 import { Button } from "@/components/ui/button";
+import { EvidenceReel } from "@/components/evidence-reel";
 import { formatTime } from "@/lib/utils";
 import { useLocation } from "wouter";
 
@@ -17,6 +24,11 @@ export function Board() {
       queryKey: ["/api/call/active"],
       refetchInterval: 1000,
     },
+  });
+  const { data: flood } = useGetFlood({ query: { queryKey: ["/api/flood"] } });
+  const { data: context } = useGetContext({ query: { queryKey: ["/api/context"] } });
+  const { data: pullRequest } = useGetPullRequest("pr_001", {
+    query: { queryKey: ["/api/pr/pr_001"] },
   });
 
   if (isLoading) {
@@ -88,6 +100,17 @@ export function Board() {
             </Button>
           )}
         </div>
+
+        {isLive && flood && pullRequest && context && (
+          <EvidenceReel
+            observedVolume={flood.observed_volume}
+            coordinatedShare={pullRequest.finding.coordinated_share}
+            authenticConcern={pullRequest.finding.authentic_concern}
+            contextCount={pullRequest.moves[1]?.context_refs.length ?? context.items.length}
+            exposure={pullRequest.finding.commercial_exposure[0] ?? "No exposure recorded"}
+            onStageResponse={() => setLocation("/pr/pr_001")}
+          />
+        )}
       </div>
     </div>
   );

@@ -123,3 +123,19 @@ body {
   box-shadow: none;
   opacity: 0.3;
 }
+
+@keyframes signal-scan {
+  0% { transform: translateX(-100%); opacity: 0; }
+  20%, 80% { opacity: 0.7; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+.signal-scan {
+  animation: signal-scan 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-scan {
+    animation: none;
+  }
+}
