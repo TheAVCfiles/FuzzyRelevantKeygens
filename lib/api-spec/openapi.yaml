@@ -662,7 +662,7 @@ components:
           enum: [fixture, public_url, manual_url]
     PodcastConcept:
       type: object
-      required: [id, title, summary, relevance, urgency, engagement, source_ids, status]
+      required: [id, title, summary, relevance, urgency, engagement, freshness, source_diversity, source_ids, status]
       properties:
         id: { type: string }
         title: { type: string }
@@ -670,8 +670,11 @@ components:
         relevance: { type: number }
         urgency: { type: number }
         engagement: { type: number }
+        freshness: { type: number }
+        source_diversity: { type: number }
         source_ids:
           type: array
+          minItems: 1
           items: { type: string }
         status:
           type: string
@@ -698,15 +701,21 @@ components:
         source_url: { type: string }
     GeneratePodcastBriefInput:
       type: object
-      required: [concept_id]
+      required: [concept_id, source_ids]
       properties:
         concept_id: { type: string }
+        source_ids:
+          type: array
+          items: { type: string }
     PodcastBrief:
       type: object
-      required: [id, concept_id, status, generated_mode, topic_angle, audience_pain, why_now, key_tensions, source_links, risk_notes, episode_outline, suggested_title, approval_note]
+      required: [id, concept_id, selected_source_ids, status, generated_mode, topic_angle, audience_pain, why_now, key_tensions, source_links, risk_notes, episode_outline, suggested_title, approval_note]
       properties:
         id: { type: string }
         concept_id: { type: string }
+        selected_source_ids:
+          type: array
+          items: { type: string }
         status:
           type: string
           enum: [draft, approved, rejected]

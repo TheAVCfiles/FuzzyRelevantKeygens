@@ -13,6 +13,7 @@ import type { PodcastBriefStatus } from './podcastBriefStatus';
 export interface PodcastBrief {
   id: string;
   concept_id: string;
+  selected_source_ids: string[];
   status: PodcastBriefStatus;
   generated_mode: PodcastBriefGeneratedMode;
   topic_angle: string;

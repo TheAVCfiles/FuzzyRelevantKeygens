@@ -14,6 +14,9 @@ export interface PodcastConcept {
   relevance: number;
   urgency: number;
   engagement: number;
+  freshness: number;
+  source_diversity: number;
+  /** @minItems 1 */
   source_ids: string[];
   status: PodcastConceptStatus;
 }

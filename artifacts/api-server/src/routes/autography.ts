@@ -184,7 +184,7 @@ router.post("/podcast/brief", requirePermission("stage"), async (req, res): Prom
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const brief = await generatePodcastBrief(body.data.concept_id);
+  const brief = await generatePodcastBrief(body.data.concept_id, body.data.source_ids);
   if (!brief) {
     res.status(404).json({ error: "Podcast concept not found" });
     return;

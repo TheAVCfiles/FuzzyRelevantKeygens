@@ -59,6 +59,8 @@ export const podcastConcepts = [
     relevance: 0.96,
     urgency: 0.91,
     engagement: 0.88,
+    freshness: 0.94,
+    source_diversity: 0.42,
     source_ids: podcastSources.map((source) => source.id),
     status: "ready" as const,
   },
@@ -70,6 +72,8 @@ export const podcastConcepts = [
     relevance: 0.89,
     urgency: 0.78,
     engagement: 0.74,
+    freshness: 0.86,
+    source_diversity: 0.32,
     source_ids: [podcastSources[0].id, podcastSources[2].id],
     status: "ready" as const,
   },
@@ -81,6 +85,8 @@ export const podcastConcepts = [
     relevance: 0.82,
     urgency: 0.69,
     engagement: 0.67,
+    freshness: 0.79,
+    source_diversity: 0.28,
     source_ids: [podcastSources[1].id, podcastSources[2].id],
     status: "needs_review" as const,
   },
@@ -89,10 +95,11 @@ export const podcastConcepts = [
 let currentBrief: PodcastBrief | null = null;
 let currentScript: PodcastScriptWorkspace | null = null;
 
-function fixtureBrief(conceptId: string): PodcastBrief {
+function fixtureBrief(conceptId: string, sourceIds: string[]): PodcastBrief {
   return {
     id: `brief-${conceptId}`,
     concept_id: conceptId,
+    selected_source_ids: sourceIds,
     status: "draft" as const,
     generated_mode: "fixture_fallback" as const,
     topic_angle:
@@ -106,7 +113,7 @@ function fixtureBrief(conceptId: string): PodcastBrief {
       "A satisfying explanation versus unsupported certainty",
       "Audience curiosity versus targeting an individual",
     ],
-    source_links: podcastSources.map((source) => ({
+    source_links: podcastSources.filter((source) => sourceIds.includes(source.id)).map((source) => ({
       source_id: source.id,
       url: source.source_url,
       label: `${source.community} · ${source.post_title}`,
@@ -210,18 +217,20 @@ export function addPodcastSource(sourceUrl: string) {
   return getPodcastRoom();
 }
 
-export async function generatePodcastBrief(conceptId: string) {
+export async function generatePodcastBrief(conceptId: string, requestedSourceIds: string[]) {
   const concept = podcastConcepts.find((item) => item.id === conceptId);
   if (!concept) return null;
 
-  const fallback = fixtureBrief(conceptId);
+  const sourceIds = concept.source_ids.filter((id) => requestedSourceIds.includes(id));
+  const selectedSources = podcastSources.filter((source) => sourceIds.includes(source.id));
+  const fallback = fixtureBrief(conceptId, sourceIds);
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model,
-      contents: `You are a read-only podcast development editor. Create a JSON podcast brief from the supplied audience concept and source metadata. Do not quote comments verbatim, do not identify people, do not invent facts, and do not publish or render anything. Preserve the supplied source links. Return fields topic_angle, audience_pain, why_now, key_tensions, risk_notes, episode_outline, suggested_title.\n\nCONCEPT:\n${JSON.stringify(concept)}\n\nSOURCES:\n${JSON.stringify(podcastSources)}`,
+        contents: `You are a read-only podcast development editor. Create a JSON podcast brief from the supplied audience concept and source metadata. Do not quote comments verbatim, do not identify people, do not invent facts, and do not publish or render anything. Preserve the supplied source links. Return fields topic_angle, audience_pain, why_now, key_tensions, risk_notes, episode_outline, suggested_title.\n\nCONCEPT:\n${JSON.stringify(concept)}\n\nSELECTED SOURCES:\n${JSON.stringify(selectedSources)}`,
       config: { responseMimeType: "application/json" },
     });
     const parsed = JSON.parse(response.text ?? "{}");

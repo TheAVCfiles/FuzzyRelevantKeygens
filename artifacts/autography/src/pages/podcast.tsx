@@ -47,6 +47,12 @@ function statusLabel(status?: string) {
   return (status ?? 'unknown').replaceAll('_', ' ');
 }
 
+function evidenceLabel(source: PodcastSource) {
+  if (source.access_mode === 'manual_url') return { label: 'manual-only', className: 'text-[#9e3e2d]' };
+  if (!source.source_id || source.post_title.toLowerCase().includes('pending')) return { label: 'thin evidence', className: 'text-[#9e3e2d]' };
+  return { label: 'retrieved', className: 'text-[#365f67]' };
+}
+
 function hasSufficientEvidence(brief: PodcastBrief, sources: PodcastSource[]) {
   if (!brief.source_links?.length) return false;
   return brief.source_links.every((link) => {
@@ -100,21 +106,19 @@ function SourceRow({ source }: { source: PodcastSource }) {
 
 function ConceptCard({
   concept,
+  sources,
   selected,
   onSelect,
 }: {
   concept: PodcastConcept;
+  sources: PodcastSource[];
   selected: boolean;
   onSelect: () => void;
 }) {
   const compositeScore = Math.round((concept.relevance * 0.4) + (concept.urgency * 0.3) + (concept.engagement * 0.3));
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`podcast-focus group w-full border text-left ${selected ? 'border-[#b34b36] bg-[#f8f1e8] shadow-[inset_3px_0_0_#b34b36]' : 'border-[#c7b9aa] bg-[#eee7dc]/60'}`}
-      data-testid={`button-concept-${concept.id}`}
-    >
+    <div className={`podcast-focus w-full border text-left ${selected ? 'border-[#b34b36] bg-[#f8f1e8] shadow-[inset_3px_0_0_#b34b36]' : 'border-[#c7b9aa] bg-[#eee7dc]/60'}`} data-testid={`card-concept-${concept.id}`}>
+      <button type="button" onClick={onSelect} className="group w-full text-left" data-testid={`button-concept-${concept.id}`}>
       <div className="flex items-start justify-between gap-4 p-4 sm:p-5">
         <div className="min-w-0">
           <div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[#73675f]">
@@ -131,13 +135,43 @@ function ConceptCard({
         </div>
         <ChevronRight className={`mt-1 h-5 w-5 shrink-0 transition-transform ${selected ? 'translate-x-1 text-[#b34b36]' : 'text-[#a99a8c] group-hover:translate-x-1'}`} strokeWidth={1.5} />
       </div>
-      <div className="grid grid-cols-4 border-t border-[#c7b9aa] text-[10px] uppercase tracking-[0.08em] text-[#73675f]">
+      </button>
+      <div className="grid grid-cols-3 border-t border-[#c7b9aa] text-[10px] uppercase tracking-[0.08em] text-[#73675f] sm:grid-cols-6">
         <div className="border-r border-[#c7b9aa] px-3 py-3"><span className="block text-[9px]">relevance</span><strong className={`mt-1 block font-mono text-sm ${scoreTone(concept.relevance)}`}>{concept.relevance}</strong></div>
         <div className="border-r border-[#c7b9aa] px-3 py-3"><span className="block text-[9px]">urgency</span><strong className={`mt-1 block font-mono text-sm ${scoreTone(concept.urgency)}`}>{concept.urgency}</strong></div>
         <div className="border-r border-[#c7b9aa] px-3 py-3"><span className="block text-[9px]">engagement</span><strong className={`mt-1 block font-mono text-sm ${scoreTone(concept.engagement)}`}>{concept.engagement}</strong></div>
+        <div className="border-r border-[#c7b9aa] px-3 py-3"><span className="block text-[9px]">freshness</span><strong className={`mt-1 block font-mono text-sm ${scoreTone(concept.freshness)}`}>{concept.freshness}</strong></div>
+        <div className="border-r border-[#c7b9aa] px-3 py-3"><span className="block text-[9px]">source diversity</span><strong className={`mt-1 block font-mono text-sm ${scoreTone(concept.source_diversity)}`}>{concept.source_diversity}</strong></div>
         <div className="bg-[#2c2927] px-3 py-3 text-[#f0e8de]"><span className="block text-[9px] text-[#baaca0]">desk score</span><strong className="mt-1 block font-mono text-sm text-[#d8a36c]" data-testid={`text-concept-score-${concept.id}`}>{compositeScore}</strong></div>
       </div>
-    </button>
+      {selected && <ConceptSourceComparison concept={concept} sources={sources} />}
+    </div>
+  );
+}
+
+function ConceptSourceComparison({ concept, sources }: { concept: PodcastConcept; sources: PodcastSource[] }) {
+  const grouped = concept.source_ids.map((id) => sources.find((source) => source.id === id)).filter(Boolean) as PodcastSource[];
+  const communities = new Map<string, PodcastSource[]>();
+  grouped.forEach((source) => {
+    const key = `${source.platform || 'Public web'} · ${source.community || 'open signal'}`;
+    communities.set(key, [...(communities.get(key) ?? []), source]);
+  });
+  return (
+    <div className="border-t border-[#c7b9aa] bg-[#f4eee5] p-4 sm:p-5" data-testid={`panel-comparison-${concept.id}`}>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+        <div><p className="podcast-kicker">Source comparison</p><h4 className="mt-1 font-serif text-xl text-[#201b19]">How the idea travels</h4></div>
+        <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#73675f]">{communities.size} communities · {grouped.length} sources</span>
+      </div>
+      <p className="mb-4 border-l-2 border-[#365f67] pl-3 text-xs leading-5 text-[#5f554e]">Community signals are directional and not audience-wide measurement. Reddit is one platform in this comparison, not a proxy for everyone.</p>
+      <div className="grid gap-3 md:grid-cols-2">
+        {[...communities.entries()].map(([community, items]) => (
+          <div key={community} className="border border-[#c7b9aa] bg-[#eee7dc]/70 p-3" data-testid={`group-community-${community}`}>
+            <div className="mb-2 flex items-center justify-between gap-2"><strong className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#365f67]">{community}</strong><span className="text-[10px] text-[#73675f]">{items.length} signal{items.length === 1 ? '' : 's'}</span></div>
+            {items.map((source) => { const evidence = evidenceLabel(source); return <div key={source.id} className="border-t border-[#d4c8bb] py-2.5 first:border-t-0" data-testid={`comparison-source-${source.id}`}><p className="text-sm leading-5 text-[#201b19]">{source.post_title}</p><div className="mt-1 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.08em]"><span className={evidence.className}>{evidence.label}</span><span className="text-[#73675f]">{formatNumber(source.engagement?.score)} signal</span></div></div>; })}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -227,6 +261,11 @@ function BriefPanel({
               </li>
             ))}
           </ol>
+        </BriefSection>
+        <BriefSection label="Selected source set">
+          <p className="text-xs leading-5 text-[#b7aaa0]" data-testid="text-brief-source-set">
+            {brief.selected_source_ids?.length ?? brief.source_links?.length ?? 0} sources recorded for this draft · concept {brief.concept_id}
+          </p>
         </BriefSection>
       </div>
       <div className="mt-5">
@@ -433,7 +472,7 @@ export function Podcast() {
   const generate = () => {
     if (!selectedConcept) return;
     setLocalError('');
-    generateBrief.mutate({ data: { concept_id: selectedConcept.id } });
+    generateBrief.mutate({ data: { concept_id: selectedConcept.id, source_ids: selectedConcept.source_ids } });
   };
 
   const roomError = roomQuery.error ? 'The intelligence room could not be loaded. Try again to reconnect to the source desk.' : '';
@@ -515,7 +554,7 @@ export function Podcast() {
 
                 {concepts.length ? (
                   <div className="space-y-3" data-testid="list-concepts">
-                    {concepts.map((concept) => <ConceptCard key={concept.id} concept={concept} selected={concept.id === selectedConcept?.id} onSelect={() => { setSelectedConceptId(concept.id); setBrief(null); }} />)}
+                    {concepts.map((concept) => <ConceptCard key={concept.id} concept={concept} sources={sources} selected={concept.id === selectedConcept?.id} onSelect={() => { setSelectedConceptId(concept.id); setBrief(null); }} />)}
                   </div>
                 ) : (
                   <div className="podcast-panel p-8 text-center" data-testid="empty-concepts">

@@ -8,4 +8,5 @@
 
 export interface GeneratePodcastBriefInput {
   concept_id: string;
+  source_ids: string[];
 }

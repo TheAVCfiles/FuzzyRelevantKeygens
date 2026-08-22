@@ -305,6 +305,9 @@ export interface PodcastConcept {
   relevance: number;
   urgency: number;
   engagement: number;
+  freshness: number;
+  source_diversity: number;
+  /** @minItems 1 */
   source_ids: string[];
   status: PodcastConceptStatus;
 }
@@ -331,6 +334,7 @@ export interface AddPodcastSourceInput {
 
 export interface GeneratePodcastBriefInput {
   concept_id: string;
+  source_ids: string[];
 }
 
 export type PodcastBriefStatus = typeof PodcastBriefStatus[keyof typeof PodcastBriefStatus];
@@ -364,6 +368,7 @@ export type PodcastBriefEpisodeOutlineItem = {
 export interface PodcastBrief {
   id: string;
   concept_id: string;
+  selected_source_ids: string[];
   status: PodcastBriefStatus;
   generated_mode: PodcastBriefGeneratedMode;
   topic_angle: string;

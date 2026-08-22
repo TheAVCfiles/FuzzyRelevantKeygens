@@ -263,6 +263,9 @@ export const IngestLiveObservationsResponse = zod.object({
 /**
  * @summary Get podcast intelligence sources and ranked concepts
  */
+
+
+
 export const GetPodcastRoomResponse = zod.object({
   "sources": zod.array(zod.object({
   "id": zod.string(),
@@ -286,7 +289,9 @@ export const GetPodcastRoomResponse = zod.object({
   "relevance": zod.number(),
   "urgency": zod.number(),
   "engagement": zod.number(),
-  "source_ids": zod.array(zod.string()),
+  "freshness": zod.number(),
+  "source_diversity": zod.number(),
+  "source_ids": zod.array(zod.string()).min(1),
   "status": zod.enum(['ready', 'needs_review'])
 })),
   "data_notice": zod.string(),
@@ -301,6 +306,9 @@ export const GetPodcastRoomResponse = zod.object({
 export const AddPodcastSourceBody = zod.object({
   "source_url": zod.string()
 })
+
+
+
 
 export const AddPodcastSourceResponse = zod.object({
   "sources": zod.array(zod.object({
@@ -325,7 +333,9 @@ export const AddPodcastSourceResponse = zod.object({
   "relevance": zod.number(),
   "urgency": zod.number(),
   "engagement": zod.number(),
-  "source_ids": zod.array(zod.string()),
+  "freshness": zod.number(),
+  "source_diversity": zod.number(),
+  "source_ids": zod.array(zod.string()).min(1),
   "status": zod.enum(['ready', 'needs_review'])
 })),
   "data_notice": zod.string(),
@@ -338,12 +348,14 @@ export const AddPodcastSourceResponse = zod.object({
  * @summary Generate a source-backed podcast brief for human review
  */
 export const GeneratePodcastBriefBody = zod.object({
-  "concept_id": zod.string()
+  "concept_id": zod.string(),
+  "source_ids": zod.array(zod.string())
 })
 
 export const GeneratePodcastBriefResponse = zod.object({
   "id": zod.string(),
   "concept_id": zod.string(),
+  "selected_source_ids": zod.array(zod.string()),
   "status": zod.enum(['draft', 'approved', 'rejected']),
   "generated_mode": zod.enum(['gemini', 'fixture_fallback']),
   "topic_angle": zod.string(),
@@ -379,6 +391,7 @@ export const DecidePodcastBriefBody = zod.object({
 export const DecidePodcastBriefResponse = zod.object({
   "id": zod.string(),
   "concept_id": zod.string(),
+  "selected_source_ids": zod.array(zod.string()),
   "status": zod.enum(['draft', 'approved', 'rejected']),
   "generated_mode": zod.enum(['gemini', 'fixture_fallback']),
   "topic_angle": zod.string(),
