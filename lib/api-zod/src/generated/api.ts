@@ -347,9 +347,12 @@ export const AddPodcastSourceResponse = zod.object({
 /**
  * @summary Generate a source-backed podcast brief for human review
  */
+
+
+
 export const GeneratePodcastBriefBody = zod.object({
   "concept_id": zod.string(),
-  "source_ids": zod.array(zod.string())
+  "source_ids": zod.array(zod.string()).min(1).describe('Source IDs currently visible in the producer\'s comparison selection.')
 })
 
 export const GeneratePodcastBriefResponse = zod.object({

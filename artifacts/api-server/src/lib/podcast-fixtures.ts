@@ -120,7 +120,7 @@ function fixtureBrief(conceptId: string, sourceIds: string[]): PodcastBrief {
     audience_pain:
       "Viewers feel that the emotional stakes are obvious but the timeline is not. They want context without being pushed toward a pile-on.",
     why_now:
-      "The same question is appearing across three public communities within the current episode window, with high discussion velocity and a clear shift from reaction to context-seeking.",
+      `The same question is appearing across ${new Set(podcastSources.filter((source) => sourceIds.includes(source.id)).map((source) => source.community)).size} public communities within the current episode window, with high discussion velocity and a clear shift from reaction to context-seeking.`,
     key_tensions: [
       "Narrative clarity versus editorial compression",
       "A satisfying explanation versus unsupported certainty",

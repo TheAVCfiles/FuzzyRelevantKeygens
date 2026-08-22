@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUpRight,
@@ -111,11 +111,13 @@ function ConceptCard({
   sources,
   selected,
   onSelect,
+  onVisibleSourcesChange,
 }: {
   concept: PodcastConcept;
   sources: PodcastSource[];
   selected: boolean;
   onSelect: () => void;
+  onVisibleSourcesChange: (sourceIds: string[]) => void;
 }) {
   const compositeScore = Math.round((concept.relevance * 0.4) + (concept.urgency * 0.3) + (concept.engagement * 0.3));
   return (
@@ -146,33 +148,82 @@ function ConceptCard({
         <div className="border-r border-[#c7b9aa] px-3 py-3"><span className="block text-[9px]">source diversity</span><strong className={`mt-1 block font-mono text-sm ${scoreTone(concept.source_diversity)}`}>{concept.source_diversity}</strong></div>
         <div className="bg-[#2c2927] px-3 py-3 text-[#f0e8de]"><span className="block text-[9px] text-[#baaca0]">desk score</span><strong className="mt-1 block font-mono text-sm text-[#d8a36c]" data-testid={`text-concept-score-${concept.id}`}>{compositeScore}</strong></div>
       </div>
-      {selected && <ConceptSourceComparison concept={concept} sources={sources} />}
+      {selected && <ConceptSourceComparison concept={concept} sources={sources} onVisibleSourcesChange={onVisibleSourcesChange} />}
     </div>
   );
 }
 
-function ConceptSourceComparison({ concept, sources }: { concept: PodcastConcept; sources: PodcastSource[] }) {
+function ConceptSourceComparison({
+  concept,
+  sources,
+  onVisibleSourcesChange,
+}: {
+  concept: PodcastConcept;
+  sources: PodcastSource[];
+  onVisibleSourcesChange: (sourceIds: string[]) => void;
+}) {
   const grouped = concept.source_ids.map((id) => sources.find((source) => source.id === id)).filter(Boolean) as PodcastSource[];
-  const communities = new Map<string, PodcastSource[]>();
-  grouped.forEach((source) => {
-    const key = `${source.platform || 'Public web'} · ${source.community || 'open signal'}`;
-    communities.set(key, [...(communities.get(key) ?? []), source]);
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  const [communityFilters, setCommunityFilters] = useState<string[]>([]);
+  const availablePlatforms = [...new Set(grouped.map((source) => source.platform || 'Public web'))];
+  const availableCommunities = [...new Set(grouped.map((source) => source.community || 'open signal'))];
+  const filtered = grouped.filter((source) => {
+    const platform = source.platform || 'Public web';
+    const community = source.community || 'open signal';
+    return (!platforms.length || platforms.includes(platform)) && (!communityFilters.length || communityFilters.includes(community));
   });
+  const groups = new Map<string, PodcastSource[]>();
+  filtered.forEach((source) => {
+    const key = `${source.platform || 'Public web'} · ${source.community || 'open signal'}`;
+    groups.set(key, [...(groups.get(key) ?? []), source]);
+  });
+  useEffect(() => {
+    onVisibleSourcesChange(filtered.map((source) => source.id));
+  }, [filtered.map((source) => source.id).join(','), onVisibleSourcesChange]);
+  const toggle = (value: string, current: string[], update: (next: string[]) => void) => {
+    update(current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  };
+  const hasFilter = platforms.length > 0 || communityFilters.length > 0;
   return (
     <div className="border-t border-[#c7b9aa] bg-[#f4eee5] p-4 sm:p-5" data-testid={`panel-comparison-${concept.id}`}>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
         <div><p className="podcast-kicker">Source comparison</p><h4 className="mt-1 font-serif text-xl text-[#201b19]">How the idea travels</h4></div>
-        <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#73675f]">{communities.size} communities · {grouped.length} sources</span>
+        <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#73675f]" data-testid={`text-comparison-count-${concept.id}`}>{groups.size} communities · showing {filtered.length} of {grouped.length} sources</span>
       </div>
       <p className="mb-4 border-l-2 border-[#365f67] pl-3 text-xs leading-5 text-[#5f554e]">Community signals are directional and not audience-wide measurement. Reddit is one platform in this comparison, not a proxy for everyone.</p>
+      <div className="mb-4 space-y-3 border border-[#c7b9aa] bg-[#eee7dc]/60 p-3" data-testid={`filters-comparison-${concept.id}`}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-20 font-mono text-[9px] uppercase tracking-[0.1em] text-[#73675f]">Platform</span>
+          {availablePlatforms.map((platform) => (
+            <button key={platform} type="button" onClick={() => toggle(platform, platforms, setPlatforms)} aria-pressed={platforms.includes(platform)} className={`border px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] transition-colors ${platforms.includes(platform) ? 'border-[#365f67] bg-[#365f67] text-[#f4eee5]' : 'border-[#b8a99b] text-[#5f554e] hover:border-[#365f67]'}`} data-testid={`filter-platform-${concept.id}-${platform}`}>
+              {platform}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-20 font-mono text-[9px] uppercase tracking-[0.1em] text-[#73675f]">Community</span>
+          {availableCommunities.map((community) => (
+            <button key={community} type="button" onClick={() => toggle(community, communityFilters, setCommunityFilters)} aria-pressed={communityFilters.includes(community)} className={`border px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] transition-colors ${communityFilters.includes(community) ? 'border-[#b34b36] bg-[#b34b36] text-[#f4eee5]' : 'border-[#b8a99b] text-[#5f554e] hover:border-[#b34b36]'}`} data-testid={`filter-community-${concept.id}-${community}`}>
+              {community}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[9px] uppercase tracking-[0.08em]">
+          <span className={hasFilter ? 'text-[#b34b36]' : 'text-[#73675f]'} data-testid={`text-comparison-filter-${concept.id}`}>
+            {hasFilter ? `Active filter · ${filtered.length} of ${grouped.length} sources visible` : `All ${grouped.length} sources visible`}
+          </span>
+          {hasFilter && <button type="button" onClick={() => { setPlatforms([]); setCommunityFilters([]); }} className="text-[#365f67] underline underline-offset-2" data-testid={`button-clear-filters-${concept.id}`}>Clear filters</button>}
+        </div>
+      </div>
       <div className="grid gap-3 md:grid-cols-2">
-        {[...communities.entries()].map(([community, items]) => (
+        {[...groups.entries()].map(([community, items]) => (
           <div key={community} className="border border-[#c7b9aa] bg-[#eee7dc]/70 p-3" data-testid={`group-community-${community}`}>
             <div className="mb-2 flex items-center justify-between gap-2"><strong className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#365f67]">{community}</strong><span className="text-[10px] text-[#73675f]">{items.length} signal{items.length === 1 ? '' : 's'}</span></div>
             {items.map((source) => { const evidence = evidenceLabel(source); return <div key={source.id} className="border-t border-[#d4c8bb] py-2.5 first:border-t-0" data-testid={`comparison-source-${source.id}`}><p className="text-sm leading-5 text-[#201b19]">{source.post_title}</p><div className="mt-1 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.08em]"><span className={evidence.className}>{evidence.label}</span><span className="text-[#73675f]">{formatNumber(source.engagement?.score)} signal</span></div></div>; })}
           </div>
         ))}
       </div>
+      {!filtered.length && <p className="border border-dashed border-[#b8a99b] p-5 text-center text-sm text-[#73675f]" data-testid={`empty-comparison-${concept.id}`}>No sources match this selection. Clear a filter to restore the comparison.</p>}
     </div>
   );
 }
@@ -418,6 +469,7 @@ export function Podcast() {
   });
   const [sourceUrl, setSourceUrl] = useState('');
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
+  const [visibleSourceIds, setVisibleSourceIds] = useState<string[]>([]);
   const [brief, setBrief] = useState<PodcastBrief | null>(null);
   const [script, setScript] = useState<PodcastScriptWorkspace | null>(null);
   const [localError, setLocalError] = useState('');
@@ -425,9 +477,15 @@ export function Podcast() {
   const concepts = room?.concepts ?? [];
   const sources = room?.sources ?? [];
   const selectedConcept = useMemo(() => concepts.find((concept) => concept.id === selectedConceptId) ?? concepts[0], [concepts, selectedConceptId]);
+  const handleVisibleSourcesChange = useCallback((sourceIds: string[]) => {
+    setVisibleSourceIds((current) => current.join(',') === sourceIds.join(',') ? current : sourceIds);
+  }, []);
 
   useEffect(() => {
-    if (!selectedConceptId && concepts[0]) setSelectedConceptId(concepts[0].id);
+    if (!selectedConceptId && concepts[0]) {
+      setSelectedConceptId(concepts[0].id);
+      setVisibleSourceIds(concepts[0].source_ids);
+    }
   }, [concepts, selectedConceptId]);
 
   useEffect(() => {
@@ -489,7 +547,7 @@ export function Podcast() {
   const generate = () => {
     if (!selectedConcept) return;
     setLocalError('');
-    generateBrief.mutate({ data: { concept_id: selectedConcept.id, source_ids: selectedConcept.source_ids } });
+    generateBrief.mutate({ data: { concept_id: selectedConcept.id, source_ids: visibleSourceIds } });
   };
 
   const roomError = roomQuery.error ? 'The intelligence room could not be loaded. Try again to reconnect to the source desk.' : '';
@@ -571,7 +629,7 @@ export function Podcast() {
 
                 {concepts.length ? (
                   <div className="space-y-3" data-testid="list-concepts">
-                     {concepts.map((concept) => <ConceptCard key={concept.id} concept={concept} sources={sources} selected={concept.id === selectedConcept?.id} onSelect={() => { setSelectedConceptId(concept.id); setBrief(null); setScript(null); }} />)}
+                     {concepts.map((concept) => <ConceptCard key={concept.id} concept={concept} sources={sources} selected={concept.id === selectedConcept?.id} onSelect={() => { setSelectedConceptId(concept.id); setVisibleSourceIds(concept.source_ids); setBrief(null); setScript(null); }} onVisibleSourcesChange={handleVisibleSourcesChange} />)}
                   </div>
                 ) : (
                   <div className="podcast-panel p-8 text-center" data-testid="empty-concepts">
@@ -599,7 +657,7 @@ export function Podcast() {
                 <div className="podcast-panel p-5" data-testid="panel-next-action">
                   <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#b34b36]" strokeWidth={1.5} /><p className="podcast-kicker">Next editorial action</p></div>
                   <p className="mt-3 text-sm leading-6 text-[#5f554e]">You are looking at <strong className="font-medium text-[#201b19]">{selectedConcept?.title || 'the shortlist'}</strong>. Generate its brief only when the source trail is sufficient for a producer review.</p>
-                  <Button type="button" className="mt-5 w-full bg-[#b34b36] text-[#f9f0e5] hover:bg-[#9e3e2d]" disabled={!selectedConcept || generateBrief.isPending} onClick={generate} data-testid="button-generate-brief">
+                  <Button type="button" className="mt-5 w-full bg-[#b34b36] text-[#f9f0e5] hover:bg-[#9e3e2d]" disabled={!selectedConcept || !visibleSourceIds.length || generateBrief.isPending} onClick={generate} data-testid="button-generate-brief">
                     {generateBrief.isPending ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" strokeWidth={1.5} />}
                     {generateBrief.isPending ? 'Compiling evidence' : 'Generate source-backed brief'}
                   </Button>

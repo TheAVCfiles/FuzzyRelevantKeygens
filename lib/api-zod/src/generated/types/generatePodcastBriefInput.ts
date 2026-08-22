@@ -8,5 +8,9 @@
 
 export interface GeneratePodcastBriefInput {
   concept_id: string;
+  /**
+     * Source IDs currently visible in the producer's comparison selection.
+     * @minItems 1
+     */
   source_ids: string[];
 }
