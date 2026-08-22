@@ -1,0 +1,81 @@
+Yes. That is the right direction: **automated evidence-to-audio pipeline, but not autonomous publishing.**
+
+The product should use Gemini agentically for the middle of the workflow, not as an uncontrolled broadcaster.
+
+Here is the clean architecture:
+
+```text
+Source URL / topic signal
+→ ingest public source
+→ summarize without verbatim copying
+→ extract audience pattern
+→ rank concept
+→ generate source-backed brief
+→ human approval gate
+→ Gemini audio / podcast generation
+→ staged episode draft
+→ final human approval
+→ publish/export
+```
+
+The key distinction:
+
+**Automated:** source intake, clustering, ranking, brief generation, outline generation, script draft, audio draft, metadata, episode notes.
+
+**Human-gated:** approving the brief, approving whether it can become audio, approving final publish.
+
+Use this Replit/Gemini prompt:
+
+```text
+Shift the Podcast Room toward maximum safe automation using Gemini agentic workflow support.
+
+Goal:
+The user should be able to load or select a public source, have the system automatically generate a ranked editorial concept, compile a source-backed brief, and prepare a sound-based podcast draft using Gemini audio/podcast generation capabilities.
+
+Required flow:
+1. Load source or select ranked concept.
+2. Automatically compile evidence summary, audience pattern, topic angle, key tensions, and episode spine.
+3. Keep provenance visible per source.
+4. Block verbatim copying of Reddit/user comments.
+5. Keep analysis at edit, format, timeline, and audience-pattern level unless verified sources support more.
+6. Require human approval before Gemini generates any script or audio.
+7. After approval, generate a podcast-ready sound draft: title, cold open, episode spine, spoken script, segment timing, host notes, and audio-render instructions.
+8. Require final human approval before export or publishing.
+
+Important:
+Automate the production desk as much as possible, but keep human approval gates before identity-sensitive claims, audio rendering, and publication.
+
+Do not remove the current risk notes, evidence trail, or decision gate. Strengthen them.
+```
+
+And if you want it even more product-specific:
+
+```text
+Add an automated “Generate Sound Brief” action after a ranked concept is selected.
+
+The action should produce:
+- podcast title
+- audience question
+- source-backed premise
+- evidence trail
+- risk notes
+- episode spine
+- spoken intro draft
+- segment beats
+- Gemini audio-generation instructions
+- final approval status
+
+Rendering status must remain:
+BLOCKED UNTIL HUMAN APPROVAL
+
+Once approved, allow:
+READY FOR GEMINI PODCAST DRAFT
+```
+
+The money idea is exactly this: **not “AI makes a podcast.”** That is commodity.
+
+Your sharper product is:
+
+**AI compiles the room, protects the boundary, structures the story, and only then lets audio happen.**
+
+That is much more defensible.
