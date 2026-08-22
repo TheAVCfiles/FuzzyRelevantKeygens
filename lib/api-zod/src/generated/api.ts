@@ -64,7 +64,52 @@ export const GetFloodResponse = zod.object({
   "confidence": zod.string(),
   "note": zod.string(),
   "share_of_observed_volume": zod.number()
-}))
+})),
+  "timeline": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "timestamp": zod.string(),
+  "intensity": zod.number(),
+  "cluster_id": zod.string(),
+  "source_class": zod.string(),
+  "freshness": zod.string(),
+  "confidence": zod.string()
+})),
+  "evidence": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "source_class": zod.string(),
+  "source_ref": zod.string(),
+  "observation_window": zod.string(),
+  "freshness": zod.string(),
+  "confidence": zod.string(),
+  "excerpt": zod.string()
+})),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "prompt": zod.string(),
+  "grouped_count": zod.number(),
+  "cluster_id": zod.string(),
+  "answerability": zod.string(),
+  "context_refs": zod.array(zod.string())
+})),
+  "safety_holds": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "severity": zod.string(),
+  "reason": zod.string(),
+  "status": zod.string(),
+  "safe_action": zod.string()
+})),
+  "role_permissions": zod.array(zod.object({
+  "role": zod.string(),
+  "label": zod.string(),
+  "can_view": zod.boolean(),
+  "can_stage": zod.boolean(),
+  "can_sign": zod.boolean(),
+  "emphasis": zod.array(zod.string())
+})),
+  "data_notice": zod.string()
 })
 
 

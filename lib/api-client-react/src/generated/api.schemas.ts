@@ -98,6 +98,55 @@ export interface SignalEvent {
   cluster_id: string;
 }
 
+export interface TimelinePulse {
+  id: string;
+  label: string;
+  timestamp: string;
+  intensity: number;
+  cluster_id: string;
+  source_class: string;
+  freshness: string;
+  confidence: string;
+}
+
+export interface EvidenceCitation {
+  id: string;
+  label: string;
+  source_class: string;
+  source_ref: string;
+  observation_window: string;
+  freshness: string;
+  confidence: string;
+  excerpt: string;
+}
+
+export interface AudienceQuestion {
+  id: string;
+  prompt: string;
+  grouped_count: number;
+  cluster_id: string;
+  answerability: string;
+  context_refs: string[];
+}
+
+export interface SafetyHold {
+  id: string;
+  label: string;
+  severity: string;
+  reason: string;
+  status: string;
+  safe_action: string;
+}
+
+export interface RolePermission {
+  role: string;
+  label: string;
+  can_view: boolean;
+  can_stage: boolean;
+  can_sign: boolean;
+  emphasis: string[];
+}
+
 export interface CoordinationSignals {
   duplicate_phrasing: number;
   account_age_clustering: number;
@@ -120,6 +169,12 @@ export interface FloodResponse {
   observed_volume: number;
   events: SignalEvent[];
   clusters: Cluster[];
+  timeline: TimelinePulse[];
+  evidence: EvidenceCitation[];
+  questions: AudienceQuestion[];
+  safety_holds: SafetyHold[];
+  role_permissions: RolePermission[];
+  data_notice: string;
 }
 
 export interface ContextItem {

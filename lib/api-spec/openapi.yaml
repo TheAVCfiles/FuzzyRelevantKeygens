@@ -329,6 +329,64 @@ components:
         platform: { type: string }
         engagement: { $ref: "#/components/schemas/SignalEngagement" }
         cluster_id: { type: string }
+    TimelinePulse:
+      type: object
+      required: [id, label, timestamp, intensity, cluster_id, source_class, freshness, confidence]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        timestamp: { type: string }
+        intensity: { type: number }
+        cluster_id: { type: string }
+        source_class: { type: string }
+        freshness: { type: string }
+        confidence: { type: string }
+    EvidenceCitation:
+      type: object
+      required: [id, label, source_class, source_ref, observation_window, freshness, confidence, excerpt]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        source_class: { type: string }
+        source_ref: { type: string }
+        observation_window: { type: string }
+        freshness: { type: string }
+        confidence: { type: string }
+        excerpt: { type: string }
+    AudienceQuestion:
+      type: object
+      required: [id, prompt, grouped_count, cluster_id, answerability, context_refs]
+      properties:
+        id: { type: string }
+        prompt: { type: string }
+        grouped_count: { type: number }
+        cluster_id: { type: string }
+        answerability: { type: string }
+        context_refs:
+          type: array
+          items: { type: string }
+    SafetyHold:
+      type: object
+      required: [id, label, severity, reason, status, safe_action]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        severity: { type: string }
+        reason: { type: string }
+        status: { type: string }
+        safe_action: { type: string }
+    RolePermission:
+      type: object
+      required: [role, label, can_view, can_stage, can_sign, emphasis]
+      properties:
+        role: { type: string }
+        label: { type: string }
+        can_view: { type: boolean }
+        can_stage: { type: boolean }
+        can_sign: { type: boolean }
+        emphasis:
+          type: array
+          items: { type: string }
     CoordinationSignals:
       type: object
       required: [duplicate_phrasing, account_age_clustering, burst_window_seconds, cadence_irregularity]
@@ -353,7 +411,7 @@ components:
         share_of_observed_volume: { type: number }
     FloodResponse:
       type: object
-      required: [observed_volume, events, clusters]
+      required: [observed_volume, events, clusters, timeline, evidence, questions, safety_holds, role_permissions, data_notice]
       properties:
         observed_volume: { type: number }
         events:
@@ -362,6 +420,22 @@ components:
         clusters:
           type: array
           items: { $ref: "#/components/schemas/Cluster" }
+        timeline:
+          type: array
+          items: { $ref: "#/components/schemas/TimelinePulse" }
+        evidence:
+          type: array
+          items: { $ref: "#/components/schemas/EvidenceCitation" }
+        questions:
+          type: array
+          items: { $ref: "#/components/schemas/AudienceQuestion" }
+        safety_holds:
+          type: array
+          items: { $ref: "#/components/schemas/SafetyHold" }
+        role_permissions:
+          type: array
+          items: { $ref: "#/components/schemas/RolePermission" }
+        data_notice: { type: string }
     ContextItem:
       type: object
       required: [id, label, source_class, excerpt]

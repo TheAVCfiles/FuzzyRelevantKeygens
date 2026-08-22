@@ -1,4 +1,4 @@
-import { useGetPullRequest, useSignPullRequest, useDismissPullRequest } from "@workspace/api-client-react";
+import { useGetFlood, useGetPullRequest, useSignPullRequest, useDismissPullRequest } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ export function PR() {
   const { data: pr, isLoading } = useGetPullRequest(id, {
     query: { queryKey: ["/api/pr", id] }
   });
+  const { data: flood } = useGetFlood({ query: { queryKey: ["/api/flood"] } });
 
   const signMutation = useSignPullRequest({
     mutation: {
@@ -47,7 +48,10 @@ export function PR() {
   return (
     <div className="flex-1 flex flex-col p-8 max-w-7xl mx-auto w-full">
       <header className="mb-12 border-b border-sepia/30 pb-8">
-        <div className="font-system text-sepia text-sm mb-4">PULL REQUEST / {pr.id}</div>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="font-system text-sepia text-sm">RESPONSE ROOM / {pr.id}</div>
+          <div className="font-mono text-[10px] text-brass border border-brass/30 px-2 py-1">HUMAN SIGNATURE REQUIRED</div>
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
@@ -65,7 +69,30 @@ export function PR() {
         </div>
       </header>
 
-      <div className="flex-1 grid grid-cols-3 gap-6">
+      {flood && (
+        <section className="mb-8 border border-tally/30 bg-tally/5 p-5">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
+            <div>
+              <div className="font-system text-tally text-xs tracking-[0.14em]">SAFETY HOLD / BEFORE STAGING</div>
+              <h2 className="font-serif text-2xl text-oyster mt-2">{flood.safety_holds[0]?.label}</h2>
+              <p className="font-sans text-sm text-oyster/70 mt-2 max-w-2xl leading-relaxed">
+                {flood.safety_holds[0]?.reason}
+              </p>
+            </div>
+            <div className="lg:max-w-sm border-l border-tally/30 pl-4">
+              <div className="font-system text-[10px] text-sepia tracking-[0.12em]">SAFE ACTION</div>
+              <p className="font-mono text-xs text-brass mt-2 leading-relaxed">{flood.safety_holds[0]?.safe_action}</p>
+            </div>
+          </div>
+          <div className="mt-5 pt-4 border-t border-tally/20 flex flex-wrap gap-4 font-mono text-[10px] text-sepia">
+            <span>{flood.evidence.length} LINEAGED CITATIONS AVAILABLE</span>
+            <span>{flood.questions.filter((question) => question.answerability === "answerable_with_context").length} GROUPED QUESTIONS ANSWERABLE</span>
+            <span>NO IDENTITY RESOLUTION</span>
+          </div>
+        </section>
+      )}
+
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6">
         {pr.moves.map((move, index) => {
           // First move should be Stay dark ideally.
           const isStayDark = move.id === "mv_hold" || index === 0;
@@ -104,6 +131,9 @@ export function PR() {
                     </div>
                   </div>
                 )}
+                <div className="font-mono text-[10px] text-sepia mb-6">
+                  {move.context_refs.length > 0 ? `${move.context_refs.length} approved citations attached` : "No claims attached · silence remains available"}
+                </div>
               </div>
 
               <div className="pt-6 border-t border-sepia/30">

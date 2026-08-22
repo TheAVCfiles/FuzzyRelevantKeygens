@@ -10,6 +10,8 @@ export function Constellation() {
   });
 
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
+  const [selectedRole, setSelectedRole] = useState("producer");
+  const [activePulseId, setActivePulseId] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -22,12 +24,89 @@ export function Constellation() {
   if (!flood) return null;
 
   const selectedCluster = flood.clusters.find(c => c.id === selectedClusterId);
+  const currentRole = flood.role_permissions.find(role => role.role === selectedRole) ?? flood.role_permissions[0];
+  const activePulse = flood.timeline.find(pulse => pulse.id === activePulseId);
 
   return (
-    <div className="flex-1 flex h-full overflow-hidden bg-house relative">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-house relative">
+      <header className="px-6 lg:px-10 pt-8 pb-6 border-b border-sepia/30">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+          <div>
+            <div className="font-system text-tally text-xs tracking-[0.2em] mb-3">SIGNAL ROOM / LIVE AUDIENCE DYNAMICS</div>
+            <h1 className="font-serif text-4xl lg:text-5xl text-oyster">The room, with the volume turned down.</h1>
+            <p className="font-sans text-sm text-oyster/60 mt-3 max-w-2xl">
+              A de-amplified view of what is moving, what is supported, and what should stay in a human hold.
+            </p>
+          </div>
+          <div className="font-mono text-xs text-sepia border border-sepia/30 px-3 py-2 whitespace-nowrap">
+            OBSERVATION WINDOW / NOW
+          </div>
+        </div>
+        <div className="mt-7 flex flex-col xl:flex-row gap-5 xl:items-end">
+          <div className="flex-1">
+            <div className="font-system text-[10px] tracking-[0.16em] text-sepia mb-3">EPISODE TIMELINE · CLICK A PULSE TO INSPECT</div>
+            <div className="flex items-end gap-2 h-20">
+              {flood.timeline.map((pulse) => {
+                const isActive = activePulseId === pulse.id;
+                return (
+                  <button
+                    key={pulse.id}
+                    onClick={() => {
+                      setActivePulseId(pulse.id);
+                      setSelectedClusterId(pulse.cluster_id);
+                    }}
+                    className="group flex-1 min-w-14 h-full flex flex-col justify-end gap-2 text-left"
+                    aria-label={`Inspect ${pulse.label}`}
+                  >
+                    <div className="relative h-12 border-l border-sepia/30 group-hover:border-oyster/60 transition-colors">
+                      <span
+                        className={`absolute bottom-0 left-0 w-full transition-all duration-500 ${isActive ? "bg-tally" : "bg-brass/50 group-hover:bg-brass"}`}
+                        style={{ height: `${Math.max(16, pulse.intensity * 100)}%` }}
+                      />
+                    </div>
+                    <span className={`font-system text-[10px] truncate ${isActive ? "text-oyster" : "text-sepia"}`}>{pulse.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="xl:w-80 border-l border-sepia/30 xl:pl-5">
+            <div className="font-system text-[10px] tracking-[0.16em] text-sepia mb-3">ROOM LENS</div>
+            <div className="flex flex-wrap gap-2">
+              {flood.role_permissions.map((role) => (
+                <button
+                  key={role.role}
+                  onClick={() => setSelectedRole(role.role)}
+                  className={cn(
+                    "font-system text-[10px] tracking-[0.08em] px-2 py-2 border transition-colors",
+                    selectedRole === role.role
+                      ? "border-brass text-brass bg-brass/10"
+                      : "border-sepia/30 text-sepia hover:text-oyster hover:border-oyster/50",
+                  )}
+                >
+                  {role.label}
+                </button>
+              ))}
+            </div>
+            {currentRole && (
+              <p className="font-mono text-[10px] text-oyster/60 mt-3 leading-relaxed">
+                EMPHASIS / {currentRole.emphasis.join(" · ")}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-sepia/20 pt-4">
+          <p className="font-mono text-[10px] text-sepia">{flood.data_notice}</p>
+          {activePulse && (
+            <p className="font-mono text-[10px] text-brass">SELECTED / {activePulse.freshness} / {activePulse.confidence} confidence</p>
+          )}
+        </div>
+      </header>
+
+      <div className="grid xl:grid-cols-[minmax(0,1fr)_400px] min-h-[620px]">
       
       {/* Map Area */}
-      <div className="flex-1 relative overflow-hidden flex items-center justify-center p-8">
+      <div className="relative overflow-hidden flex items-center justify-center p-8 min-h-[520px]">
         
         <div className="relative w-full max-w-4xl aspect-video flex flex-wrap gap-4 items-center justify-center content-center z-10">
           {flood.clusters.map((cluster) => {
@@ -82,7 +161,7 @@ export function Constellation() {
       </div>
 
       {/* Inspector Sidebar */}
-      <div className="w-[400px] border-l border-sepia/30 bg-house/90 backdrop-blur flex flex-col shrink-0 z-20">
+      <div className="border-l border-sepia/30 bg-house/90 backdrop-blur flex flex-col z-20 min-h-[520px]">
         <div className="p-6 border-b border-sepia/30">
           <div className="font-system text-sepia text-sm mb-2 flex justify-between">
             <span>TOTAL VOLUME</span>
@@ -134,6 +213,80 @@ export function Constellation() {
           </div>
         )}
       </div>
+      </div>
+
+      <section className="grid lg:grid-cols-[1.35fr_0.65fr] gap-px bg-sepia/20 border-t border-sepia/30">
+        <div className="bg-house p-6 lg:p-8">
+          <div className="flex items-end justify-between gap-4 mb-6">
+            <div>
+              <div className="font-system text-tally text-xs tracking-[0.16em]">EVIDENCE COMPILER</div>
+              <h2 className="font-serif text-3xl text-oyster mt-2">What can actually be stood behind.</h2>
+            </div>
+            <span className="font-mono text-[10px] text-sepia">{flood.evidence.length} CITATIONS / LINEAGED</span>
+          </div>
+          <div className="grid md:grid-cols-3 gap-3">
+            {flood.evidence.map((item) => (
+              <article key={item.id} className="border border-sepia/25 p-4 bg-house/60 hover:border-brass/60 transition-colors">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-system text-[10px] text-brass tracking-[0.1em]">{item.source_class.replaceAll("_", " ")}</span>
+                  <span className="font-mono text-[9px] text-sepia">{item.confidence}</span>
+                </div>
+                <h3 className="font-sans text-sm text-oyster mt-4">{item.label}</h3>
+                <p className="font-sans text-xs text-oyster/65 mt-2 leading-relaxed">{item.excerpt}</p>
+                <div className="mt-4 pt-3 border-t border-sepia/20 space-y-1">
+                  <p className="font-mono text-[9px] text-oyster/50">{item.source_ref}</p>
+                  <p className="font-mono text-[9px] text-sepia">{item.freshness} · {item.observation_window}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+        <div className="bg-velvet/20 p-6 lg:p-8">
+          <div className="font-system text-brass text-xs tracking-[0.16em]">SAFE FEEDBACK LANE</div>
+          <h2 className="font-serif text-3xl text-oyster mt-2">Questions, not targets.</h2>
+          <p className="font-sans text-sm text-oyster/60 mt-3 leading-relaxed">
+            Grouped questions give the audience a door in without handing a cast member an unfiltered feed.
+          </p>
+          <div className="mt-6 space-y-3">
+            {flood.questions.map((question) => (
+              <div key={question.id} className="border border-sepia/25 bg-house/50 p-4">
+                <div className="flex justify-between gap-3 font-mono text-[9px] text-sepia">
+                  <span>{question.grouped_count} GROUPED</span>
+                  <span className={question.answerability === "answerable_with_context" ? "text-brass" : "text-tally"}>
+                    {question.answerability.replaceAll("_", " ")}
+                  </span>
+                </div>
+                <p className="font-sans text-sm text-oyster mt-3">{question.prompt}</p>
+                <p className="font-mono text-[9px] text-sepia mt-3">
+                  {question.context_refs.length ? `${question.context_refs.length} approved context refs` : "No supported third-party context"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-sepia/30 p-6 lg:p-8">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
+          <div>
+            <div className="font-system text-tally text-xs tracking-[0.16em]">ACTIVE SAFETY HOLDS</div>
+            <h2 className="font-serif text-3xl text-oyster mt-2">Keep the heat from finding a person.</h2>
+          </div>
+          <p className="font-mono text-[10px] text-sepia max-w-md">Holds are product behavior, not a disclaimer. They stay visible before a response is staged.</p>
+        </div>
+        <div className="grid md:grid-cols-2 gap-4 mt-6">
+          {flood.safety_holds.map((hold) => (
+            <div key={hold.id} className="border border-tally/30 bg-tally/5 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <span className="font-system text-xs text-tally tracking-[0.1em]">{hold.label}</span>
+                <span className="font-mono text-[9px] text-tally">{hold.severity} / {hold.status}</span>
+              </div>
+              <p className="font-sans text-sm text-oyster/75 mt-3 leading-relaxed">{hold.reason}</p>
+              <p className="font-mono text-[10px] text-brass mt-4 border-t border-tally/20 pt-3">SAFE ACTION / {hold.safe_action}</p>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

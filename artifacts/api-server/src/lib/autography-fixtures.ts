@@ -72,6 +72,163 @@ export const contextItems = [
   },
 ];
 
+const timeline = [
+  {
+    id: "pulse_01",
+    label: "First cut reaction",
+    timestamp: isoAfter(-38 * 60 * 1000),
+    intensity: 0.42,
+    cluster_id: "cl_c",
+    source_class: "observed_signal",
+    freshness: "38m old",
+    confidence: "medium",
+  },
+  {
+    id: "pulse_02",
+    label: "Phrase burst",
+    timestamp: isoAfter(-27 * 60 * 1000),
+    intensity: 0.94,
+    cluster_id: "cl_a",
+    source_class: "observed_signal",
+    freshness: "27m old",
+    confidence: "high",
+  },
+  {
+    id: "pulse_03",
+    label: "Independent questions",
+    timestamp: isoAfter(-21 * 60 * 1000),
+    intensity: 0.64,
+    cluster_id: "cl_b",
+    source_class: "observed_signal",
+    freshness: "21m old",
+    confidence: "high",
+  },
+  {
+    id: "pulse_04",
+    label: "Context request",
+    timestamp: isoAfter(-7 * 60 * 1000),
+    intensity: 0.31,
+    cluster_id: "cl_d",
+    source_class: "observed_signal",
+    freshness: "7m old",
+    confidence: "low",
+  },
+];
+
+const evidence = [
+  {
+    id: "ev_01",
+    label: "Episode six call sheet",
+    source_class: "verified_document",
+    source_ref: "ctx_call_sheet_0604",
+    observation_window: "Before the episode aired",
+    freshness: "verified 18m ago",
+    confidence: "high",
+    excerpt: "Departure pickup was moved after the scene wrapped. The revision is dated and countersigned.",
+  },
+  {
+    id: "ev_02",
+    label: "Transfer confirmation",
+    source_class: "verified_document",
+    source_ref: "ctx_receipt_0412",
+    observation_window: "Before the listed departure",
+    freshness: "verified 18m ago",
+    confidence: "high",
+    excerpt: "Payment confirmation recorded before the episode’s listed departure date.",
+  },
+  {
+    id: "ev_03",
+    label: "Prepared first-party note",
+    source_class: "first_party_statement",
+    source_ref: "ctx_statement_lola",
+    observation_window: "Prepared for this Call",
+    freshness: "reviewed 5m ago",
+    confidence: "high",
+    excerpt: "I understand the edit made the timing hard to follow. Here is the document trail I can stand behind.",
+  },
+];
+
+const questions = [
+  {
+    id: "q_01",
+    prompt: "Can someone explain the three-week gap?",
+    grouped_count: 3,
+    cluster_id: "cl_b",
+    answerability: "answerable_with_context",
+    context_refs: ["ctx_call_sheet_0604", "ctx_receipt_0412"],
+  },
+  {
+    id: "q_02",
+    prompt: "What exactly changed in the edit?",
+    grouped_count: 2,
+    cluster_id: "cl_b",
+    answerability: "answerable_with_context",
+    context_refs: ["ctx_call_sheet_0604", "ctx_statement_lola"],
+  },
+  {
+    id: "q_03",
+    prompt: "Who should be blamed for the missing receipt?",
+    grouped_count: 4,
+    cluster_id: "cl_a",
+    answerability: "hold_no_supported_third_party_claim",
+    context_refs: [],
+  },
+];
+
+const safetyHolds = [
+  {
+    id: "hold_01",
+    label: "Do not identify a target",
+    severity: "high",
+    reason: "The loudest phrase cluster names an accusation without a supported third-party source.",
+    status: "active",
+    safe_action: "Keep the cluster aggregate-only; answer the timeline question with dated context.",
+  },
+  {
+    id: "hold_02",
+    label: "Do not optimize for outrage",
+    severity: "medium",
+    reason: "Repost velocity is not evidence of authenticity or a reason to amplify the phrase.",
+    status: "active",
+    safe_action: "Route to grouped questions and preserve the observation window.",
+  },
+];
+
+const rolePermissions = [
+  {
+    role: "producer",
+    label: "Producer / showrunner",
+    can_view: true,
+    can_stage: true,
+    can_sign: false,
+    emphasis: ["scene context", "timing", "audience questions"],
+  },
+  {
+    role: "talent",
+    label: "Talent / cast",
+    can_view: true,
+    can_stage: false,
+    can_sign: true,
+    emphasis: ["first-party context", "safe holds", "what can be stood behind"],
+  },
+  {
+    role: "publicity",
+    label: "Publicity / social",
+    can_view: true,
+    can_stage: true,
+    can_sign: false,
+    emphasis: ["reach", "drafts", "source coverage"],
+  },
+  {
+    role: "safety",
+    label: "Safety / legal",
+    can_view: true,
+    can_stage: false,
+    can_sign: false,
+    emphasis: ["holds", "third-party claims", "policy boundaries"],
+  },
+];
+
 export const clusters = [
   {
     id: "cl_a",
@@ -422,7 +579,18 @@ export function activeCall() {
 }
 
 export function flood() {
-  return { observed_volume: 1284, events, clusters };
+  return {
+    observed_volume: 1284,
+    events,
+    clusters,
+    timeline,
+    evidence,
+    questions,
+    safety_holds: safetyHolds,
+    role_permissions: rolePermissions,
+    data_notice:
+      "Synthetic observation window · pseudonymous content is grouped, de-amplified, and never identity-resolved.",
+  };
 }
 
 export function getReceipts() {
