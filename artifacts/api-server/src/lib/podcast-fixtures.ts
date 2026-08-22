@@ -232,6 +232,14 @@ export async function generatePodcastBrief(conceptId: string) {
 
 export function decidePodcastBrief(id: string, decision: "approve" | "reject") {
   if (!currentBrief || currentBrief.id !== id) return null;
+  if (decision === "approve" && !isPodcastEvidenceSufficient(currentBrief)) {
+    return {
+      ...currentBrief,
+      status: "draft" as const,
+      approval_note:
+        "Approval unavailable until evidence trail is sufficient.",
+    };
+  }
   currentBrief = {
     ...currentBrief,
     status: decision === "approve" ? "approved" : "rejected",
@@ -241,4 +249,16 @@ export function decidePodcastBrief(id: string, decision: "approve" | "reject") {
         : "Rejected by a human reviewer. No script or audio rendering is permitted from this brief.",
   };
   return currentBrief;
+}
+
+export function isPodcastEvidenceSufficient(brief: PodcastBrief) {
+  if (!brief.source_links.length) return false;
+  return brief.source_links.every((link) => {
+    const source = podcastSources.find((item) => item.id === link.source_id);
+    return Boolean(
+      source &&
+        source.access_mode !== "manual_url" &&
+        !source.post_title.toLowerCase().includes("retrieval pending"),
+    );
+  });
 }

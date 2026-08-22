@@ -56,6 +56,7 @@ import {
   decidePodcastBrief,
   generatePodcastBrief,
   getPodcastRoom,
+  isPodcastEvidenceSufficient,
 } from "../lib/podcast-fixtures";
 
 const router: IRouter = Router();
@@ -194,6 +195,15 @@ router.post("/podcast/brief/:id/decision", requirePermission("sign"), (req, res)
   const brief = decidePodcastBrief(params.data.id, body.data.decision);
   if (!brief) {
     res.status(404).json({ error: "Podcast concept not found" });
+    return;
+  }
+  if (
+    body.data.decision === "approve" &&
+    !isPodcastEvidenceSufficient(brief)
+  ) {
+    res.status(409).json({
+      error: "Approval unavailable until evidence trail is sufficient.",
+    });
     return;
   }
   res.json(DecidePodcastBriefResponse.parse(brief));
