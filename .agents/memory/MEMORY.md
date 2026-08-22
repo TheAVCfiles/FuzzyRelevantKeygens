@@ -1,1 +1,2 @@
 - [Gemini direct API model](gemini-direct-api.md) — New API keys may reject older Gemini Flash models; use a currently supported model and keep fixture fallback explicit.
+- [Gemini structured output](gemini-structured-output.md) — Successful JSON responses can still be partially shaped; validate fields individually and preserve safe fixture values.

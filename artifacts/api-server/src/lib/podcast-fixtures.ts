@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import type { PodcastBrief, PodcastSource } from "@workspace/api-zod";
 
 import { recordAgentStage } from "./autography-fixtures";
 
@@ -6,7 +7,7 @@ const model = "gemini-3.6-flash";
 
 const now = () => new Date().toISOString();
 
-export const podcastSources = [
+export const podcastSources: PodcastSource[] = [
   {
     id: "reddit-fixture-001",
     source_url: "https://www.reddit.com/r/television/comments/1abc234/the_reunion_edit_changed_everything/",
@@ -81,9 +82,9 @@ export const podcastConcepts = [
   },
 ];
 
-let currentBrief: ReturnType<typeof fixtureBrief> | null = null;
+let currentBrief: PodcastBrief | null = null;
 
-function fixtureBrief(conceptId: string) {
+function fixtureBrief(conceptId: string): PodcastBrief {
   return {
     id: `brief-${conceptId}`,
     concept_id: conceptId,
@@ -144,7 +145,7 @@ export function addPodcastSource(sourceUrl: string) {
 
   const isReddit = parsed.hostname.endsWith("reddit.com");
   const communityMatch = parsed.pathname.match(/\/r\/([^/]+)/i);
-  const source = {
+  const source: PodcastSource = {
     id: `manual-${Date.now()}`,
     source_url: sourceUrl,
     platform: isReddit ? "Reddit" : "Public web",
@@ -175,9 +176,46 @@ export async function generatePodcastBrief(conceptId: string) {
       config: { responseMimeType: "application/json" },
     });
     const parsed = JSON.parse(response.text ?? "{}");
+    const safeDraft = {
+      topic_angle:
+        typeof parsed.topic_angle === "string"
+          ? parsed.topic_angle
+          : fallback.topic_angle,
+      audience_pain:
+        typeof parsed.audience_pain === "string"
+          ? parsed.audience_pain
+          : fallback.audience_pain,
+      why_now:
+        typeof parsed.why_now === "string" ? parsed.why_now : fallback.why_now,
+      key_tensions:
+        Array.isArray(parsed.key_tensions) &&
+        parsed.key_tensions.every((item: unknown) => typeof item === "string")
+          ? parsed.key_tensions
+          : fallback.key_tensions,
+      risk_notes:
+        Array.isArray(parsed.risk_notes) &&
+        parsed.risk_notes.every((item: unknown) => typeof item === "string")
+          ? parsed.risk_notes
+          : fallback.risk_notes,
+      episode_outline:
+        Array.isArray(parsed.episode_outline) &&
+        parsed.episode_outline.every(
+          (item: unknown) =>
+            typeof item === "object" &&
+            item !== null &&
+            typeof (item as { segment?: unknown }).segment === "string" &&
+            typeof (item as { purpose?: unknown }).purpose === "string",
+        )
+          ? parsed.episode_outline
+          : fallback.episode_outline,
+      suggested_title:
+        typeof parsed.suggested_title === "string"
+          ? parsed.suggested_title
+          : fallback.suggested_title,
+    };
     currentBrief = {
       ...fallback,
-      ...parsed,
+      ...safeDraft,
       generated_mode: "gemini",
       source_links: fallback.source_links,
       status: "draft",
