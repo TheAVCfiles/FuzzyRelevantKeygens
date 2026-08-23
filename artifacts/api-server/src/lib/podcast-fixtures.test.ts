@@ -15,7 +15,9 @@ import {
   getPodcastRoom,
   isPodcastEvidenceSufficient,
   podcastSources,
+  olderPersistedPodcastWorkspaceFixture,
   renamePodcastFilterPreset,
+  rehydratePodcastState,
   restorePodcastState,
 } from "./podcast-fixtures";
 
@@ -206,4 +208,27 @@ test("approved scripts prepare and rehydrate a staged release kit without unlock
   assert.equal(restored.script.release_kit?.status, "staged");
   assert.equal(restored.script.release_kit?.audio_status, "blocked_until_final_approval");
   assert.equal(restored.script.release_kit?.publishing_status, "blocked_until_final_approval");
+});
+
+test("older persisted workspaces retain release kits after storage rehydration", { concurrency: false }, () => {
+  assert.equal(rehydratePodcastState(olderPersistedPodcastWorkspaceFixture), true);
+
+  const restored = getPodcastScriptById(olderPersistedPodcastWorkspaceFixture.currentScriptId ?? "");
+  assert.equal(restored.kind, "found");
+  if (restored.kind !== "found") return;
+
+  const releaseKit = restored.script.release_kit;
+  assert.ok(releaseKit);
+  const legacyScript = olderPersistedPodcastWorkspaceFixture.scripts?.[0];
+  assert.ok(legacyScript);
+  const legacyReleaseKit = legacyScript.release_kit;
+  assert.ok(legacyReleaseKit && "titles" in legacyReleaseKit);
+  assert.deepEqual(releaseKit.title_options, legacyReleaseKit.titles);
+  assert.deepEqual(releaseKit.chapters, legacyReleaseKit.chapters);
+  assert.deepEqual(releaseKit.promotion_copy, legacyReleaseKit.promotion_drafts);
+  assert.deepEqual(releaseKit.accessibility_notes, legacyReleaseKit.accessibility_notes);
+  assert.equal(releaseKit.provenance_summary, legacyReleaseKit.provenance_summary);
+  assert.equal(releaseKit.status, "staged");
+  assert.equal(releaseKit.audio_status, "blocked_until_final_approval");
+  assert.equal(releaseKit.publishing_status, "blocked_until_final_approval");
 });

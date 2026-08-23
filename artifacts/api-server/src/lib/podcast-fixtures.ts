@@ -144,6 +144,30 @@ type PersistedPodcastState = {
   currentScriptId: string | null;
 };
 
+type LegacyPersistedReleaseKit = {
+  id: string;
+  script_id: string;
+  status: PodcastReleaseKit["status"];
+  titles: string[];
+  episode_description: string;
+  chapters: PodcastReleaseKit["chapters"];
+  host_notes: string[];
+  promotion_drafts: PodcastReleaseKit["promotion_copy"];
+  accessibility_notes: string[];
+  provenance_summary: string;
+  audio_status: PodcastReleaseKit["audio_status"];
+  publishing_status: PodcastReleaseKit["publishing_status"];
+  next_reviewer: string;
+};
+
+type PersistedScript = Omit<PodcastScriptWorkspace, "release_kit"> & {
+  release_kit?: PodcastReleaseKit | LegacyPersistedReleaseKit | null;
+};
+
+type PersistedPodcastStateInput = Omit<PersistedPodcastState, "scripts"> & {
+  scripts?: PersistedScript[];
+};
+
 export function getPodcastStorageHealth() {
   return { status: podcastStorageHealth } as const;
 }
@@ -192,23 +216,60 @@ function persistPodcastState(operation: string, artifactType: string) {
 export function restorePodcastState() {
   if (!existsSync(podcastStatePath)) return;
   try {
-    const saved = JSON.parse(readFileSync(podcastStatePath, "utf8")) as PersistedPodcastState;
+    rehydratePodcastState(JSON.parse(readFileSync(podcastStatePath, "utf8")));
+  } catch {
+    // A corrupt local state file must not prevent the API from booting.
+  }
+}
+
+function normalizePersistedReleaseKit(
+  releaseKit: PodcastReleaseKit | LegacyPersistedReleaseKit | null | undefined,
+): PodcastReleaseKit | null {
+  if (!releaseKit || typeof releaseKit !== "object") return null;
+  const candidate = releaseKit as PodcastReleaseKit & {
+    titles?: string[];
+    promotion_drafts?: PodcastReleaseKit["promotion_copy"];
+  };
+  return {
+    ...candidate,
+    title_options: candidate.title_options ?? candidate.titles ?? [],
+    promotion_copy: candidate.promotion_copy ?? candidate.promotion_drafts ?? [],
+  };
+}
+
+/**
+ * Rehydrate both the current storage format and the previous release-kit format.
+ * Keeping this boundary separate from file I/O lets compatibility fixtures test
+ * upgrades without replacing the workspace's real state file.
+ */
+export function rehydratePodcastState(input: unknown) {
+  if (!input || typeof input !== "object") return false;
+  const saved = input as PersistedPodcastStateInput;
+  if (!Array.isArray(saved.briefs) || !Array.isArray(saved.scripts)) return false;
+
+  try {
     podcastBriefs.clear();
     podcastScripts.clear();
     podcastFilterPresets.clear();
     for (const brief of saved.briefs ?? []) {
       if (brief?.id) podcastBriefs.set(brief.id, brief);
     }
-    for (const script of saved.scripts ?? []) {
-      if (script?.id) podcastScripts.set(script.id, { ...script, release_kit: script.release_kit ?? null });
+    for (const script of saved.scripts) {
+      if (script?.id) {
+        podcastScripts.set(script.id, {
+          ...script,
+          release_kit: normalizePersistedReleaseKit(script.release_kit),
+        });
+      }
     }
     for (const preset of saved.filterPresets ?? []) {
       if (preset?.id) podcastFilterPresets.set(preset.id, preset);
     }
     currentBrief = saved.currentBriefId ? podcastBriefs.get(saved.currentBriefId) ?? null : null;
     currentScript = saved.currentScriptId ? podcastScripts.get(saved.currentScriptId) ?? null : null;
+    return true;
   } catch {
-    // A corrupt local state file must not prevent the API from booting.
+    return false;
   }
 }
 
@@ -429,6 +490,36 @@ function fixtureReleaseKit(script: PodcastScriptWorkspace): PodcastReleaseKit {
     next_reviewer: "Final producer / publishing approver",
   };
 }
+
+const compatibilityBrief = fixtureBrief("concept-edit-context", podcastConcepts[0].source_ids);
+const compatibilityScript = {
+  ...fixtureScript(compatibilityBrief),
+  status: "approved" as const,
+  release_kit: fixtureReleaseKit({
+    ...fixtureScript(compatibilityBrief),
+    status: "approved" as const,
+  }),
+};
+
+/**
+ * Snapshot of the storage format written before release-kit field names were
+ * aligned with the API contract. It intentionally omits newer optional fields.
+ */
+export const olderPersistedPodcastWorkspaceFixture: PersistedPodcastStateInput = {
+  briefs: [{ ...compatibilityBrief, status: "approved" }],
+  scripts: [
+    {
+      ...compatibilityScript,
+      release_kit: {
+        ...compatibilityScript.release_kit,
+        titles: compatibilityScript.release_kit.title_options,
+        promotion_drafts: compatibilityScript.release_kit.promotion_copy,
+      },
+    },
+  ],
+  currentBriefId: compatibilityBrief.id,
+  currentScriptId: compatibilityScript.id,
+};
 
 export function createPodcastScript(briefId: string) {
   const brief = podcastBriefs.get(briefId) ?? (currentBrief?.id === briefId ? currentBrief : null);
