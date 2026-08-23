@@ -916,7 +916,7 @@ components:
           items: { type: string }
     PodcastScriptWorkspace:
       type: object
-      required: [id, brief_id, status, title, sections, provenance, safety_note, review_note, audio_status, release_kit]
+      required: [id, brief_id, status, title, sections, provenance, safety_note, review_note, audio_status, release_kit, compatibility_normalized]
       properties:
         id: { type: string }
         brief_id: { type: string }
@@ -942,6 +942,9 @@ components:
         audio_status:
           type: string
           enum: [blocked_until_script_approval]
+        compatibility_normalized:
+          type: boolean
+          description: Whether restoring this workspace required compatibility normalization from an older saved format.
         release_kit:
           anyOf:
             - $ref: "#/components/schemas/PodcastReleaseKit"

@@ -256,9 +256,13 @@ export function rehydratePodcastState(input: unknown) {
     }
     for (const script of saved.scripts) {
       if (script?.id) {
+        const releaseKit = script.release_kit;
+        const requiredCompatibilityNormalization =
+          Boolean(releaseKit && typeof releaseKit === "object" && ("titles" in releaseKit || "promotion_drafts" in releaseKit));
         podcastScripts.set(script.id, {
           ...script,
-          release_kit: normalizePersistedReleaseKit(script.release_kit),
+          compatibility_normalized: requiredCompatibilityNormalization,
+          release_kit: normalizePersistedReleaseKit(releaseKit),
         });
       }
     }
@@ -447,6 +451,7 @@ function fixtureScript(brief: PodcastBrief): PodcastScriptWorkspace {
     review_note:
       "Draft only. A separate human script review is required before any audio workflow.",
     audio_status: "blocked_until_script_approval",
+    compatibility_normalized: false,
     release_kit: null,
   };
 }

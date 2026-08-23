@@ -525,6 +525,7 @@ export const CreatePodcastScriptResponse = zod.object({
   "safety_note": zod.string(),
   "review_note": zod.string(),
   "audio_status": zod.enum(['blocked_until_script_approval']),
+  "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
   "script_id": zod.string(),
@@ -576,6 +577,7 @@ export const GetPodcastScriptByBriefResponse = zod.object({
   "safety_note": zod.string(),
   "review_note": zod.string(),
   "audio_status": zod.enum(['blocked_until_script_approval']),
+  "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
   "script_id": zod.string(),
@@ -627,6 +629,7 @@ export const GetPodcastScriptResponse = zod.object({
   "safety_note": zod.string(),
   "review_note": zod.string(),
   "audio_status": zod.enum(['blocked_until_script_approval']),
+  "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
   "script_id": zod.string(),
@@ -682,6 +685,7 @@ export const DecidePodcastScriptResponse = zod.object({
   "safety_note": zod.string(),
   "review_note": zod.string(),
   "audio_status": zod.enum(['blocked_until_script_approval']),
+  "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
   "script_id": zod.string(),

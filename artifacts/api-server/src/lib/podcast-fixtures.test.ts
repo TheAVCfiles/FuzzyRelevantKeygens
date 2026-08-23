@@ -219,6 +219,7 @@ test("older persisted workspaces retain release kits after storage rehydration",
 
   const releaseKit = restored.script.release_kit;
   assert.ok(releaseKit);
+  assert.equal(restored.script.compatibility_normalized, true);
   const legacyScript = olderPersistedPodcastWorkspaceFixture.scripts?.[0];
   assert.ok(legacyScript);
   const legacyReleaseKit = legacyScript.release_kit;

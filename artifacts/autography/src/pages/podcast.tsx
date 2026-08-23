@@ -466,6 +466,11 @@ function ScriptWorkspacePanel({
         <div><p className="podcast-kicker !text-[#d8a36c]">Script-only workspace</p><p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[#80756c]" data-testid="text-script-id">{script.id}</p></div>
         <span className={`border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] ${script.status === 'approved' ? 'border-[#87a895] text-[#9bc8a9]' : script.status === 'rejected' ? 'border-[#c27a68] text-[#e39a86]' : 'border-[#d8a36c] text-[#d8a36c]'}`} data-testid="status-script">{script.status}</span>
       </div>
+      {script.compatibility_normalized && (
+        <div className="mt-4 border border-[#6b9698] bg-[#20383c] px-3 py-2.5 text-xs leading-5 text-[#c5d8d5]" role="status" data-testid="notice-compatibility-normalized">
+          This older workspace was safely upgraded to the current format. Your approval status and audio gates are unchanged.
+        </div>
+      )}
       <h2 className="mt-5 font-serif text-[28px] leading-[1.1] text-[#f0e8de]" data-testid="text-script-title">{script.title}</h2>
       <div className="mt-5 space-y-4 border-y border-[#4f4944] py-2">
         {script.sections.map((section, index) => (

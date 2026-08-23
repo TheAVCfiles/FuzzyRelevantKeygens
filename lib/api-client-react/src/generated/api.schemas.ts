@@ -532,6 +532,8 @@ export interface PodcastScriptWorkspace {
   safety_note: string;
   review_note: string;
   audio_status: PodcastScriptWorkspaceAudioStatus;
+  /** Whether restoring this workspace required compatibility normalization from an older saved format. */
+  compatibility_normalized: boolean;
   release_kit: PodcastReleaseKit | null;
 }
 
