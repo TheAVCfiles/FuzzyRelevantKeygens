@@ -165,7 +165,7 @@ test("draft and rejected briefs cannot retrieve script workspaces", { concurrenc
   assert.equal(getPodcastScriptByBriefId(brief.id).kind, "brief_not_approved");
 });
 
-test("approved scripts prepare a staged release kit without unlocking audio or publishing", { concurrency: false }, async () => {
+test("approved scripts prepare and rehydrate a staged release kit without unlocking audio or publishing", { concurrency: false }, async () => {
   const concept = getPodcastRoom().concepts[0];
   assert.ok(concept);
   const brief = await generatePodcastBrief(concept.id, concept.source_ids);
@@ -189,4 +189,21 @@ test("approved scripts prepare a staged release kit without unlocking audio or p
   assert.equal(result.releaseKit.audio_status, "blocked_until_final_approval");
   assert.equal(result.releaseKit.publishing_status, "blocked_until_final_approval");
   assert.match(result.releaseKit.provenance_summary, /retrieved public sources/);
+
+  // Re-read the durable repository just as a newly started API process does.
+  restorePodcastState();
+  const restored = getPodcastScriptById(created.script.id);
+  assert.equal(restored.kind, "found");
+  if (restored.kind !== "found") return;
+
+  assert.equal(restored.script.status, "approved");
+  assert.deepEqual(restored.script.release_kit, result.releaseKit);
+  assert.deepEqual(restored.script.release_kit?.title_options, result.releaseKit.title_options);
+  assert.deepEqual(restored.script.release_kit?.chapters, result.releaseKit.chapters);
+  assert.deepEqual(restored.script.release_kit?.promotion_copy, result.releaseKit.promotion_copy);
+  assert.deepEqual(restored.script.release_kit?.accessibility_notes, result.releaseKit.accessibility_notes);
+  assert.equal(restored.script.release_kit?.provenance_summary, result.releaseKit.provenance_summary);
+  assert.equal(restored.script.release_kit?.status, "staged");
+  assert.equal(restored.script.release_kit?.audio_status, "blocked_until_final_approval");
+  assert.equal(restored.script.release_kit?.publishing_status, "blocked_until_final_approval");
 });
