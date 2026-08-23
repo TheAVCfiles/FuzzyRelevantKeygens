@@ -10,6 +10,7 @@ import {
   DecidePodcastBriefResponse,
   CreatePodcastScriptResponse,
   CreatePodcastScriptParams,
+  CreatePodcastReleaseKitResponse,
   DecidePodcastScriptBody,
   DecidePodcastScriptParams,
   DecidePodcastScriptResponse,
@@ -68,6 +69,7 @@ import {
   deletePodcastFilterPreset,
   decidePodcastBrief,
   createPodcastScript,
+  createPodcastReleaseKit,
   decidePodcastScript,
   generatePodcastBrief,
   getPodcastRoom,
@@ -348,6 +350,24 @@ router.post("/podcast/script/:id/decision", requirePermission("sign"), (req, res
     (req as Request & { autographyRole?: string }).autographyRole ?? "human reviewer",
   );
   res.json(DecidePodcastScriptResponse.parse(script));
+});
+
+router.post("/podcast/script/:id/release-kit", requirePermission("stage"), (req, res): void => {
+  const params = DecidePodcastScriptParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid podcast script workspace id" });
+    return;
+  }
+  const result = createPodcastReleaseKit(params.data.id);
+  if (result.kind === "not_found") {
+    res.status(404).json({ error: "Podcast script workspace not found" });
+    return;
+  }
+  if (result.kind === "script_not_approved") {
+    res.status(409).json({ error: "Only an approved script can prepare a release kit." });
+    return;
+  }
+  res.status(201).json(CreatePodcastReleaseKitResponse.parse(result.releaseKit));
 });
 
 router.get("/context", (_req, res): void => {

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type {
   PodcastBrief,
   PodcastFilterPreset,
+  PodcastReleaseKit,
   PodcastScriptWorkspace,
   PodcastSource,
 } from "@workspace/api-zod";
@@ -65,6 +66,16 @@ export const podcastConcepts = [
     freshness: 0.94,
     source_diversity: 0.42,
     source_ids: podcastSources.map((source) => source.id),
+    observed_signal: "Three public communities are converging on the same editorial question within the current episode window.",
+    supported_context: "The signal is about edit compression and missing timeline context; it does not establish intent, truth, or responsibility for any individual.",
+    unresolved_questions: [
+      "Which timeline details were compressed for format, and which remain unavailable?",
+      "What context can be verified before a recap makes the uncertainty sound like a verdict?",
+    ],
+    recommended_route: "producer_review" as const,
+    next_reviewer: "Producer / showrunner",
+    confidence_label: "medium · directional",
+    freshness_label: "fresh · current episode window",
     status: "ready" as const,
   },
   {
@@ -78,6 +89,16 @@ export const podcastConcepts = [
     freshness: 0.86,
     source_diversity: 0.32,
     source_ids: [podcastSources[0].id, podcastSources[2].id],
+    observed_signal: "Two communities are comparing recap fairness with the choices made in the cut.",
+    supported_context: "The available sources support a format-level discussion of recap framing, not a claim about a cast member or production motive.",
+    unresolved_questions: [
+      "Can the episode timeline be reconstructed from verified production context?",
+      "Which explanation would clarify the edit without rewarding certainty?",
+    ],
+    recommended_route: "publicity_clarification" as const,
+    next_reviewer: "Publicity / media desk",
+    confidence_label: "medium · cross-community pattern",
+    freshness_label: "fresh · same episode window",
     status: "ready" as const,
   },
   {
@@ -91,6 +112,16 @@ export const podcastConcepts = [
     freshness: 0.79,
     source_diversity: 0.28,
     source_ids: [podcastSources[1].id, podcastSources[2].id],
+    observed_signal: "Discussion is shifting from outrage-shaped reaction toward requests for a calmer recap format.",
+    supported_context: "The sources support an audience-format observation; they do not establish that the broader audience is tired of outrage.",
+    unresolved_questions: [
+      "Is the shift durable beyond these communities?",
+      "Would an experienced recap editor or audience researcher add useful context?",
+    ],
+    recommended_route: "subject_matter_expert" as const,
+    next_reviewer: "Verified audience-research or recap-format expert",
+    confidence_label: "low · needs corroboration",
+    freshness_label: "recent · limited source diversity",
     status: "needs_review" as const,
   },
 ];
@@ -169,7 +200,7 @@ export function restorePodcastState() {
       if (brief?.id) podcastBriefs.set(brief.id, brief);
     }
     for (const script of saved.scripts ?? []) {
-      if (script?.id) podcastScripts.set(script.id, script);
+      if (script?.id) podcastScripts.set(script.id, { ...script, release_kit: script.release_kit ?? null });
     }
     for (const preset of saved.filterPresets ?? []) {
       if (preset?.id) podcastFilterPresets.set(preset.id, preset);
@@ -355,6 +386,47 @@ function fixtureScript(brief: PodcastBrief): PodcastScriptWorkspace {
     review_note:
       "Draft only. A separate human script review is required before any audio workflow.",
     audio_status: "blocked_until_script_approval",
+    release_kit: null,
+  };
+}
+
+function fixtureReleaseKit(script: PodcastScriptWorkspace): PodcastReleaseKit {
+  return {
+    id: `release-kit-${script.id}`,
+    script_id: script.id,
+    status: "staged",
+    title_options: [
+      script.title,
+      "The Scene Between the Scenes",
+      "What the Edit Leaves Behind",
+    ],
+    episode_description:
+      "A source-backed conversation about how editing shapes what audiences can reconstruct, and how to make room for uncertainty without turning curiosity into a verdict.",
+    chapters: [
+      { label: "The shared question", timing: "00:00–04:00", purpose: "Name the recurring audience gap without targeting a person." },
+      { label: "What the sources support", timing: "04:00–13:00", purpose: "Separate repeated public patterns from claims the evidence cannot resolve." },
+      { label: "The edit and the uncertainty", timing: "13:00–24:00", purpose: "Explore format-level explanations and the boundary of responsible recap." },
+      { label: "A better way to clarify", timing: "24:00–30:00", purpose: "Offer a useful next question for producers, media teams, and listeners." },
+    ],
+    host_notes: [
+      "Lead with the audience question, not the loudest accusation.",
+      "Name the source window and confidence level before making an interpretive turn.",
+      "Keep unresolved questions open; do not convert them into identity-sensitive claims.",
+    ],
+    promotion_copy: [
+      { channel: "show notes", copy: "What happens when an edit leaves a timeline gap? We trace the question, the evidence, and the uncertainty." },
+      { channel: "newsletter", copy: "A calmer recap starts by separating what viewers noticed from what the evidence can actually explain." },
+      { channel: "social draft", copy: "New episode draft: the scene between the scenes — a source-backed look at editing, context, and better questions." },
+    ],
+    accessibility_notes: [
+      "Publish a complete transcript with speaker labels and chapter timestamps.",
+      "Describe editorial uncertainty in plain language rather than relying on tone or audio cues.",
+      "Keep source links and the provenance summary available alongside the episode notes.",
+    ],
+    provenance_summary: `${script.provenance.length} retrieved public sources are attached to the approved script. The package summarizes patterns without reproducing user comments verbatim.`,
+    audio_status: "blocked_until_final_approval",
+    publishing_status: "blocked_until_final_approval",
+    next_reviewer: "Final producer / publishing approver",
   };
 }
 
@@ -404,6 +476,17 @@ export function decidePodcastScript(id: string, decision: "approve" | "reject") 
   podcastScripts.set(currentScript.id, currentScript);
   persistPodcastState("decision", "script_workspace");
   return currentScript;
+}
+
+export function createPodcastReleaseKit(scriptId: string) {
+  const script = podcastScripts.get(scriptId) ?? (currentScript?.id === scriptId ? currentScript : null);
+  if (!script) return { kind: "not_found" as const };
+  if (script.status !== "approved") return { kind: "script_not_approved" as const };
+  const releaseKit = script.release_kit ?? fixtureReleaseKit(script);
+  currentScript = { ...script, release_kit: releaseKit };
+  podcastScripts.set(currentScript.id, currentScript);
+  persistPodcastState("create", "release_kit");
+  return { kind: "created" as const, releaseKit };
 }
 
 export function addPodcastSource(sourceUrl: string) {

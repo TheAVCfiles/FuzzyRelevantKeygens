@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PodcastReleaseKit } from './podcastReleaseKit';
 import type { PodcastScriptSection } from './podcastScriptSection';
 import type { PodcastScriptWorkspaceAudioStatus } from './podcastScriptWorkspaceAudioStatus';
 import type { PodcastScriptWorkspaceProvenanceItem } from './podcastScriptWorkspaceProvenanceItem';
@@ -20,4 +21,5 @@ export interface PodcastScriptWorkspace {
   safety_note: string;
   review_note: string;
   audio_status: PodcastScriptWorkspaceAudioStatus;
+  release_kit: PodcastReleaseKit | null;
 }

@@ -39,6 +39,7 @@ import type {
   PodcastFilterPreset,
   PodcastFilterPresetInput,
   PodcastFilterPresetRenameInput,
+  PodcastReleaseKit,
   PodcastRoom,
   PodcastScriptDecisionInput,
   PodcastScriptWorkspace,
@@ -1195,6 +1196,78 @@ export const useDecidePodcastScript = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDecidePodcastScriptMutationOptions(options));
+    }
+
+export const getCreatePodcastReleaseKitUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/script/${id}/release-kit`
+}
+
+/**
+ * Creates a staged editorial and promotion package. It never renders audio, exports, publishes, or bypasses final human approval.
+ * @summary Prepare a release kit from an approved podcast script
+ */
+export const createPodcastReleaseKit = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PodcastReleaseKit> => {
+
+  return customFetch<PodcastReleaseKit>(getCreatePodcastReleaseKitUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreatePodcastReleaseKitMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPodcastReleaseKit>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPodcastReleaseKit>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['createPodcastReleaseKit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPodcastReleaseKit>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  createPodcastReleaseKit(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePodcastReleaseKitMutationResult = NonNullable<Awaited<ReturnType<typeof createPodcastReleaseKit>>>
+
+    export type CreatePodcastReleaseKitMutationError = ErrorType<void>
+
+    /**
+ * @summary Prepare a release kit from an approved podcast script
+ */
+export const useCreatePodcastReleaseKit = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPodcastReleaseKit>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPodcastReleaseKit>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getCreatePodcastReleaseKitMutationOptions(options));
     }
 
 export const getGetContextUrl = () => {

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PodcastConceptRecommendedRoute } from './podcastConceptRecommendedRoute';
 import type { PodcastConceptStatus } from './podcastConceptStatus';
 
 export interface PodcastConcept {
@@ -19,4 +20,11 @@ export interface PodcastConcept {
   /** @minItems 1 */
   source_ids: string[];
   status: PodcastConceptStatus;
+  observed_signal: string;
+  supported_context: string;
+  unresolved_questions: string[];
+  recommended_route: PodcastConceptRecommendedRoute;
+  next_reviewer: string;
+  confidence_label: string;
+  freshness_label: string;
 }

@@ -23,6 +23,7 @@ import {
   useDeletePodcastFilterPreset,
   useDecidePodcastBrief,
   useCreatePodcastScript,
+  useCreatePodcastReleaseKit,
   useDecidePodcastScript,
   useGeneratePodcastBrief,
   useGetPodcastScriptByBrief,
@@ -34,6 +35,7 @@ import {
   type PodcastRoom,
   type PodcastSource,
   type PodcastScriptWorkspace,
+  type PodcastReleaseKit,
 } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -148,6 +150,11 @@ function ConceptCard({
           <p className="mt-2 max-w-xl text-sm leading-6 text-[#5f554e]" data-testid={`text-concept-summary-${concept.id}`}>
             {concept.summary}
           </p>
+          <div className="mt-4 grid gap-3 border-t border-[#d4c8bb] pt-4 text-xs leading-5 text-[#5f554e] sm:grid-cols-3" data-testid={`panel-insight-gap-${concept.id}`}>
+            <div><p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#365f67]">Observed now</p><p className="mt-1">{concept.observed_signal}</p></div>
+            <div><p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#365f67]">Supported context</p><p className="mt-1">{concept.supported_context}</p></div>
+            <div><p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#b34b36]">Route next</p><p className="mt-1 font-medium text-[#201b19]">{concept.next_reviewer} · {concept.recommended_route.replaceAll('_', ' ')}</p></div>
+          </div>
         </div>
         <ChevronRight className={`mt-1 h-5 w-5 shrink-0 transition-transform ${selected ? 'translate-x-1 text-[#b34b36]' : 'text-[#a99a8c] group-hover:translate-x-1'}`} strokeWidth={1.5} />
       </div>
@@ -423,6 +430,9 @@ function ScriptWorkspacePanel({
   isCreating,
   isDeciding,
   canCreate,
+  releaseKit,
+  onCreateReleaseKit,
+  isCreatingReleaseKit,
 }: {
   script: PodcastScriptWorkspace | null;
   onCreate: () => void;
@@ -430,6 +440,9 @@ function ScriptWorkspacePanel({
   isCreating: boolean;
   isDeciding: boolean;
   canCreate: boolean;
+  releaseKit: PodcastReleaseKit | null;
+  onCreateReleaseKit: () => void;
+  isCreatingReleaseKit: boolean;
 }) {
   if (!script) {
     return (
@@ -483,6 +496,29 @@ function ScriptWorkspacePanel({
         )}
       </div>
       <div className="mt-5 flex items-center justify-between border-t border-[#4f4944] pt-4 font-mono text-[10px] uppercase tracking-[0.08em] text-[#80756c]"><span>Audio status</span><span className="text-[#e4a38d]" data-testid="status-audio-gate">{statusLabel(script.audio_status)}</span></div>
+      <div className="mt-5 border border-[#365f67] bg-[#20383c] p-4" data-testid="panel-release-kit-gate">
+        <div className="flex items-center justify-between gap-3">
+          <div><p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#a8d0c9]">Release desk / gate 03</p><p className="mt-1 font-serif text-xl text-[#f0e8de]">Package the episode</p></div>
+          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#d8a36c]">{releaseKit ? 'staged' : 'not prepared'}</span>
+        </div>
+        <p className="mt-2 text-xs leading-5 text-[#c5d8d5]">Prepare titles, notes, chapters, promotion drafts, accessibility notes, and a receipt-ready provenance summary. Audio and publishing remain blocked.</p>
+        {!releaseKit && (
+          <Button type="button" size="sm" disabled={script.status !== 'approved' || isCreatingReleaseKit} onClick={onCreateReleaseKit} className="mt-4 bg-[#d8a36c] text-[#2c2927] hover:bg-[#e5b77e] disabled:opacity-40" data-testid="button-create-release-kit">
+            {isCreatingReleaseKit ? <LoaderCircle className="mr-2 h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="mr-2 h-3.5 w-3.5" />}
+            {isCreatingReleaseKit ? 'Preparing release kit' : script.status === 'approved' ? 'Prepare release kit' : 'Awaiting script approval'}
+          </Button>
+        )}
+        {releaseKit && <div className="mt-4 border-t border-[#46696e] pt-4" data-testid="panel-release-kit">
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#a8d0c9]">Title options</p>
+          <div className="mt-2 flex flex-wrap gap-2">{releaseKit.title_options.map((title) => <span key={title} className="border border-[#6b9698] px-2 py-1 text-xs text-[#f0e8de]">{title}</span>)}</div>
+          <p className="mt-4 text-sm leading-6 text-[#f0e8de]">{releaseKit.episode_description}</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div><p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#a8d0c9]">Chapters</p><ul className="mt-2 space-y-1 text-xs text-[#c5d8d5]">{releaseKit.chapters.map((chapter) => <li key={chapter.label}><span className="text-[#d8a36c]">{chapter.timing}</span> · {chapter.label}</li>)}</ul></div>
+            <div><p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#a8d0c9]">Promotion drafts</p><ul className="mt-2 space-y-1 text-xs text-[#c5d8d5]">{releaseKit.promotion_copy.map((item) => <li key={item.channel}><span className="text-[#d8a36c]">{item.channel}:</span> {item.copy}</li>)}</ul></div>
+          </div>
+          <div className="mt-4 border-t border-[#46696e] pt-3 text-xs leading-5 text-[#c5d8d5]"><strong className="font-medium text-[#f0e8de]">Next reviewer:</strong> {releaseKit.next_reviewer}<br /><strong className="font-medium text-[#f0e8de]">Audio:</strong> {statusLabel(releaseKit.audio_status)} · <strong className="font-medium text-[#f0e8de]">Publishing:</strong> {statusLabel(releaseKit.publishing_status)}</div>
+        </div>}
+      </div>
       <div className="mt-5">
         <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Attached provenance</p>
        <div className="space-y-2">{script.provenance.map((source) => <a key={source.source_id} href={source.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 border border-[#4f4944] px-3 py-3 text-xs text-[#d8cbc1] hover:border-[#d8a36c]" data-testid={`link-script-source-${source.source_id}`}><span className="min-w-0 truncate">{source.label}<span className="ml-2 text-[9px] uppercase tracking-[0.08em] text-[#80756c]">retrieved {formatDate(source.retrieved_at)}</span></span><ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-[#d8a36c]" /></a>)}</div>
@@ -591,6 +627,14 @@ export function Podcast() {
       onSuccess: (nextScript) => { setScript(nextScript); setLocalError(''); },
     },
   });
+  const createReleaseKit = useCreatePodcastReleaseKit({
+    mutation: {
+      onSuccess: (releaseKit) => {
+        setScript((current) => current ? { ...current, release_kit: releaseKit } : current);
+        setLocalError('');
+      },
+    },
+  });
 
   const submitSource = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -610,7 +654,7 @@ export function Podcast() {
   };
 
   const roomError = roomQuery.error ? 'The intelligence room could not be loaded. Try again to reconnect to the source desk.' : '';
-  const mutationError = localError || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (createPreset.error ? 'This comparison preset could not be saved.' : '') || (renamePreset.error ? 'This comparison preset could not be renamed.' : '') || (deletePreset.error ? 'This comparison preset could not be removed.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '') || (scriptWorkspaceQuery.error && room?.selected_brief_id ? 'The saved script workspace could not be retrieved. It may no longer be approved.' : '');
+  const mutationError = localError || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (createPreset.error ? 'This comparison preset could not be saved.' : '') || (renamePreset.error ? 'This comparison preset could not be renamed.' : '') || (deletePreset.error ? 'This comparison preset could not be removed.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '') || (createReleaseKit.error ? 'The release kit could not be prepared. Audio and publishing remain blocked.' : '') || (scriptWorkspaceQuery.error && room?.selected_brief_id ? 'The saved script workspace could not be retrieved. It may no longer be approved.' : '');
   const evidenceSufficient = brief ? hasSufficientEvidence(brief, sources) : false;
 
   return (
@@ -712,7 +756,7 @@ export function Podcast() {
 
               <div className="space-y-4">
                  <BriefPanel brief={brief} concept={selectedConcept} onDecide={(decision) => brief && decideBrief.mutate({ id: brief.id, data: { decision } })} isDeciding={decideBrief.isPending} evidenceSufficient={evidenceSufficient} />
-                 <ScriptWorkspacePanel script={script} canCreate={brief?.status === 'approved'} isCreating={createScript.isPending} isDeciding={decideScript.isPending} onCreate={() => brief && createScript.mutate({ id: brief.id })} onDecide={(decision) => script && decideScript.mutate({ id: script.id, data: { decision } })} />
+                 <ScriptWorkspacePanel script={script} releaseKit={script?.release_kit ?? null} canCreate={brief?.status === 'approved'} isCreating={createScript.isPending} isDeciding={decideScript.isPending} isCreatingReleaseKit={createReleaseKit.isPending} onCreate={() => brief && createScript.mutate({ id: brief.id })} onCreateReleaseKit={() => script && createReleaseKit.mutate({ id: script.id })} onDecide={(decision) => script && decideScript.mutate({ id: script.id, data: { decision } })} />
                 <div className="podcast-panel p-5" data-testid="panel-next-action">
                   <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#b34b36]" strokeWidth={1.5} /><p className="podcast-kicker">Next editorial action</p></div>
                   <p className="mt-3 text-sm leading-6 text-[#5f554e]">You are looking at <strong className="font-medium text-[#201b19]">{selectedConcept?.title || 'the shortlist'}</strong>. Generate its brief only when the source trail is sufficient for a producer review.</p>

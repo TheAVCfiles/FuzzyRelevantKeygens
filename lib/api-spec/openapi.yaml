@@ -270,6 +270,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PodcastScriptWorkspace"
+  /podcast/script/{id}/release-kit:
+    post:
+      operationId: createPodcastReleaseKit
+      tags: [autography]
+      summary: Prepare a release kit from an approved podcast script
+      description: Creates a staged editorial and promotion package. It never renders audio, exports, publishes, or bypasses final human approval.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          description: Staged release kit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastReleaseKit"
+        "409":
+          description: Script is not approved
   /context:
     get:
       operationId: getContext
@@ -748,7 +765,7 @@ components:
           enum: [fixture, public_url, manual_url]
     PodcastConcept:
       type: object
-      required: [id, title, summary, relevance, urgency, engagement, freshness, source_diversity, source_ids, status]
+      required: [id, title, summary, relevance, urgency, engagement, freshness, source_diversity, source_ids, status, observed_signal, supported_context, unresolved_questions, recommended_route, next_reviewer, confidence_label, freshness_label]
       properties:
         id: { type: string }
         title: { type: string }
@@ -765,6 +782,17 @@ components:
         status:
           type: string
           enum: [ready, needs_review]
+        observed_signal: { type: string }
+        supported_context: { type: string }
+        unresolved_questions:
+          type: array
+          items: { type: string }
+        recommended_route:
+          type: string
+          enum: [producer_review, publicity_clarification, safety_legal_hold, subject_matter_expert]
+        next_reviewer: { type: string }
+        confidence_label: { type: string }
+        freshness_label: { type: string }
     PodcastRoom:
       type: object
       required: [sources, concepts, filter_presets, data_notice, rendering_status, selected_brief_id]
@@ -888,7 +916,7 @@ components:
           items: { type: string }
     PodcastScriptWorkspace:
       type: object
-      required: [id, brief_id, status, title, sections, provenance, safety_note, review_note, audio_status]
+      required: [id, brief_id, status, title, sections, provenance, safety_note, review_note, audio_status, release_kit]
       properties:
         id: { type: string }
         brief_id: { type: string }
@@ -914,6 +942,54 @@ components:
         audio_status:
           type: string
           enum: [blocked_until_script_approval]
+        release_kit:
+          anyOf:
+            - $ref: "#/components/schemas/PodcastReleaseKit"
+            - type: "null"
+    PodcastReleaseKit:
+      type: object
+      required: [id, script_id, status, title_options, episode_description, chapters, host_notes, promotion_copy, accessibility_notes, provenance_summary, audio_status, publishing_status, next_reviewer]
+      properties:
+        id: { type: string }
+        script_id: { type: string }
+        status:
+          type: string
+          enum: [staged]
+        title_options:
+          type: array
+          items: { type: string }
+        episode_description: { type: string }
+        chapters:
+          type: array
+          items:
+            type: object
+            required: [label, timing, purpose]
+            properties:
+              label: { type: string }
+              timing: { type: string }
+              purpose: { type: string }
+        host_notes:
+          type: array
+          items: { type: string }
+        promotion_copy:
+          type: array
+          items:
+            type: object
+            required: [channel, copy]
+            properties:
+              channel: { type: string }
+              copy: { type: string }
+        accessibility_notes:
+          type: array
+          items: { type: string }
+        provenance_summary: { type: string }
+        audio_status:
+          type: string
+          enum: [blocked_until_final_approval]
+        publishing_status:
+          type: string
+          enum: [blocked_until_final_approval]
+        next_reviewer: { type: string }
     PodcastScriptDecisionInput:
       type: object
       required: [decision]

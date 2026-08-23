@@ -5,6 +5,7 @@ import {
   buildSafePodcastDraft,
   createPodcastFilterPreset,
   createPodcastScript,
+  createPodcastReleaseKit,
   deletePodcastFilterPreset,
   decidePodcastBrief,
   decidePodcastScript,
@@ -162,4 +163,30 @@ test("draft and rejected briefs cannot retrieve script workspaces", { concurrenc
   assert.equal(getPodcastScriptByBriefId(brief.id).kind, "brief_not_approved");
   assert.equal(decidePodcastBrief(brief.id, "reject")?.status, "rejected");
   assert.equal(getPodcastScriptByBriefId(brief.id).kind, "brief_not_approved");
+});
+
+test("approved scripts prepare a staged release kit without unlocking audio or publishing", { concurrency: false }, async () => {
+  const concept = getPodcastRoom().concepts[0];
+  assert.ok(concept);
+  const brief = await generatePodcastBrief(concept.id, concept.source_ids);
+  assert.ok(brief);
+  assert.equal(decidePodcastBrief(brief.id, "approve")?.status, "approved");
+  const created = createPodcastScript(brief.id);
+  assert.equal(created.kind, "created");
+  if (created.kind !== "created") return;
+  if (created.script.status !== "approved") {
+    assert.equal(createPodcastReleaseKit(created.script.id).kind, "script_not_approved");
+    assert.equal(decidePodcastScript(created.script.id, "approve")?.status, "approved");
+  }
+
+  const result = createPodcastReleaseKit(created.script.id);
+  assert.equal(result.kind, "created");
+  if (result.kind !== "created") return;
+  assert.equal(result.releaseKit.status, "staged");
+  assert.ok(result.releaseKit.title_options.length >= 2);
+  assert.ok(result.releaseKit.chapters.length >= 3);
+  assert.ok(result.releaseKit.promotion_copy.length >= 2);
+  assert.equal(result.releaseKit.audio_status, "blocked_until_final_approval");
+  assert.equal(result.releaseKit.publishing_status, "blocked_until_final_approval");
+  assert.match(result.releaseKit.provenance_summary, /retrieved public sources/);
 });

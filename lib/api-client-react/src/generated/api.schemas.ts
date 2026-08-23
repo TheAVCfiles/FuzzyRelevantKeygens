@@ -307,6 +307,16 @@ export const PodcastConceptStatus = {
   needs_review: 'needs_review',
 } as const;
 
+export type PodcastConceptRecommendedRoute = typeof PodcastConceptRecommendedRoute[keyof typeof PodcastConceptRecommendedRoute];
+
+
+export const PodcastConceptRecommendedRoute = {
+  producer_review: 'producer_review',
+  publicity_clarification: 'publicity_clarification',
+  safety_legal_hold: 'safety_legal_hold',
+  subject_matter_expert: 'subject_matter_expert',
+} as const;
+
 export interface PodcastConcept {
   id: string;
   title: string;
@@ -319,6 +329,13 @@ export interface PodcastConcept {
   /** @minItems 1 */
   source_ids: string[];
   status: PodcastConceptStatus;
+  observed_signal: string;
+  supported_context: string;
+  unresolved_questions: string[];
+  recommended_route: PodcastConceptRecommendedRoute;
+  next_reviewer: string;
+  confidence_label: string;
+  freshness_label: string;
 }
 
 export type PodcastRoomRenderingStatus = typeof PodcastRoomRenderingStatus[keyof typeof PodcastRoomRenderingStatus];
@@ -457,6 +474,54 @@ export const PodcastScriptWorkspaceAudioStatus = {
   blocked_until_script_approval: 'blocked_until_script_approval',
 } as const;
 
+export type PodcastReleaseKitStatus = typeof PodcastReleaseKitStatus[keyof typeof PodcastReleaseKitStatus];
+
+
+export const PodcastReleaseKitStatus = {
+  staged: 'staged',
+} as const;
+
+export type PodcastReleaseKitAudioStatus = typeof PodcastReleaseKitAudioStatus[keyof typeof PodcastReleaseKitAudioStatus];
+
+
+export const PodcastReleaseKitAudioStatus = {
+  blocked_until_final_approval: 'blocked_until_final_approval',
+} as const;
+
+export type PodcastReleaseKitPublishingStatus = typeof PodcastReleaseKitPublishingStatus[keyof typeof PodcastReleaseKitPublishingStatus];
+
+
+export const PodcastReleaseKitPublishingStatus = {
+  blocked_until_final_approval: 'blocked_until_final_approval',
+} as const;
+
+export type PodcastReleaseKitChaptersItem = {
+  label: string;
+  timing: string;
+  purpose: string;
+};
+
+export type PodcastReleaseKitPromotionCopyItem = {
+  channel: string;
+  copy: string;
+};
+
+export interface PodcastReleaseKit {
+  id: string;
+  script_id: string;
+  status: PodcastReleaseKitStatus;
+  title_options: string[];
+  episode_description: string;
+  chapters: PodcastReleaseKitChaptersItem[];
+  host_notes: string[];
+  promotion_copy: PodcastReleaseKitPromotionCopyItem[];
+  accessibility_notes: string[];
+  provenance_summary: string;
+  audio_status: PodcastReleaseKitAudioStatus;
+  publishing_status: PodcastReleaseKitPublishingStatus;
+  next_reviewer: string;
+}
+
 export interface PodcastScriptWorkspace {
   id: string;
   brief_id: string;
@@ -467,6 +532,7 @@ export interface PodcastScriptWorkspace {
   safety_note: string;
   review_note: string;
   audio_status: PodcastScriptWorkspaceAudioStatus;
+  release_kit: PodcastReleaseKit | null;
 }
 
 export type PodcastScriptDecisionInputDecision = typeof PodcastScriptDecisionInputDecision[keyof typeof PodcastScriptDecisionInputDecision];
