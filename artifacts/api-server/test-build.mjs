@@ -13,5 +13,12 @@ await build({
   platform: "node",
   outdir: ".test-dist",
   sourcemap: "inline",
-  external: ["@google/genai"],
+  external: [
+    "@google/genai",
+    "cookie-parser",
+    "cors",
+    "express",
+    "pino",
+    "pino-http",
+  ],
 });

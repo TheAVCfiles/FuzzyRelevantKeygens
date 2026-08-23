@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
+import { createServer } from "node:http";
 import { test } from "node:test";
 
+import app from "../app";
 import {
   buildSafePodcastDraft,
   createPodcastFilterPreset,
@@ -232,4 +235,53 @@ test("older persisted workspaces retain release kits after storage rehydration",
   assert.equal(releaseKit.status, "staged");
   assert.equal(releaseKit.audio_status, "blocked_until_final_approval");
   assert.equal(releaseKit.publishing_status, "blocked_until_final_approval");
+});
+
+test("legacy workspaces keep compatibility and production gates through both API retrieval routes", { concurrency: false }, async () => {
+  assert.equal(rehydratePodcastState(olderPersistedPodcastWorkspaceFixture), true);
+
+  const server = createServer(app);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const baseUrl = `http://127.0.0.1:${address.port}/api`;
+    const headers = {
+      "x-autography-role": "producer",
+      "x-autography-user": "route-regression-test",
+    };
+    const briefId = olderPersistedPodcastWorkspaceFixture.currentBriefId;
+    const scriptId = olderPersistedPodcastWorkspaceFixture.currentScriptId;
+    assert.ok(briefId);
+    assert.ok(scriptId);
+
+    const responses = await Promise.all([
+      fetch(`${baseUrl}/podcast/brief/${briefId}/script`, { headers }),
+      fetch(`${baseUrl}/podcast/script/${scriptId}`, { headers }),
+    ]);
+
+    for (const response of responses) {
+      assert.equal(response.status, 200);
+      const body = await response.json() as {
+        status: string;
+        audio_status: string;
+        compatibility_normalized: boolean;
+        release_kit?: {
+          audio_status: string;
+          publishing_status: string;
+        } | null;
+      };
+      assert.equal(body.compatibility_normalized, true);
+      assert.equal(body.status, "approved");
+      assert.equal(body.audio_status, "blocked_until_script_approval");
+      assert.equal(body.release_kit?.audio_status, "blocked_until_final_approval");
+      assert.equal(body.release_kit?.publishing_status, "blocked_until_final_approval");
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
 });
