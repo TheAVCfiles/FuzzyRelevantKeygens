@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { useGetActiveCall } from "@workspace/api-client-react";
+import { AlertTriangle } from "lucide-react";
+import { useGetActiveCall, useHealthCheck } from "@workspace/api-client-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -8,6 +9,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
     query: {
       queryKey: ["/api/call/active"],
       refetchInterval: 1000,
+    },
+  });
+  const { data: health } = useHealthCheck({
+    query: {
+      queryKey: ["/api/healthz"],
+      refetchInterval: 30_000,
+      refetchOnWindowFocus: true,
+      staleTime: 15_000,
     },
   });
 
@@ -54,6 +63,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
       </nav>
+      {health && "storage" in health && health.storage === "degraded" && (
+        <div
+          className="flex items-start gap-3 border-b border-[#b34b36]/60 bg-[#b34b36]/15 px-4 py-3 text-[#f1c8b9] sm:px-6"
+          role="alert"
+          data-testid="storage-degraded-warning"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#e28b72]" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="font-system text-xs font-semibold uppercase tracking-[0.12em] text-[#f3b09b]">
+              Workspace storage needs attention
+            </p>
+            <p className="mt-1 max-w-3xl font-sans text-sm leading-5 text-[#f1c8b9]">
+              Persistence is temporarily unavailable. New workspace changes may not survive a restart.
+              Your existing workspace remains available while storage recovers.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="hidden md:flex items-center justify-between gap-4 px-6 py-2 border-b border-sepia/20 font-system text-[10px] tracking-[0.12em] text-sepia">
         <span>LIVE ENTERTAINMENT OPERATIONS</span>
         <span>SIGNAL ROOM · EVIDENCE COMPILER · RESPONSE ROOM</span>
