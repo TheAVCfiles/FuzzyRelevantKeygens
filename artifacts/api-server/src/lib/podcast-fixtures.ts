@@ -526,6 +526,32 @@ export const olderPersistedPodcastWorkspaceFixture: PersistedPodcastStateInput =
   currentScriptId: compatibilityScript.id,
 };
 
+/**
+ * Older persisted workspaces can contain scripts for briefs that were never
+ * approved. Keep both blocked statuses in one snapshot so API retrieval tests
+ * exercise restoration rather than only the in-memory decision path.
+ */
+export const blockedLegacyPodcastWorkspaceFixture: PersistedPodcastStateInput = {
+  briefs: (["draft", "rejected"] as const).map((status) => ({
+    ...compatibilityBrief,
+    id: `legacy-${status}-brief`,
+    status,
+  })),
+  scripts: (["draft", "rejected"] as const).map((status) => ({
+    ...compatibilityScript,
+    id: `script-legacy-${status}-brief`,
+    brief_id: `legacy-${status}-brief`,
+    status,
+    release_kit: {
+      ...compatibilityScript.release_kit,
+      titles: compatibilityScript.release_kit.title_options,
+      promotion_drafts: compatibilityScript.release_kit.promotion_copy,
+    },
+  })),
+  currentBriefId: "legacy-draft-brief",
+  currentScriptId: "script-legacy-draft-brief",
+};
+
 export function createPodcastScript(briefId: string) {
   const brief = podcastBriefs.get(briefId) ?? (currentBrief?.id === briefId ? currentBrief : null);
   if (!brief) return { kind: "not_found" as const };

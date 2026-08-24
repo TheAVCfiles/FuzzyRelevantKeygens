@@ -6,6 +6,7 @@ import { test } from "node:test";
 import app from "../app";
 import {
   buildSafePodcastDraft,
+  blockedLegacyPodcastWorkspaceFixture,
   createPodcastFilterPreset,
   createPodcastScript,
   createPodcastReleaseKit,
@@ -278,6 +279,46 @@ test("legacy workspaces keep compatibility and production gates through both API
       assert.equal(body.audio_status, "blocked_until_script_approval");
       assert.equal(body.release_kit?.audio_status, "blocked_until_final_approval");
       assert.equal(body.release_kit?.publishing_status, "blocked_until_final_approval");
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test("restored legacy draft and rejected workspaces stay blocked through both API retrieval routes", { concurrency: false }, async () => {
+  assert.equal(rehydratePodcastState(blockedLegacyPodcastWorkspaceFixture), true);
+
+  const server = createServer(app);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const baseUrl = `http://127.0.0.1:${address.port}/api`;
+    const headers = {
+      "x-autography-role": "producer",
+      "x-autography-user": "route-regression-test",
+    };
+
+    for (const status of ["draft", "rejected"] as const) {
+      const briefId = `legacy-${status}-brief`;
+      const scriptId = `script-legacy-${status}-brief`;
+      const responses = await Promise.all([
+        fetch(`${baseUrl}/podcast/brief/${briefId}/script`, { headers }),
+        fetch(`${baseUrl}/podcast/script/${scriptId}`, { headers }),
+      ]);
+
+      for (const response of responses) {
+        assert.equal(response.status, 409);
+        assert.deepEqual(await response.json(), {
+          error: response.url.includes(`/brief/${briefId}/`)
+            ? "Only an approved podcast brief can retrieve a script workspace."
+            : "Only a script from an approved podcast brief can be retrieved.",
+        });
+      }
     }
   } finally {
     await new Promise<void>((resolve, reject) => {
