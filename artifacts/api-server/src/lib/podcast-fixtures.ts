@@ -15,6 +15,10 @@ const model = "gemini-3.6-flash";
 
 const now = () => new Date().toISOString();
 
+type PodcastWorkspaceWithCompatibility = PodcastScriptWorkspace & {
+  compatibility_normalized: boolean;
+};
+
 export const podcastSources: PodcastSource[] = [
   {
     id: "reddit-fixture-001",
@@ -127,9 +131,9 @@ export const podcastConcepts = [
 ];
 
 let currentBrief: PodcastBrief | null = null;
-let currentScript: PodcastScriptWorkspace | null = null;
+let currentScript: PodcastWorkspaceWithCompatibility | null = null;
 const podcastBriefs = new Map<string, PodcastBrief>();
-const podcastScripts = new Map<string, PodcastScriptWorkspace>();
+const podcastScripts = new Map<string, PodcastWorkspaceWithCompatibility>();
 const podcastFilterPresets = new Map<string, PodcastFilterPreset>();
 
 const podcastStatePath = join(process.cwd(), ".podcast-room-state.json");
@@ -138,7 +142,7 @@ let podcastStorageHealth: PodcastStorageHealth = "healthy";
 
 type PersistedPodcastState = {
   briefs: PodcastBrief[];
-  scripts: PodcastScriptWorkspace[];
+  scripts: PodcastWorkspaceWithCompatibility[];
   filterPresets?: PodcastFilterPreset[];
   currentBriefId: string | null;
   currentScriptId: string | null;
@@ -160,7 +164,7 @@ type LegacyPersistedReleaseKit = {
   next_reviewer: string;
 };
 
-type PersistedScript = Omit<PodcastScriptWorkspace, "release_kit"> & {
+type PersistedScript = Omit<PodcastWorkspaceWithCompatibility, "release_kit"> & {
   release_kit?: PodcastReleaseKit | LegacyPersistedReleaseKit | null;
 };
 
@@ -430,7 +434,7 @@ export function deletePodcastFilterPreset(id: string) {
   return true;
 }
 
-function fixtureScript(brief: PodcastBrief): PodcastScriptWorkspace {
+function fixtureScript(brief: PodcastBrief): PodcastWorkspaceWithCompatibility {
   const sourceIds = brief.source_links.map((link) => link.source_id);
   return {
     id: `script-${brief.id}`,
@@ -456,7 +460,7 @@ function fixtureScript(brief: PodcastBrief): PodcastScriptWorkspace {
   };
 }
 
-function fixtureReleaseKit(script: PodcastScriptWorkspace): PodcastReleaseKit {
+function fixtureReleaseKit(script: PodcastWorkspaceWithCompatibility): PodcastReleaseKit {
   return {
     id: `release-kit-${script.id}`,
     script_id: script.id,
