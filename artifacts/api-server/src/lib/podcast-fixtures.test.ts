@@ -326,3 +326,120 @@ test("restored legacy draft and rejected workspaces stay blocked through both AP
     });
   }
 });
+
+test("restored legacy draft and rejected workspaces stay blocked through all API mutation routes", { concurrency: false }, async () => {
+  assert.equal(rehydratePodcastState(blockedLegacyPodcastWorkspaceFixture), true);
+
+  const server = createServer(app);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const baseUrl = `http://127.0.0.1:${address.port}/api`;
+    const headers = {
+      "content-type": "application/json",
+      "x-autography-role": "producer",
+      "x-autography-user": "route-regression-test",
+    };
+
+    for (const status of ["draft", "rejected"] as const) {
+      const briefId = `legacy-${status}-brief`;
+      const scriptId = `script-legacy-${status}-brief`;
+      const responses = await Promise.all([
+        fetch(`${baseUrl}/podcast/brief/${briefId}/decision`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ decision: "approve" }),
+        }),
+        fetch(`${baseUrl}/podcast/brief/${briefId}/script`, {
+          method: "POST",
+          headers,
+        }),
+        fetch(`${baseUrl}/podcast/script/${scriptId}/decision`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ decision: "approve" }),
+        }),
+        fetch(`${baseUrl}/podcast/script/${scriptId}/release-kit`, {
+          method: "POST",
+          headers,
+        }),
+      ]);
+
+      for (const response of responses) {
+        assert.equal(response.status, 409);
+        const body = await response.json() as { error?: string };
+        assert.equal(typeof body.error, "string");
+        assert.equal(Object.keys(body).includes("status"), false);
+        assert.equal(Object.keys(body).includes("brief_id"), false);
+        assert.equal(Object.keys(body).includes("brief"), false);
+        assert.equal(Object.keys(body).includes("script"), false);
+      }
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test("approved legacy workspaces retain brief approval, script approval, and release gates", { concurrency: false }, async () => {
+  assert.equal(rehydratePodcastState(olderPersistedPodcastWorkspaceFixture), true);
+
+  const server = createServer(app);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const baseUrl = `http://127.0.0.1:${address.port}/api`;
+    const headers = {
+      "content-type": "application/json",
+      "x-autography-role": "producer",
+      "x-autography-user": "route-regression-test",
+    };
+    const briefId = olderPersistedPodcastWorkspaceFixture.currentBriefId;
+    const scriptId = olderPersistedPodcastWorkspaceFixture.currentScriptId;
+    assert.ok(briefId);
+    assert.ok(scriptId);
+
+    const briefDecision = await fetch(`${baseUrl}/podcast/brief/${briefId}/decision`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision: "approve" }),
+    });
+    assert.equal(briefDecision.status, 200);
+    const briefBody = await briefDecision.json() as { status?: string };
+    assert.equal(briefBody.status, "approved");
+
+    const scriptDecision = await fetch(`${baseUrl}/podcast/script/${scriptId}/decision`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision: "approve" }),
+    });
+    assert.equal(scriptDecision.status, 200);
+    const scriptBody = await scriptDecision.json() as { status?: string };
+    assert.equal(scriptBody.status, "approved");
+
+    const releaseKit = await fetch(`${baseUrl}/podcast/script/${scriptId}/release-kit`, {
+      method: "POST",
+      headers,
+    });
+    assert.equal(releaseKit.status, 201);
+    const releaseBody = await releaseKit.json() as {
+      status?: string;
+      audio_status?: string;
+      publishing_status?: string;
+    };
+    assert.equal(releaseBody.status, "staged");
+    assert.equal(releaseBody.audio_status, "blocked_until_final_approval");
+    assert.equal(releaseBody.publishing_status, "blocked_until_final_approval");
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});

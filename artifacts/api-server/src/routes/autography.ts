@@ -254,6 +254,11 @@ router.post("/podcast/brief/:id/decision", requirePermission("sign"), (req, res)
     res.status(400).json({ error: "Invalid podcast brief decision" });
     return;
   }
+  const existingScript = getPodcastScriptByBriefId(params.data.id);
+  if (existingScript.kind === "brief_not_approved") {
+    res.status(409).json({ error: "Only an approved podcast brief can change a script workspace." });
+    return;
+  }
   const brief = decidePodcastBrief(params.data.id, body.data.decision);
   if (!brief) {
     res.status(404).json({ error: "Podcast concept not found" });
@@ -336,6 +341,11 @@ router.post("/podcast/script/:id/decision", requirePermission("sign"), (req, res
   const body = DecidePodcastScriptBody.safeParse(req.body);
   if (!params.success || !body.success) {
     res.status(400).json({ error: "Invalid podcast script decision" });
+    return;
+  }
+  const existingScript = getPodcastScriptById(params.data.id);
+  if (existingScript.kind === "brief_not_approved") {
+    res.status(409).json({ error: "Only a script from an approved podcast brief can be changed." });
     return;
   }
   const script = decidePodcastScript(params.data.id, body.data.decision);
