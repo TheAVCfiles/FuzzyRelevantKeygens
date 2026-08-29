@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PodcastAudioClip } from './podcastAudioClip';
 import type { PodcastReleaseKit } from './podcastReleaseKit';
 import type { PodcastScriptSection } from './podcastScriptSection';
 import type { PodcastScriptWorkspaceAudioStatus } from './podcastScriptWorkspaceAudioStatus';
@@ -24,4 +25,5 @@ export interface PodcastScriptWorkspace {
   /** Whether restoring this workspace required compatibility normalization from an older saved format. */
   compatibility_normalized: boolean;
   release_kit: PodcastReleaseKit | null;
+  audio_clip?: PodcastAudioClip | null;
 }

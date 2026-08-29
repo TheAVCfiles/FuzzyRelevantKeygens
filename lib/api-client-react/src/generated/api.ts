@@ -34,8 +34,12 @@ import type {
   HealthStatus,
   LiveObservationBatch,
   LiveObservationReceipt,
+  PodcastAudioClip,
+  PodcastAudioDecisionInput,
   PodcastBrief,
   PodcastBriefDecisionInput,
+  PodcastContextSearchInput,
+  PodcastContextSearchResponse,
   PodcastFilterPreset,
   PodcastFilterPresetInput,
   PodcastFilterPresetRenameInput,
@@ -540,6 +544,78 @@ export const useAddPodcastSource = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getAddPodcastSourceMutationOptions(options));
+    }
+
+export const getSearchPodcastContextsUrl = () => {
+
+
+
+
+  return `/api/podcast/search`
+}
+
+/**
+ * Returns ranked, source-backed context packages. It does not scrape, identify people, or create production artifacts.
+ * @summary Search the curated entertainment context desk
+ */
+export const searchPodcastContexts = async (podcastContextSearchInput: PodcastContextSearchInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastContextSearchResponse> => {
+
+  return customFetch<PodcastContextSearchResponse>(getSearchPodcastContextsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(podcastContextSearchInput)
+  }
+);}
+
+
+
+
+
+export const getSearchPodcastContextsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof searchPodcastContexts>>, TError,{data: BodyType<PodcastContextSearchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof searchPodcastContexts>>, TError,{data: BodyType<PodcastContextSearchInput>}, TContext> => {
+
+const mutationKey = ['searchPodcastContexts'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof searchPodcastContexts>>, {data: BodyType<PodcastContextSearchInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  searchPodcastContexts(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SearchPodcastContextsMutationResult = NonNullable<Awaited<ReturnType<typeof searchPodcastContexts>>>
+    export type SearchPodcastContextsMutationBody = BodyType<PodcastContextSearchInput>
+    export type SearchPodcastContextsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Search the curated entertainment context desk
+ */
+export const useSearchPodcastContexts = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof searchPodcastContexts>>, TError,{data: BodyType<PodcastContextSearchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof searchPodcastContexts>>,
+        TError,
+        {data: BodyType<PodcastContextSearchInput>},
+        TContext
+      > => {
+      return useMutation(getSearchPodcastContextsMutationOptions(options));
     }
 
 export const getCreatePodcastFilterPresetUrl = () => {
@@ -1269,6 +1345,303 @@ export const useCreatePodcastReleaseKit = <TError = ErrorType<void>,
       > => {
       return useMutation(getCreatePodcastReleaseKitMutationOptions(options));
     }
+
+export const getDecidePodcastAudioUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/script/${id}/audio/decision`
+}
+
+/**
+ * @summary Approve or reject audio generation for a staged release kit
+ */
+export const decidePodcastAudio = async (id: string,
+    podcastAudioDecisionInput: PodcastAudioDecisionInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastScriptWorkspace> => {
+
+  return customFetch<PodcastScriptWorkspace>(getDecidePodcastAudioUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(podcastAudioDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getDecidePodcastAudioMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decidePodcastAudio>>, TError,{id: string;data: BodyType<PodcastAudioDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof decidePodcastAudio>>, TError,{id: string;data: BodyType<PodcastAudioDecisionInput>}, TContext> => {
+
+const mutationKey = ['decidePodcastAudio'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof decidePodcastAudio>>, {id: string;data: BodyType<PodcastAudioDecisionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  decidePodcastAudio(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DecidePodcastAudioMutationResult = NonNullable<Awaited<ReturnType<typeof decidePodcastAudio>>>
+    export type DecidePodcastAudioMutationBody = BodyType<PodcastAudioDecisionInput>
+    export type DecidePodcastAudioMutationError = ErrorType<void>
+
+    /**
+ * @summary Approve or reject audio generation for a staged release kit
+ */
+export const useDecidePodcastAudio = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decidePodcastAudio>>, TError,{id: string;data: BodyType<PodcastAudioDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof decidePodcastAudio>>,
+        TError,
+        {id: string;data: BodyType<PodcastAudioDecisionInput>},
+        TContext
+      > => {
+      return useMutation(getDecidePodcastAudioMutationOptions(options));
+    }
+
+export const getGeneratePodcastAudioUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/script/${id}/audio`
+}
+
+/**
+ * @summary Generate a short spoken clip from an audio-approved script
+ */
+export const generatePodcastAudio = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PodcastAudioClip> => {
+
+  return customFetch<PodcastAudioClip>(getGeneratePodcastAudioUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getGeneratePodcastAudioMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generatePodcastAudio>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generatePodcastAudio>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['generatePodcastAudio'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generatePodcastAudio>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  generatePodcastAudio(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GeneratePodcastAudioMutationResult = NonNullable<Awaited<ReturnType<typeof generatePodcastAudio>>>
+
+    export type GeneratePodcastAudioMutationError = ErrorType<void>
+
+    /**
+ * @summary Generate a short spoken clip from an audio-approved script
+ */
+export const useGeneratePodcastAudio = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generatePodcastAudio>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generatePodcastAudio>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getGeneratePodcastAudioMutationOptions(options));
+    }
+
+export const getGetPodcastAudioUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/script/${id}/audio`
+}
+
+/**
+ * @summary Retrieve generated clip metadata
+ */
+export const getPodcastAudio = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PodcastAudioClip> => {
+
+  return customFetch<PodcastAudioClip>(getGetPodcastAudioUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPodcastAudioQueryKey = (id: string,) => {
+    return [
+    `/api/podcast/script/${id}/audio`
+    ] as const;
+    }
+
+
+export const getGetPodcastAudioQueryOptions = <TData = Awaited<ReturnType<typeof getPodcastAudio>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastAudio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPodcastAudioQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPodcastAudio>>> = ({ signal }) => getPodcastAudio(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPodcastAudio>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPodcastAudioQueryResult = NonNullable<Awaited<ReturnType<typeof getPodcastAudio>>>
+export type GetPodcastAudioQueryError = ErrorType<void>
+
+
+/**
+ * @summary Retrieve generated clip metadata
+ */
+
+export function useGetPodcastAudio<TData = Awaited<ReturnType<typeof getPodcastAudio>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastAudio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPodcastAudioQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getStreamPodcastAudioUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/audio/${id}/stream`
+}
+
+/**
+ * @summary Stream an approved generated podcast clip
+ */
+export const streamPodcastAudio = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getStreamPodcastAudioUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getStreamPodcastAudioQueryKey = (id: string,) => {
+    return [
+    `/api/podcast/audio/${id}/stream`
+    ] as const;
+    }
+
+
+export const getStreamPodcastAudioQueryOptions = <TData = Awaited<ReturnType<typeof streamPodcastAudio>>, TError = ErrorType<unknown>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamPodcastAudio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStreamPodcastAudioQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof streamPodcastAudio>>> = ({ signal }) => streamPodcastAudio(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof streamPodcastAudio>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type StreamPodcastAudioQueryResult = NonNullable<Awaited<ReturnType<typeof streamPodcastAudio>>>
+export type StreamPodcastAudioQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Stream an approved generated podcast clip
+ */
+
+export function useStreamPodcastAudio<TData = Awaited<ReturnType<typeof streamPodcastAudio>>, TError = ErrorType<unknown>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamPodcastAudio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getStreamPodcastAudioQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetContextUrl = () => {
 

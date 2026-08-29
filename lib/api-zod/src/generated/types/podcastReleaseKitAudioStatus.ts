@@ -10,5 +10,8 @@ export type PodcastReleaseKitAudioStatus = typeof PodcastReleaseKitAudioStatus[k
 
 
 export const PodcastReleaseKitAudioStatus = {
-  blocked_until_final_approval: 'blocked_until_final_approval',
+  awaiting_audio_approval: 'awaiting_audio_approval',
+  ready_to_generate: 'ready_to_generate',
+  generated: 'generated',
+  rejected: 'rejected',
 } as const;

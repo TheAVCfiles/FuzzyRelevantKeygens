@@ -11,4 +11,8 @@ export type PodcastScriptWorkspaceAudioStatus = typeof PodcastScriptWorkspaceAud
 
 export const PodcastScriptWorkspaceAudioStatus = {
   blocked_until_script_approval: 'blocked_until_script_approval',
+  awaiting_audio_approval: 'awaiting_audio_approval',
+  ready_to_generate: 'ready_to_generate',
+  generated: 'generated',
+  rejected: 'rejected',
 } as const;

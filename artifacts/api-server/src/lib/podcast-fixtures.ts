@@ -1,8 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
-import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   PodcastBrief,
+  PodcastAudioClip,
+  PodcastContextSearchResponse,
   PodcastFilterPreset,
   PodcastReleaseKit,
   PodcastScriptWorkspace,
@@ -55,6 +57,62 @@ export const podcastSources: PodcastSource[] = [
     engagement: { score: 622, comments: 94 },
     source_id: "1ghi890",
     access_mode: "fixture" as const,
+  },
+  {
+    id: "trade-fixture-001",
+    source_url: "https://example.com/entertainment-trade/format-compression-and-audience-trust",
+    platform: "Entertainment trade",
+    community: "format reporting",
+    post_title: "Format compression is becoming an audience-trust question",
+    timestamp: "2026-08-21T16:00:00.000Z",
+    retrieved_at: "2026-08-22T14:31:00.000Z",
+    engagement: { score: 740, comments: 36 },
+    source_id: "trade-format-001",
+    access_mode: "fixture" as const,
+    source_class: "trade_reporting",
+    evidence_type: "supported_evidence",
+  },
+  {
+    id: "interview-fixture-001",
+    source_url: "https://example.com/editor-interview/what-never-makes-the-cut",
+    platform: "Interview archive",
+    community: "post-production",
+    post_title: "Editors describe the context that rarely survives the final cut",
+    timestamp: "2026-08-20T13:00:00.000Z",
+    retrieved_at: "2026-08-22T14:32:00.000Z",
+    engagement: { score: 510, comments: 18 },
+    source_id: "interview-edit-001",
+    access_mode: "fixture" as const,
+    source_class: "verified_expertise",
+    evidence_type: "supported_evidence",
+  },
+  {
+    id: "ratings-fixture-001",
+    source_url: "https://example.com/audience-lab/recap-retention-patterns",
+    platform: "Audience research",
+    community: "retention lab",
+    post_title: "Context-led recaps show stronger completion than outrage-led summaries",
+    timestamp: "2026-08-19T17:30:00.000Z",
+    retrieved_at: "2026-08-22T14:33:00.000Z",
+    engagement: { score: 430, comments: 12 },
+    source_id: "research-retention-001",
+    access_mode: "fixture" as const,
+    source_class: "synthetic_audience_research",
+    evidence_type: "directional_evidence",
+  },
+  {
+    id: "festival-fixture-001",
+    source_url: "https://example.com/festival-panel/unscripted-story-ethics",
+    platform: "Festival panel",
+    community: "unscripted development",
+    post_title: "A development panel asks who gets to explain the missing scene",
+    timestamp: "2026-08-18T12:00:00.000Z",
+    retrieved_at: "2026-08-22T14:34:00.000Z",
+    engagement: { score: 385, comments: 24 },
+    source_id: "panel-ethics-001",
+    access_mode: "fixture" as const,
+    source_class: "subject_matter_commentary",
+    evidence_type: "interpretation",
   },
 ];
 
@@ -126,6 +184,52 @@ export const podcastConcepts = [
     next_reviewer: "Verified audience-research or recap-format expert",
     confidence_label: "low · needs corroboration",
     freshness_label: "recent · limited source diversity",
+    status: "needs_review" as const,
+  },
+  {
+    id: "concept-format-trust",
+    title: "The cutting-room context audiences now expect",
+    summary:
+      "Across community, trade, editorial, and research signals, audiences appear to value recaps that explain format choices and clearly name what remains unknowable.",
+    relevance: 0.94,
+    urgency: 0.83,
+    engagement: 0.72,
+    freshness: 0.88,
+    source_diversity: 0.91,
+    source_ids: ["reddit-fixture-001", "trade-fixture-001", "interview-fixture-001", "ratings-fixture-001"],
+    observed_signal: "Multiple source classes are asking for format context instead of a louder cast verdict.",
+    supported_context: "The evidence supports a discussion of editorial compression, recap design, and audience trust; it does not prove why any scene was cut.",
+    unresolved_questions: [
+      "Which missing details are format constraints, and which require a first-party clarification?",
+      "Does the completion pattern hold outside the synthetic research sample?",
+    ],
+    recommended_route: "producer_review" as const,
+    next_reviewer: "Executive producer / post-production lead",
+    confidence_label: "medium-high · cross-source pattern",
+    freshness_label: "current · multi-format window",
+    status: "ready" as const,
+  },
+  {
+    id: "concept-development-ethics",
+    title: "Who should explain the scene that never aired?",
+    summary:
+      "A development opportunity is emerging around aftershows that separate verified production context, expert interpretation, and questions only participants can answer.",
+    relevance: 0.86,
+    urgency: 0.71,
+    engagement: 0.63,
+    freshness: 0.76,
+    source_diversity: 0.77,
+    source_ids: ["interview-fixture-001", "festival-fixture-001", "reddit-fixture-003"],
+    observed_signal: "Editors, development voices, and recap listeners are converging on clearer ownership of explanation.",
+    supported_context: "The sources support a format-development discussion, not disclosure of confidential production decisions.",
+    unresolved_questions: [
+      "Which role can clarify each gap without speaking for a participant?",
+      "What context can be shared without exposing protected production material?",
+    ],
+    recommended_route: "subject_matter_expert" as const,
+    next_reviewer: "Format executive / standards reviewer",
+    confidence_label: "medium · needs first-party review",
+    freshness_label: "recent · development cycle",
     status: "needs_review" as const,
   },
 ];
@@ -238,6 +342,9 @@ function normalizePersistedReleaseKit(
     ...candidate,
     title_options: candidate.title_options ?? candidate.titles ?? [],
     promotion_copy: candidate.promotion_copy ?? candidate.promotion_drafts ?? [],
+    audio_status: candidate.audio_status === ("blocked_until_final_approval" as PodcastReleaseKit["audio_status"])
+      ? "awaiting_audio_approval"
+      : candidate.audio_status,
   };
 }
 
@@ -455,6 +562,7 @@ function fixtureScript(brief: PodcastBrief): PodcastWorkspaceWithCompatibility {
     review_note:
       "Draft only. A separate human script review is required before any audio workflow.",
     audio_status: "blocked_until_script_approval",
+    audio_clip: null,
     compatibility_normalized: false,
     release_kit: null,
   };
@@ -494,7 +602,7 @@ function fixtureReleaseKit(script: PodcastWorkspaceWithCompatibility): PodcastRe
       "Keep source links and the provenance summary available alongside the episode notes.",
     ],
     provenance_summary: `${script.provenance.length} retrieved public sources are attached to the approved script. The package summarizes patterns without reproducing user comments verbatim.`,
-    audio_status: "blocked_until_final_approval",
+    audio_status: "awaiting_audio_approval",
     publishing_status: "blocked_until_final_approval",
     next_reviewer: "Final producer / publishing approver",
   };
@@ -561,7 +669,10 @@ export function createPodcastScript(briefId: string) {
   if (!brief) return { kind: "not_found" as const };
   if (brief.status !== "approved") return { kind: "brief_not_approved" as const };
   currentBrief = brief;
-  currentScript = podcastScripts.get(`script-${brief.id}`) ?? fixtureScript(brief);
+  const existing = podcastScripts.get(`script-${brief.id}`);
+  const sameEvidence = existing &&
+    existing.provenance.map((item) => item.source_id).join(",") === brief.source_links.map((item) => item.source_id).join(",");
+  currentScript = sameEvidence ? existing : fixtureScript(brief);
   podcastScripts.set(currentScript.id, currentScript);
   persistPodcastState("create", "script_workspace");
   return { kind: "created" as const, script: currentScript };
@@ -588,6 +699,12 @@ export function getPodcastScriptById(scriptId: string) {
   return { kind: "found" as const, script };
 }
 
+export function isBlockedLegacyPodcastBrief(id: string) {
+  const brief = podcastBriefs.get(id);
+  const script = [...podcastScripts.values()].find((item) => item.brief_id === id);
+  return Boolean(brief && brief.status !== "approved" && script?.compatibility_normalized);
+}
+
 export function decidePodcastScript(id: string, decision: "approve" | "reject") {
   const script = podcastScripts.get(id) ?? (currentScript?.id === id ? currentScript : null);
   if (!script) return null;
@@ -609,10 +726,161 @@ export function createPodcastReleaseKit(scriptId: string) {
   if (!script) return { kind: "not_found" as const };
   if (script.status !== "approved") return { kind: "script_not_approved" as const };
   const releaseKit = script.release_kit ?? fixtureReleaseKit(script);
-  currentScript = { ...script, release_kit: releaseKit };
+  currentScript = { ...script, release_kit: releaseKit, audio_status: "awaiting_audio_approval" };
   podcastScripts.set(currentScript.id, currentScript);
   persistPodcastState("create", "release_kit");
   return { kind: "created" as const, releaseKit };
+}
+
+export function searchPodcastContexts(
+  query: string,
+  audience: string,
+  useCase: string,
+  sourceClasses: string[] = [],
+): PodcastContextSearchResponse {
+  const terms = query.toLowerCase().split(/\W+/).filter((term) => term.length > 2);
+  const allowedSources = podcastSources.filter(
+    (source) => !sourceClasses.length || sourceClasses.includes(source.source_class ?? source.platform),
+  );
+  const scored = podcastConcepts.map((concept) => {
+    const sources = concept.source_ids
+      .map((id) => allowedSources.find((source) => source.id === id))
+      .filter(Boolean) as PodcastSource[];
+    const haystack = [
+      concept.title,
+      concept.summary,
+      concept.observed_signal,
+      concept.supported_context,
+      ...sources.flatMap((source) => [source.platform, source.community, source.post_title, source.source_class ?? ""]),
+    ].join(" ").toLowerCase();
+    const termMatches = terms.filter((term) => haystack.includes(term)).length;
+    const score = termMatches * 2 + concept.relevance + sources.length * 0.08;
+    return { concept, sources, score, termMatches };
+  }).filter((item) => item.sources.length > 0)
+    .sort((a, b) => b.score - a.score);
+  const selected = scored.some((item) => item.termMatches > 0)
+    ? scored.filter((item) => item.termMatches > 0)
+    : scored.slice(0, 3);
+  return {
+    query,
+    audience,
+    use_case: useCase,
+    generated_at: now(),
+    search_mode: "curated_synthetic_index",
+    results: selected.map(({ concept, sources, termMatches }) => ({
+      concept,
+      sources,
+      match_reason: termMatches
+        ? `${termMatches} query signal${termMatches === 1 ? "" : "s"} matched across ${sources.length} cited sources for ${audience}.`
+        : `Closest source-backed entertainment context for the ${useCase.replaceAll("_", " ")} use case.`,
+      speculation: "Unresolved questions remain explicitly unverified and must not be presented as fact.",
+      safest_next_reviewer: concept.next_reviewer,
+    })),
+  };
+}
+
+export function decidePodcastAudio(id: string, decision: "approve" | "reject") {
+  const script = podcastScripts.get(id) ?? (currentScript?.id === id ? currentScript : null);
+  if (!script) return { kind: "not_found" as const };
+  if (script.status !== "approved" || !script.release_kit) return { kind: "not_ready" as const };
+  const audioStatus = decision === "approve" ? "ready_to_generate" as const : "rejected" as const;
+  const updated = {
+    ...script,
+    audio_status: audioStatus,
+    release_kit: { ...script.release_kit, audio_status: audioStatus },
+  };
+  currentScript = updated;
+  podcastScripts.set(id, updated);
+  persistPodcastState("decision", "podcast_audio");
+  return { kind: "updated" as const, script: updated };
+}
+
+const audioDirectory = join(process.cwd(), ".podcast-audio");
+const ttsModel = "gemini-2.5-flash-preview-tts";
+
+function pcmToWav(pcm: Buffer, sampleRate = 24000) {
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVEfmt ", 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+function clipTranscript(script: PodcastWorkspaceWithCompatibility) {
+  return script.sections.map((section) => `${section.segment}. ${section.script}`).join(" ").slice(0, 1500);
+}
+
+export async function generatePodcastAudio(id: string) {
+  const script = podcastScripts.get(id) ?? (currentScript?.id === id ? currentScript : null);
+  if (!script) return { kind: "not_found" as const };
+  if (script.audio_status !== "ready_to_generate" || !script.release_kit) return { kind: "not_approved" as const };
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { kind: "generation_failed" as const, error: "Audio service is not configured." };
+  try {
+    const transcript = clipTranscript(script);
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: ttsModel,
+      contents: `Read this as a calm, premium entertainment-industry podcast host. Do not imitate or name any real person. Keep a measured pace and make uncertainty audible without sounding dramatic.\n\n${transcript}`,
+      config: {
+        responseModalities: ["AUDIO"],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
+      },
+    });
+    const data = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData?.data;
+    if (!data) throw new Error("The audio model returned no playable data.");
+    const wav = pcmToWav(Buffer.from(data, "base64"));
+    mkdirSync(audioDirectory, { recursive: true });
+    const clipId = `clip-${script.id}`;
+    writeFileSync(join(audioDirectory, `${clipId}.wav`), wav);
+    const clip: PodcastAudioClip = {
+      id: clipId,
+      script_id: script.id,
+      status: "ready",
+      audio_url: `/api/podcast/audio/${clipId}/stream`,
+      mime_type: "audio/wav",
+      duration_seconds: Math.round((wav.length - 44) / (24000 * 2)),
+      transcript,
+      voice_disclosure: "Synthetic house narration · Gemini Kore voice · no voice cloning or impersonation",
+      format_disclosure: "Short evidence-backed development clip · not published",
+      source_ids: [...new Set(script.provenance.map((source) => source.source_id))],
+      provenance_summary: script.release_kit.provenance_summary,
+      generated_at: now(),
+    };
+    const updated = {
+      ...script,
+      audio_status: "generated" as const,
+      audio_clip: clip,
+      release_kit: { ...script.release_kit, audio_status: "generated" as const },
+    };
+    currentScript = updated;
+    podcastScripts.set(id, updated);
+    persistPodcastState("generate", "podcast_audio");
+    recordAgentStage("PODCAST-AUDIO", "render", script.id, `${clip.id} · ${clip.duration_seconds}s · ${clip.source_ids.length} sources`);
+    return { kind: "generated" as const, clip };
+  } catch (error) {
+    return { kind: "generation_failed" as const, error: error instanceof Error ? error.message : "Audio generation failed." };
+  }
+}
+
+export function getPodcastAudioByScript(id: string) {
+  const script = podcastScripts.get(id) ?? (currentScript?.id === id ? currentScript : null);
+  return script?.audio_clip ?? null;
+}
+
+export function getPodcastAudioPath(clipId: string) {
+  if (!/^clip-[a-zA-Z0-9_-]+$/.test(clipId)) return null;
+  const filePath = join(audioDirectory, `${clipId}.wav`);
+  return existsSync(filePath) ? filePath : null;
 }
 
 export function addPodcastSource(sourceUrl: string) {
@@ -705,7 +973,7 @@ export function decidePodcastBrief(id: string, decision: "approve" | "reject") {
 }
 
 export function recordPodcastDecision(
-  kind: "brief" | "script",
+  kind: "brief" | "script" | "audio",
   id: string,
   decision: "approve" | "reject",
   reviewer: string,

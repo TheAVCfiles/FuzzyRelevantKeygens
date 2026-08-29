@@ -281,7 +281,9 @@ export const GetPodcastRoomResponse = zod.object({
   "comments": zod.number()
 }),
   "source_id": zod.string().nullable(),
-  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url'])
+  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url']),
+  "source_class": zod.string().optional(),
+  "evidence_type": zod.string().optional()
 })),
   "concepts": zod.array(zod.object({
   "id": zod.string(),
@@ -338,7 +340,9 @@ export const AddPodcastSourceResponse = zod.object({
   "comments": zod.number()
 }),
   "source_id": zod.string().nullable(),
-  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url'])
+  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url']),
+  "source_class": zod.string().optional(),
+  "evidence_type": zod.string().optional()
 })),
   "concepts": zod.array(zod.object({
   "id": zod.string(),
@@ -368,6 +372,75 @@ export const AddPodcastSourceResponse = zod.object({
   "data_notice": zod.string(),
   "rendering_status": zod.enum(['blocked_until_approval']),
   "selected_brief_id": zod.string().nullable()
+})
+
+
+/**
+ * Returns ranked, source-backed context packages. It does not scrape, identify people, or create production artifacts.
+ * @summary Search the curated entertainment context desk
+ */
+export const searchPodcastContextsBodyQueryMin = 2;
+export const searchPodcastContextsBodyQueryMax = 240;
+
+
+
+export const SearchPodcastContextsBody = zod.object({
+  "query": zod.string().min(searchPodcastContextsBodyQueryMin).max(searchPodcastContextsBodyQueryMax),
+  "audience": zod.enum(['consumers', 'clients', 'users']),
+  "use_case": zod.enum(['recap', 'development', 'publicity', 'audience_strategy', 'cultural_context']),
+  "source_classes": zod.array(zod.string()).optional()
+})
+
+
+
+
+export const SearchPodcastContextsResponse = zod.object({
+  "query": zod.string(),
+  "audience": zod.string(),
+  "use_case": zod.string(),
+  "generated_at": zod.string(),
+  "search_mode": zod.enum(['curated_synthetic_index']),
+  "results": zod.array(zod.object({
+  "concept": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "summary": zod.string(),
+  "relevance": zod.number(),
+  "urgency": zod.number(),
+  "engagement": zod.number(),
+  "freshness": zod.number(),
+  "source_diversity": zod.number(),
+  "source_ids": zod.array(zod.string()).min(1),
+  "status": zod.enum(['ready', 'needs_review']),
+  "observed_signal": zod.string(),
+  "supported_context": zod.string(),
+  "unresolved_questions": zod.array(zod.string()),
+  "recommended_route": zod.enum(['producer_review', 'publicity_clarification', 'safety_legal_hold', 'subject_matter_expert']),
+  "next_reviewer": zod.string(),
+  "confidence_label": zod.string(),
+  "freshness_label": zod.string()
+}),
+  "sources": zod.array(zod.object({
+  "id": zod.string(),
+  "source_url": zod.string(),
+  "platform": zod.string(),
+  "community": zod.string(),
+  "post_title": zod.string(),
+  "timestamp": zod.string(),
+  "retrieved_at": zod.string(),
+  "engagement": zod.object({
+  "score": zod.number(),
+  "comments": zod.number()
+}),
+  "source_id": zod.string().nullable(),
+  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url']),
+  "source_class": zod.string().optional(),
+  "evidence_type": zod.string().optional()
+})),
+  "match_reason": zod.string(),
+  "speculation": zod.string(),
+  "safest_next_reviewer": zod.string()
+}))
 })
 
 
@@ -524,7 +597,7 @@ export const CreatePodcastScriptResponse = zod.object({
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),
-  "audio_status": zod.enum(['blocked_until_script_approval']),
+  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
@@ -544,10 +617,24 @@ export const CreatePodcastScriptResponse = zod.object({
 })),
   "accessibility_notes": zod.array(zod.string()),
   "provenance_summary": zod.string(),
-  "audio_status": zod.enum(['blocked_until_final_approval']),
+  "audio_status": zod.enum(['awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "publishing_status": zod.enum(['blocked_until_final_approval']),
   "next_reviewer": zod.string()
-}),zod.null()])
+}),zod.null()]),
+  "audio_clip": zod.union([zod.object({
+  "id": zod.string(),
+  "script_id": zod.string(),
+  "status": zod.enum(['ready']),
+  "audio_url": zod.string(),
+  "mime_type": zod.enum(['audio/wav']),
+  "duration_seconds": zod.number(),
+  "transcript": zod.string(),
+  "voice_disclosure": zod.string(),
+  "format_disclosure": zod.string(),
+  "source_ids": zod.array(zod.string()),
+  "provenance_summary": zod.string(),
+  "generated_at": zod.string()
+}),zod.null()]).optional()
 })
 
 
@@ -576,7 +663,7 @@ export const GetPodcastScriptByBriefResponse = zod.object({
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),
-  "audio_status": zod.enum(['blocked_until_script_approval']),
+  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
@@ -596,10 +683,24 @@ export const GetPodcastScriptByBriefResponse = zod.object({
 })),
   "accessibility_notes": zod.array(zod.string()),
   "provenance_summary": zod.string(),
-  "audio_status": zod.enum(['blocked_until_final_approval']),
+  "audio_status": zod.enum(['awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "publishing_status": zod.enum(['blocked_until_final_approval']),
   "next_reviewer": zod.string()
-}),zod.null()])
+}),zod.null()]),
+  "audio_clip": zod.union([zod.object({
+  "id": zod.string(),
+  "script_id": zod.string(),
+  "status": zod.enum(['ready']),
+  "audio_url": zod.string(),
+  "mime_type": zod.enum(['audio/wav']),
+  "duration_seconds": zod.number(),
+  "transcript": zod.string(),
+  "voice_disclosure": zod.string(),
+  "format_disclosure": zod.string(),
+  "source_ids": zod.array(zod.string()),
+  "provenance_summary": zod.string(),
+  "generated_at": zod.string()
+}),zod.null()]).optional()
 })
 
 
@@ -628,7 +729,7 @@ export const GetPodcastScriptResponse = zod.object({
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),
-  "audio_status": zod.enum(['blocked_until_script_approval']),
+  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
@@ -648,10 +749,24 @@ export const GetPodcastScriptResponse = zod.object({
 })),
   "accessibility_notes": zod.array(zod.string()),
   "provenance_summary": zod.string(),
-  "audio_status": zod.enum(['blocked_until_final_approval']),
+  "audio_status": zod.enum(['awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "publishing_status": zod.enum(['blocked_until_final_approval']),
   "next_reviewer": zod.string()
-}),zod.null()])
+}),zod.null()]),
+  "audio_clip": zod.union([zod.object({
+  "id": zod.string(),
+  "script_id": zod.string(),
+  "status": zod.enum(['ready']),
+  "audio_url": zod.string(),
+  "mime_type": zod.enum(['audio/wav']),
+  "duration_seconds": zod.number(),
+  "transcript": zod.string(),
+  "voice_disclosure": zod.string(),
+  "format_disclosure": zod.string(),
+  "source_ids": zod.array(zod.string()),
+  "provenance_summary": zod.string(),
+  "generated_at": zod.string()
+}),zod.null()]).optional()
 })
 
 
@@ -684,7 +799,7 @@ export const DecidePodcastScriptResponse = zod.object({
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),
-  "audio_status": zod.enum(['blocked_until_script_approval']),
+  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
@@ -704,10 +819,24 @@ export const DecidePodcastScriptResponse = zod.object({
 })),
   "accessibility_notes": zod.array(zod.string()),
   "provenance_summary": zod.string(),
-  "audio_status": zod.enum(['blocked_until_final_approval']),
+  "audio_status": zod.enum(['awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "publishing_status": zod.enum(['blocked_until_final_approval']),
   "next_reviewer": zod.string()
-}),zod.null()])
+}),zod.null()]),
+  "audio_clip": zod.union([zod.object({
+  "id": zod.string(),
+  "script_id": zod.string(),
+  "status": zod.enum(['ready']),
+  "audio_url": zod.string(),
+  "mime_type": zod.enum(['audio/wav']),
+  "duration_seconds": zod.number(),
+  "transcript": zod.string(),
+  "voice_disclosure": zod.string(),
+  "format_disclosure": zod.string(),
+  "source_ids": zod.array(zod.string()),
+  "provenance_summary": zod.string(),
+  "generated_at": zod.string()
+}),zod.null()]).optional()
 })
 
 
@@ -737,10 +866,136 @@ export const CreatePodcastReleaseKitResponse = zod.object({
 })),
   "accessibility_notes": zod.array(zod.string()),
   "provenance_summary": zod.string(),
-  "audio_status": zod.enum(['blocked_until_final_approval']),
+  "audio_status": zod.enum(['awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "publishing_status": zod.enum(['blocked_until_final_approval']),
   "next_reviewer": zod.string()
 })
+
+
+/**
+ * @summary Approve or reject audio generation for a staged release kit
+ */
+export const DecidePodcastAudioParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DecidePodcastAudioBody = zod.object({
+  "decision": zod.enum(['approve', 'reject'])
+})
+
+export const DecidePodcastAudioResponse = zod.object({
+  "id": zod.string(),
+  "brief_id": zod.string(),
+  "status": zod.enum(['draft', 'approved', 'rejected']),
+  "title": zod.string(),
+  "sections": zod.array(zod.object({
+  "segment": zod.string(),
+  "script": zod.string(),
+  "source_ids": zod.array(zod.string())
+})),
+  "provenance": zod.array(zod.object({
+  "source_id": zod.string(),
+  "url": zod.string(),
+  "label": zod.string(),
+  "retrieved_at": zod.string()
+})),
+  "safety_note": zod.string(),
+  "review_note": zod.string(),
+  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
+  "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
+  "release_kit": zod.union([zod.object({
+  "id": zod.string(),
+  "script_id": zod.string(),
+  "status": zod.enum(['staged']),
+  "title_options": zod.array(zod.string()),
+  "episode_description": zod.string(),
+  "chapters": zod.array(zod.object({
+  "label": zod.string(),
+  "timing": zod.string(),
+  "purpose": zod.string()
+})),
+  "host_notes": zod.array(zod.string()),
+  "promotion_copy": zod.array(zod.object({
+  "channel": zod.string(),
+  "copy": zod.string()
+})),
+  "accessibility_notes": zod.array(zod.string()),
+  "provenance_summary": zod.string(),
+  "audio_status": zod.enum(['awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
+  "publishing_status": zod.enum(['blocked_until_final_approval']),
+  "next_reviewer": zod.string()
+}),zod.null()]),
+  "audio_clip": zod.union([zod.object({
+  "id": zod.string(),
+  "script_id": zod.string(),
+  "status": zod.enum(['ready']),
+  "audio_url": zod.string(),
+  "mime_type": zod.enum(['audio/wav']),
+  "duration_seconds": zod.number(),
+  "transcript": zod.string(),
+  "voice_disclosure": zod.string(),
+  "format_disclosure": zod.string(),
+  "source_ids": zod.array(zod.string()),
+  "provenance_summary": zod.string(),
+  "generated_at": zod.string()
+}),zod.null()]).optional()
+})
+
+
+/**
+ * @summary Generate a short spoken clip from an audio-approved script
+ */
+export const GeneratePodcastAudioParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GeneratePodcastAudioResponse = zod.object({
+  "id": zod.string(),
+  "script_id": zod.string(),
+  "status": zod.enum(['ready']),
+  "audio_url": zod.string(),
+  "mime_type": zod.enum(['audio/wav']),
+  "duration_seconds": zod.number(),
+  "transcript": zod.string(),
+  "voice_disclosure": zod.string(),
+  "format_disclosure": zod.string(),
+  "source_ids": zod.array(zod.string()),
+  "provenance_summary": zod.string(),
+  "generated_at": zod.string()
+})
+
+
+/**
+ * @summary Retrieve generated clip metadata
+ */
+export const GetPodcastAudioParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetPodcastAudioResponse = zod.object({
+  "id": zod.string(),
+  "script_id": zod.string(),
+  "status": zod.enum(['ready']),
+  "audio_url": zod.string(),
+  "mime_type": zod.enum(['audio/wav']),
+  "duration_seconds": zod.number(),
+  "transcript": zod.string(),
+  "voice_disclosure": zod.string(),
+  "format_disclosure": zod.string(),
+  "source_ids": zod.array(zod.string()),
+  "provenance_summary": zod.string(),
+  "generated_at": zod.string()
+})
+
+
+/**
+ * @summary Stream an approved generated podcast clip
+ */
+export const StreamPodcastAudioParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const StreamPodcastAudioResponse = zod.unknown()
 
 
 /**

@@ -780,7 +780,7 @@ export function recordAgentStage(
 }
 
 export function recordHumanDecision(
-  artifact: "brief" | "script",
+  artifact: "brief" | "script" | "audio",
   id: string,
   decision: "approve" | "reject",
   reviewer: string,

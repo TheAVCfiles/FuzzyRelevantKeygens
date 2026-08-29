@@ -20,4 +20,6 @@ export interface PodcastSource {
   /** @nullable */
   source_id: string | null;
   access_mode: PodcastSourceAccessMode;
+  source_class?: string;
+  evidence_type?: string;
 }

@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { createReadStream, statSync } from "node:fs";
 import {
   AddPodcastSourceBody,
   AddPodcastSourceResponse,
@@ -11,6 +12,9 @@ import {
   CreatePodcastScriptResponse,
   CreatePodcastScriptParams,
   CreatePodcastReleaseKitResponse,
+  DecidePodcastAudioBody,
+  DecidePodcastAudioParams,
+  DecidePodcastAudioResponse,
   DecidePodcastScriptBody,
   DecidePodcastScriptParams,
   DecidePodcastScriptResponse,
@@ -28,6 +32,13 @@ import {
   GetFloodQueryParams,
   GetFloodResponse,
   GetPodcastRoomResponse,
+  GeneratePodcastAudioParams,
+  GeneratePodcastAudioResponse,
+  GetPodcastAudioParams,
+  GetPodcastAudioResponse,
+  SearchPodcastContextsBody,
+  SearchPodcastContextsResponse,
+  StreamPodcastAudioParams,
   RenamePodcastFilterPresetBody,
   RenamePodcastFilterPresetParams,
   RenamePodcastFilterPresetResponse,
@@ -70,14 +81,20 @@ import {
   decidePodcastBrief,
   createPodcastScript,
   createPodcastReleaseKit,
+  decidePodcastAudio,
   decidePodcastScript,
   generatePodcastBrief,
+  generatePodcastAudio,
+  getPodcastAudioByScript,
+  getPodcastAudioPath,
   getPodcastRoom,
   getPodcastScriptByBriefId,
   getPodcastScriptById,
   isPodcastEvidenceSufficient,
+  isBlockedLegacyPodcastBrief,
   recordPodcastDecision,
   renamePodcastFilterPreset,
+  searchPodcastContexts,
 } from "../lib/podcast-fixtures";
 
 const router: IRouter = Router();
@@ -192,6 +209,20 @@ router.post("/podcast/sources", requirePermission("stage"), (req, res): void => 
   res.json(AddPodcastSourceResponse.parse(room));
 });
 
+router.post("/podcast/search", requirePermission("stage"), (req, res): void => {
+  const body = SearchPodcastContextsBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  res.json(SearchPodcastContextsResponse.parse(searchPodcastContexts(
+    body.data.query,
+    body.data.audience,
+    body.data.use_case,
+    body.data.source_classes,
+  )));
+});
+
 router.post("/podcast/presets", requirePermission("stage"), (req, res): void => {
   const body = CreatePodcastFilterPresetBody.safeParse(req.body);
   if (!body.success) {
@@ -254,8 +285,7 @@ router.post("/podcast/brief/:id/decision", requirePermission("sign"), (req, res)
     res.status(400).json({ error: "Invalid podcast brief decision" });
     return;
   }
-  const existingScript = getPodcastScriptByBriefId(params.data.id);
-  if (existingScript.kind === "brief_not_approved") {
+  if (isBlockedLegacyPodcastBrief(params.data.id)) {
     res.status(409).json({ error: "Only an approved podcast brief can change a script workspace." });
     return;
   }
@@ -378,6 +408,83 @@ router.post("/podcast/script/:id/release-kit", requirePermission("stage"), (req,
     return;
   }
   res.status(201).json(CreatePodcastReleaseKitResponse.parse(result.releaseKit));
+});
+
+router.post("/podcast/script/:id/audio/decision", requirePermission("sign"), (req, res): void => {
+  const params = DecidePodcastAudioParams.safeParse(req.params);
+  const body = DecidePodcastAudioBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Invalid podcast audio decision" });
+    return;
+  }
+  const result = decidePodcastAudio(params.data.id, body.data.decision);
+  if (result.kind === "not_found") {
+    res.status(404).json({ error: "Podcast script workspace not found" });
+    return;
+  }
+  if (result.kind === "not_ready") {
+    res.status(409).json({ error: "An approved script and staged release kit are required before audio review." });
+    return;
+  }
+  recordPodcastDecision(
+    "audio",
+    result.script.id,
+    body.data.decision,
+    (req as Request & { autographyRole?: string }).autographyRole ?? "human reviewer",
+  );
+  res.json(DecidePodcastAudioResponse.parse(result.script));
+});
+
+router.post("/podcast/script/:id/audio", requirePermission("stage"), async (req, res): Promise<void> => {
+  const params = GeneratePodcastAudioParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid podcast script workspace id" });
+    return;
+  }
+  const result = await generatePodcastAudio(params.data.id);
+  if (result.kind === "not_found") {
+    res.status(404).json({ error: "Podcast script workspace not found" });
+    return;
+  }
+  if (result.kind === "not_approved") {
+    res.status(409).json({ error: "Human audio approval is required before generation." });
+    return;
+  }
+  if (result.kind === "generation_failed") {
+    res.status(502).json({ error: result.error });
+    return;
+  }
+  res.status(201).json(GeneratePodcastAudioResponse.parse(result.clip));
+});
+
+router.get("/podcast/script/:id/audio", (req, res): void => {
+  const params = GetPodcastAudioParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid podcast script workspace id" });
+    return;
+  }
+  const clip = getPodcastAudioByScript(params.data.id);
+  if (!clip) {
+    res.status(404).json({ error: "Podcast audio clip not found" });
+    return;
+  }
+  res.json(GetPodcastAudioResponse.parse(clip));
+});
+
+router.get("/podcast/audio/:id/stream", (req, res): void => {
+  const params = StreamPodcastAudioParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid podcast audio clip id" });
+    return;
+  }
+  const filePath = getPodcastAudioPath(params.data.id);
+  if (!filePath) {
+    res.status(404).json({ error: "Podcast audio file not found" });
+    return;
+  }
+  res.type("audio/wav");
+  res.setHeader("Content-Length", statSync(filePath).size);
+  createReadStream(filePath).pipe(res);
 });
 
 router.get("/context", (_req, res): void => {

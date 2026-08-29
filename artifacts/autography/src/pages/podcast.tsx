@@ -7,8 +7,10 @@ import {
   CircleAlert,
   ExternalLink,
   FileText,
+  Headphones,
   LoaderCircle,
   Plus,
+  Search,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -24,8 +26,11 @@ import {
   useDecidePodcastBrief,
   useCreatePodcastScript,
   useCreatePodcastReleaseKit,
+  useDecidePodcastAudio,
+  useGeneratePodcastAudio,
   useDecidePodcastScript,
   useGeneratePodcastBrief,
+  useSearchPodcastContexts,
   useGetPodcastScriptByBrief,
   useGetPodcastRoom,
   useRenamePodcastFilterPreset,
@@ -36,6 +41,8 @@ import {
   type PodcastSource,
   type PodcastScriptWorkspace,
   type PodcastReleaseKit,
+  type PodcastAudioClip,
+  type PodcastContextSearchResponse,
 } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -423,6 +430,40 @@ function RoomSkeleton() {
   );
 }
 
+function ProtectedAudioPlayer({ clip }: { clip: PodcastAudioClip }) {
+  const [objectUrl, setObjectUrl] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let nextUrl = '';
+    const token = localStorage.getItem('autography_pilot_token');
+    fetch(clip.audio_url, {
+      signal: controller.signal,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Audio stream returned ${response.status}`);
+        return response.blob();
+      })
+      .then((blob) => {
+        nextUrl = URL.createObjectURL(blob);
+        setObjectUrl(nextUrl);
+      })
+      .catch((reason) => {
+        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Audio unavailable');
+      });
+    return () => {
+      controller.abort();
+      if (nextUrl) URL.revokeObjectURL(nextUrl);
+    };
+  }, [clip.audio_url]);
+
+  if (error) return <p className="mt-3 text-xs text-[#e4a38d]">{error}</p>;
+  if (!objectUrl) return <p className="mt-3 flex items-center gap-2 text-xs text-[#c5d8d5]"><LoaderCircle className="h-3 w-3 animate-spin" />Loading protected audio…</p>;
+  return <audio className="mt-3 w-full" controls preload="metadata" src={objectUrl} data-testid="audio-podcast-clip">Your browser does not support audio playback.</audio>;
+}
+
 function ScriptWorkspacePanel({
   script,
   onCreate,
@@ -433,6 +474,11 @@ function ScriptWorkspacePanel({
   releaseKit,
   onCreateReleaseKit,
   isCreatingReleaseKit,
+  audioClip,
+  onAudioDecision,
+  onGenerateAudio,
+  isDecidingAudio,
+  isGeneratingAudio,
 }: {
   script: PodcastScriptWorkspace | null;
   onCreate: () => void;
@@ -443,6 +489,11 @@ function ScriptWorkspacePanel({
   releaseKit: PodcastReleaseKit | null;
   onCreateReleaseKit: () => void;
   isCreatingReleaseKit: boolean;
+  audioClip: PodcastAudioClip | null;
+  onAudioDecision: (decision: 'approve' | 'reject') => void;
+  onGenerateAudio: () => void;
+  isDecidingAudio: boolean;
+  isGeneratingAudio: boolean;
 }) {
   if (!script) {
     return (
@@ -522,6 +573,31 @@ function ScriptWorkspacePanel({
             <div><p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#a8d0c9]">Promotion drafts</p><ul className="mt-2 space-y-1 text-xs text-[#c5d8d5]">{releaseKit.promotion_copy.map((item) => <li key={item.channel}><span className="text-[#d8a36c]">{item.channel}:</span> {item.copy}</li>)}</ul></div>
           </div>
           <div className="mt-4 border-t border-[#46696e] pt-3 text-xs leading-5 text-[#c5d8d5]"><strong className="font-medium text-[#f0e8de]">Next reviewer:</strong> {releaseKit.next_reviewer}<br /><strong className="font-medium text-[#f0e8de]">Audio:</strong> {statusLabel(releaseKit.audio_status)} · <strong className="font-medium text-[#f0e8de]">Publishing:</strong> {statusLabel(releaseKit.publishing_status)}</div>
+          <div className="mt-4 border-t border-[#46696e] pt-4" data-testid="panel-audio-studio">
+            <div className="flex items-center gap-2"><Headphones className="h-4 w-4 text-[#d8a36c]" /><p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#a8d0c9]">Listening studio / gate 04</p></div>
+            <p className="mt-2 text-xs leading-5 text-[#c5d8d5]">A human must clear synthetic narration before the house voice can render this approved script. Publishing remains blocked.</p>
+            {script.audio_status === 'awaiting_audio_approval' && (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button size="sm" disabled={isDecidingAudio} onClick={() => onAudioDecision('approve')} className="bg-[#d8a36c] text-[#2c2927]" data-testid="button-approve-audio">Approve audio</Button>
+                <Button size="sm" variant="outline" disabled={isDecidingAudio} onClick={() => onAudioDecision('reject')} className="border-[#806057] text-[#e4a38d]" data-testid="button-reject-audio">Reject</Button>
+              </div>
+            )}
+            {script.audio_status === 'ready_to_generate' && (
+              <Button size="sm" disabled={isGeneratingAudio} onClick={onGenerateAudio} className="mt-3 w-full bg-[#b34b36] text-[#f9f0e5]" data-testid="button-generate-audio">
+                {isGeneratingAudio ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Headphones className="mr-2 h-4 w-4" />}
+                {isGeneratingAudio ? 'Rendering house voice' : 'Generate playable clip'}
+              </Button>
+            )}
+            {script.audio_status === 'rejected' && <p className="mt-3 border border-[#895948] px-3 py-2 text-xs text-[#e4a38d]">Audio rejected. No file was rendered.</p>}
+            {audioClip && (
+              <div className="mt-4 border border-[#6b9698] bg-[#182d30] p-3" data-testid="audio-player-ready">
+                <div className="flex items-center justify-between gap-3"><strong className="font-serif text-lg text-[#f0e8de]">House clip ready</strong><span className="font-mono text-[9px] uppercase text-[#9bc8a9]">{audioClip.duration_seconds}s · WAV</span></div>
+                <ProtectedAudioPlayer clip={audioClip} />
+                <p className="mt-3 text-[11px] leading-5 text-[#c5d8d5]">{audioClip.voice_disclosure}</p>
+                <details className="mt-2 text-xs text-[#c5d8d5]"><summary className="cursor-pointer font-mono text-[9px] uppercase tracking-[.1em] text-[#d8a36c]">Transcript & provenance</summary><p className="mt-2 leading-5">{audioClip.transcript}</p><p className="mt-2 text-[#9bc8a9]">{audioClip.provenance_summary}</p></details>
+              </div>
+            )}
+          </div>
         </div>}
       </div>
       <div className="mt-5">
@@ -548,9 +624,13 @@ export function Podcast() {
   const [visibleSourceIds, setVisibleSourceIds] = useState<string[]>([]);
   const [brief, setBrief] = useState<PodcastBrief | null>(null);
   const [script, setScript] = useState<PodcastScriptWorkspace | null>(null);
+  const [searchQuery, setSearchQuery] = useState('What context did the final cut leave out?');
+  const [searchAudience, setSearchAudience] = useState<'consumers' | 'clients' | 'users'>('consumers');
+  const [searchUseCase, setSearchUseCase] = useState<'recap' | 'development' | 'publicity' | 'audience_strategy' | 'cultural_context'>('recap');
+  const [searchResult, setSearchResult] = useState<PodcastContextSearchResponse | null>(null);
   const [localError, setLocalError] = useState('');
 
-  const concepts = room?.concepts ?? [];
+  const concepts = searchResult?.results.map((item) => item.concept) ?? room?.concepts ?? [];
   const sources = room?.sources ?? [];
   const selectedConcept = useMemo(() => concepts.find((concept) => concept.id === selectedConceptId) ?? concepts[0], [concepts, selectedConceptId]);
   const createPreset = useCreatePodcastFilterPreset({
@@ -640,6 +720,32 @@ export function Podcast() {
       },
     },
   });
+  const searchContexts = useSearchPodcastContexts({
+    mutation: {
+      onSuccess: (result) => {
+        setSearchResult(result);
+        const first = result.results[0]?.concept;
+        if (first) {
+          setSelectedConceptId(first.id);
+          setVisibleSourceIds(first.source_ids);
+          setBrief(null);
+          setScript(null);
+        }
+        setLocalError('');
+      },
+    },
+  });
+  const decideAudio = useDecidePodcastAudio({
+    mutation: { onSuccess: (nextScript) => { setScript(nextScript); setLocalError(''); } },
+  });
+  const generateAudio = useGeneratePodcastAudio({
+    mutation: {
+      onSuccess: (clip) => {
+        setScript((current) => current ? { ...current, audio_status: 'generated', audio_clip: clip, release_kit: current.release_kit ? { ...current.release_kit, audio_status: 'generated' } : null } : current);
+        setLocalError('');
+      },
+    },
+  });
 
   const submitSource = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -659,11 +765,11 @@ export function Podcast() {
   };
 
   const roomError = roomQuery.error ? 'The intelligence room could not be loaded. Try again to reconnect to the source desk.' : '';
-  const mutationError = localError || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (createPreset.error ? 'This comparison preset could not be saved.' : '') || (renamePreset.error ? 'This comparison preset could not be renamed.' : '') || (deletePreset.error ? 'This comparison preset could not be removed.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '') || (createReleaseKit.error ? 'The release kit could not be prepared. Audio and publishing remain blocked.' : '') || (scriptWorkspaceQuery.error && room?.selected_brief_id ? 'The saved script workspace could not be retrieved. It may no longer be approved.' : '');
+  const mutationError = localError || (searchContexts.error ? 'The context search could not be completed. The existing source room is unchanged.' : '') || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (createPreset.error ? 'This comparison preset could not be saved.' : '') || (renamePreset.error ? 'This comparison preset could not be renamed.' : '') || (deletePreset.error ? 'This comparison preset could not be removed.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '') || (createReleaseKit.error ? 'The release kit could not be prepared. Audio and publishing remain blocked.' : '') || (decideAudio.error ? 'The audio decision was not recorded.' : '') || (generateAudio.error ? 'The house voice could not render this clip. The approval and source trail are unchanged.' : '') || (scriptWorkspaceQuery.error && room?.selected_brief_id ? 'The saved script workspace could not be retrieved. It may no longer be approved.' : '');
   const evidenceSufficient = brief ? hasSufficientEvidence(brief, sources) : false;
 
   return (
-    <div className="podcast-room min-h-[100dvh]">
+    <div className="podcast-room min-h-[100dvh] overflow-x-hidden">
       <header className="border-b border-[#a99a8c] bg-[#2c2927] px-5 py-5 text-[#f0e8de] sm:px-8 lg:px-12">
         <div className="mx-auto flex max-w-[1480px] flex-wrap items-end justify-between gap-5">
           <div>
@@ -708,6 +814,20 @@ export function Podcast() {
           <>
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
               <section className="min-w-0">
+                <div className="podcast-panel mb-6 overflow-hidden border-[#9f8b78]" data-testid="panel-context-search">
+                  <div className="bg-[#2c2927] p-5 text-[#f0e8de] sm:p-6">
+                    <div className="flex items-center gap-2"><Search className="h-4 w-4 text-[#d8a36c]" /><p className="podcast-kicker !text-[#d8a36c]">Entertainment context search</p></div>
+                    <h2 className="mt-2 font-serif text-3xl">Search beyond the reaction.</h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-[#b7aaa0]">Rank public-community patterns, trade context, interviews, audience research, and expert commentary into an auditable editorial package.</p>
+                  </div>
+                  <form className="grid min-w-0 gap-3 bg-[#f4eee5] p-5 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]" onSubmit={(event) => { event.preventDefault(); searchContexts.mutate({ data: { query: searchQuery.trim(), audience: searchAudience, use_case: searchUseCase } }); }}>
+                    <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} minLength={2} required className="h-11 min-w-0 border-[#b9aa9b] bg-[#fffaf2] text-[#201b19]" aria-label="Entertainment context search" data-testid="input-context-search" />
+                    <select value={searchAudience} onChange={(event) => setSearchAudience(event.target.value as typeof searchAudience)} className="h-11 min-w-0 w-full border border-[#b9aa9b] bg-[#fffaf2] px-3 text-sm text-[#201b19]" aria-label="Audience"><option value="consumers">Consumers</option><option value="clients">Clients</option><option value="users">Users</option></select>
+                    <select value={searchUseCase} onChange={(event) => setSearchUseCase(event.target.value as typeof searchUseCase)} className="h-11 min-w-0 w-full border border-[#b9aa9b] bg-[#fffaf2] px-3 text-sm text-[#201b19]" aria-label="Use case"><option value="recap">Recap</option><option value="development">Development</option><option value="publicity">Publicity</option><option value="audience_strategy">Audience strategy</option><option value="cultural_context">Cultural context</option></select>
+                    <Button type="submit" disabled={searchContexts.isPending} className="h-11 bg-[#b34b36] text-[#fffaf2]" data-testid="button-search-contexts">{searchContexts.isPending ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}Search</Button>
+                  </form>
+                  {searchResult && <div className="border-t border-[#c7b9aa] px-5 py-3 font-mono text-[9px] uppercase tracking-[.1em] text-[#365f67]" data-testid="status-context-search">{searchResult.results.length} ranked packages · {searchResult.search_mode.replaceAll('_', ' ')} · tailored for {searchResult.audience}</div>}
+                </div>
                 <div className="podcast-panel podcast-gridline mb-6 p-5 sm:p-6" data-testid="panel-source-loader">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
@@ -761,7 +881,7 @@ export function Podcast() {
 
               <div className="space-y-4">
                  <BriefPanel brief={brief} concept={selectedConcept} onDecide={(decision) => brief && decideBrief.mutate({ id: brief.id, data: { decision } })} isDeciding={decideBrief.isPending} evidenceSufficient={evidenceSufficient} />
-                 <ScriptWorkspacePanel script={script} releaseKit={script?.release_kit ?? null} canCreate={brief?.status === 'approved'} isCreating={createScript.isPending} isDeciding={decideScript.isPending} isCreatingReleaseKit={createReleaseKit.isPending} onCreate={() => brief && createScript.mutate({ id: brief.id })} onCreateReleaseKit={() => script && createReleaseKit.mutate({ id: script.id })} onDecide={(decision) => script && decideScript.mutate({ id: script.id, data: { decision } })} />
+                  <ScriptWorkspacePanel script={script} releaseKit={script?.release_kit ?? null} audioClip={script?.audio_clip ?? null} canCreate={brief?.status === 'approved'} isCreating={createScript.isPending} isDeciding={decideScript.isPending} isCreatingReleaseKit={createReleaseKit.isPending} isDecidingAudio={decideAudio.isPending} isGeneratingAudio={generateAudio.isPending} onCreate={() => brief && createScript.mutate({ id: brief.id })} onCreateReleaseKit={() => script && createReleaseKit.mutate({ id: script.id })} onDecide={(decision) => script && decideScript.mutate({ id: script.id, data: { decision } })} onAudioDecision={(decision) => script && decideAudio.mutate({ id: script.id, data: { decision } })} onGenerateAudio={() => script && generateAudio.mutate({ id: script.id })} />
                 <div className="podcast-panel p-5" data-testid="panel-next-action">
                   <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#b34b36]" strokeWidth={1.5} /><p className="podcast-kicker">Next editorial action</p></div>
                   <p className="mt-3 text-sm leading-6 text-[#5f554e]">You are looking at <strong className="font-medium text-[#201b19]">{selectedConcept?.title || 'the shortlist'}</strong>. Generate its brief only when the source trail is sufficient for a producer review.</p>
@@ -769,7 +889,7 @@ export function Podcast() {
                     {generateBrief.isPending ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" strokeWidth={1.5} />}
                     {generateBrief.isPending ? 'Compiling evidence' : 'Generate source-backed brief'}
                   </Button>
-                  <p className="mt-3 text-center font-mono text-[9px] uppercase leading-4 tracking-[0.08em] text-[#73675f]">No script, audio, or publish action in this room</p>
+                  <p className="mt-3 text-center font-mono text-[9px] uppercase leading-4 tracking-[0.08em] text-[#73675f]">Evidence → brief → script → audio approval → listen · publishing stays blocked</p>
                 </div>
                 <div className="border-l-2 border-[#365f67] bg-[#dbe4e0]/60 p-4" data-testid="notice-podcast-data">
                   <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#365f67]">Data notice</p>

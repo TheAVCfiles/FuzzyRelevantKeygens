@@ -297,6 +297,8 @@ export interface PodcastSource {
   /** @nullable */
   source_id: string | null;
   access_mode: PodcastSourceAccessMode;
+  source_class?: string;
+  evidence_type?: string;
 }
 
 export type PodcastConceptStatus = typeof PodcastConceptStatus[keyof typeof PodcastConceptStatus];
@@ -360,6 +362,61 @@ export interface PodcastRoom {
   rendering_status: PodcastRoomRenderingStatus;
   /** @nullable */
   selected_brief_id: string | null;
+}
+
+export type PodcastContextSearchInputAudience = typeof PodcastContextSearchInputAudience[keyof typeof PodcastContextSearchInputAudience];
+
+
+export const PodcastContextSearchInputAudience = {
+  consumers: 'consumers',
+  clients: 'clients',
+  users: 'users',
+} as const;
+
+export type PodcastContextSearchInputUseCase = typeof PodcastContextSearchInputUseCase[keyof typeof PodcastContextSearchInputUseCase];
+
+
+export const PodcastContextSearchInputUseCase = {
+  recap: 'recap',
+  development: 'development',
+  publicity: 'publicity',
+  audience_strategy: 'audience_strategy',
+  cultural_context: 'cultural_context',
+} as const;
+
+export interface PodcastContextSearchInput {
+  /**
+     * @minLength 2
+     * @maxLength 240
+     */
+  query: string;
+  audience: PodcastContextSearchInputAudience;
+  use_case: PodcastContextSearchInputUseCase;
+  source_classes?: string[];
+}
+
+export type PodcastContextSearchResponseSearchMode = typeof PodcastContextSearchResponseSearchMode[keyof typeof PodcastContextSearchResponseSearchMode];
+
+
+export const PodcastContextSearchResponseSearchMode = {
+  curated_synthetic_index: 'curated_synthetic_index',
+} as const;
+
+export type PodcastContextSearchResponseResultsItem = {
+  concept: PodcastConcept;
+  sources: PodcastSource[];
+  match_reason: string;
+  speculation: string;
+  safest_next_reviewer: string;
+};
+
+export interface PodcastContextSearchResponse {
+  query: string;
+  audience: string;
+  use_case: string;
+  generated_at: string;
+  search_mode: PodcastContextSearchResponseSearchMode;
+  results: PodcastContextSearchResponseResultsItem[];
 }
 
 export interface PodcastFilterPresetInput {
@@ -472,6 +529,10 @@ export type PodcastScriptWorkspaceAudioStatus = typeof PodcastScriptWorkspaceAud
 
 export const PodcastScriptWorkspaceAudioStatus = {
   blocked_until_script_approval: 'blocked_until_script_approval',
+  awaiting_audio_approval: 'awaiting_audio_approval',
+  ready_to_generate: 'ready_to_generate',
+  generated: 'generated',
+  rejected: 'rejected',
 } as const;
 
 export type PodcastReleaseKitStatus = typeof PodcastReleaseKitStatus[keyof typeof PodcastReleaseKitStatus];
@@ -485,7 +546,10 @@ export type PodcastReleaseKitAudioStatus = typeof PodcastReleaseKitAudioStatus[k
 
 
 export const PodcastReleaseKitAudioStatus = {
-  blocked_until_final_approval: 'blocked_until_final_approval',
+  awaiting_audio_approval: 'awaiting_audio_approval',
+  ready_to_generate: 'ready_to_generate',
+  generated: 'generated',
+  rejected: 'rejected',
 } as const;
 
 export type PodcastReleaseKitPublishingStatus = typeof PodcastReleaseKitPublishingStatus[keyof typeof PodcastReleaseKitPublishingStatus];
@@ -522,6 +586,35 @@ export interface PodcastReleaseKit {
   next_reviewer: string;
 }
 
+export type PodcastAudioClipStatus = typeof PodcastAudioClipStatus[keyof typeof PodcastAudioClipStatus];
+
+
+export const PodcastAudioClipStatus = {
+  ready: 'ready',
+} as const;
+
+export type PodcastAudioClipMimeType = typeof PodcastAudioClipMimeType[keyof typeof PodcastAudioClipMimeType];
+
+
+export const PodcastAudioClipMimeType = {
+  'audio/wav': 'audio/wav',
+} as const;
+
+export interface PodcastAudioClip {
+  id: string;
+  script_id: string;
+  status: PodcastAudioClipStatus;
+  audio_url: string;
+  mime_type: PodcastAudioClipMimeType;
+  duration_seconds: number;
+  transcript: string;
+  voice_disclosure: string;
+  format_disclosure: string;
+  source_ids: string[];
+  provenance_summary: string;
+  generated_at: string;
+}
+
 export interface PodcastScriptWorkspace {
   id: string;
   brief_id: string;
@@ -535,6 +628,19 @@ export interface PodcastScriptWorkspace {
   /** Whether restoring this workspace required compatibility normalization from an older saved format. */
   compatibility_normalized: boolean;
   release_kit: PodcastReleaseKit | null;
+  audio_clip?: PodcastAudioClip | null;
+}
+
+export type PodcastAudioDecisionInputDecision = typeof PodcastAudioDecisionInputDecision[keyof typeof PodcastAudioDecisionInputDecision];
+
+
+export const PodcastAudioDecisionInputDecision = {
+  approve: 'approve',
+  reject: 'reject',
+} as const;
+
+export interface PodcastAudioDecisionInput {
+  decision: PodcastAudioDecisionInputDecision;
 }
 
 export type PodcastScriptDecisionInputDecision = typeof PodcastScriptDecisionInputDecision[keyof typeof PodcastScriptDecisionInputDecision];

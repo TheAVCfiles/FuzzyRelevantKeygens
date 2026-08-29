@@ -10,6 +10,7 @@ import {
   createPodcastFilterPreset,
   createPodcastScript,
   createPodcastReleaseKit,
+  decidePodcastAudio,
   deletePodcastFilterPreset,
   decidePodcastBrief,
   decidePodcastScript,
@@ -17,6 +18,7 @@ import {
   getPodcastScriptByBriefId,
   getPodcastScriptById,
   getPodcastRoom,
+  searchPodcastContexts,
   isPodcastEvidenceSufficient,
   podcastSources,
   olderPersistedPodcastWorkspaceFixture,
@@ -89,6 +91,50 @@ test("malformed or incomplete model output falls back field-by-field and never e
 
   assert.deepEqual(safe, fallback);
   assert.deepEqual(buildSafePodcastDraft(null, fallback, [source]), fallback);
+});
+
+test("entertainment context search ranks cited packages and keeps speculation explicit", { concurrency: false }, () => {
+  const result = searchPodcastContexts(
+    "cutting room edit context",
+    "clients",
+    "development",
+  );
+  assert.equal(result.search_mode, "curated_synthetic_index");
+  assert.equal(result.audience, "clients");
+  assert.ok(result.results.length > 0);
+  for (const item of result.results) {
+    assert.ok(item.sources.length > 0);
+    assert.ok(item.concept.source_ids.every((id) => podcastSources.some((source) => source.id === id)));
+    assert.match(item.speculation, /unverified/i);
+    assert.ok(item.safest_next_reviewer.length > 0);
+  }
+});
+
+test("audio remains blocked until a staged kit receives a separate human decision", { concurrency: false }, async () => {
+  assert.equal(rehydratePodcastState({
+    briefs: [],
+    scripts: [],
+    filterPresets: [],
+    currentBriefId: null,
+    currentScriptId: null,
+  }), true);
+  const concept = getPodcastRoom().concepts.find((item) => item.id === "concept-format-trust");
+  assert.ok(concept);
+  const brief = await generatePodcastBrief(concept.id, concept.source_ids);
+  assert.ok(brief);
+  assert.equal(decidePodcastBrief(brief.id, "approve")?.status, "approved");
+  const created = createPodcastScript(brief.id);
+  assert.equal(created.kind, "created");
+  if (created.kind !== "created") return;
+  assert.equal(decidePodcastAudio(created.script.id, "approve").kind, "not_ready");
+  assert.equal(decidePodcastScript(created.script.id, "approve")?.status, "approved");
+  assert.equal(createPodcastReleaseKit(created.script.id).kind, "created");
+  const approved = decidePodcastAudio(created.script.id, "approve");
+  assert.equal(approved.kind, "updated");
+  if (approved.kind !== "updated") return;
+  assert.equal(approved.script.audio_status, "ready_to_generate");
+  assert.equal(approved.script.release_kit?.audio_status, "ready_to_generate");
+  assert.equal(approved.script.release_kit?.publishing_status, "blocked_until_final_approval");
 });
 
 test("brief and script decisions are explicit gates and do not create artifacts", { concurrency: false }, async () => {
@@ -192,7 +238,7 @@ test("approved scripts prepare and rehydrate a staged release kit without unlock
   assert.ok(result.releaseKit.title_options.length >= 2);
   assert.ok(result.releaseKit.chapters.length >= 3);
   assert.ok(result.releaseKit.promotion_copy.length >= 2);
-  assert.equal(result.releaseKit.audio_status, "blocked_until_final_approval");
+  assert.equal(result.releaseKit.audio_status, "awaiting_audio_approval");
   assert.equal(result.releaseKit.publishing_status, "blocked_until_final_approval");
   assert.match(result.releaseKit.provenance_summary, /retrieved public sources/);
 
@@ -210,7 +256,7 @@ test("approved scripts prepare and rehydrate a staged release kit without unlock
   assert.deepEqual(restored.script.release_kit?.accessibility_notes, result.releaseKit.accessibility_notes);
   assert.equal(restored.script.release_kit?.provenance_summary, result.releaseKit.provenance_summary);
   assert.equal(restored.script.release_kit?.status, "staged");
-  assert.equal(restored.script.release_kit?.audio_status, "blocked_until_final_approval");
+  assert.equal(restored.script.release_kit?.audio_status, "awaiting_audio_approval");
   assert.equal(restored.script.release_kit?.publishing_status, "blocked_until_final_approval");
 });
 
@@ -234,7 +280,7 @@ test("older persisted workspaces retain release kits after storage rehydration",
   assert.deepEqual(releaseKit.accessibility_notes, legacyReleaseKit.accessibility_notes);
   assert.equal(releaseKit.provenance_summary, legacyReleaseKit.provenance_summary);
   assert.equal(releaseKit.status, "staged");
-  assert.equal(releaseKit.audio_status, "blocked_until_final_approval");
+  assert.equal(releaseKit.audio_status, "awaiting_audio_approval");
   assert.equal(releaseKit.publishing_status, "blocked_until_final_approval");
 });
 
@@ -277,7 +323,7 @@ test("legacy workspaces keep compatibility and production gates through both API
       assert.equal(body.compatibility_normalized, true);
       assert.equal(body.status, "approved");
       assert.equal(body.audio_status, "blocked_until_script_approval");
-      assert.equal(body.release_kit?.audio_status, "blocked_until_final_approval");
+      assert.equal(body.release_kit?.audio_status, "awaiting_audio_approval");
       assert.equal(body.release_kit?.publishing_status, "blocked_until_final_approval");
     }
   } finally {
@@ -435,7 +481,7 @@ test("approved legacy workspaces retain brief approval, script approval, and rel
       publishing_status?: string;
     };
     assert.equal(releaseBody.status, "staged");
-    assert.equal(releaseBody.audio_status, "blocked_until_final_approval");
+    assert.equal(releaseBody.audio_status, "awaiting_audio_approval");
     assert.equal(releaseBody.publishing_status, "blocked_until_final_approval");
   } finally {
     await new Promise<void>((resolve, reject) => {

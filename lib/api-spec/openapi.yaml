@@ -112,6 +112,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PodcastRoom"
+  /podcast/search:
+    post:
+      operationId: searchPodcastContexts
+      tags: [autography]
+      summary: Search the curated entertainment context desk
+      description: Returns ranked, source-backed context packages. It does not scrape, identify people, or create production artifacts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastContextSearchInput"
+      responses:
+        "200":
+          description: Ranked entertainment context packages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastContextSearchResponse"
   /podcast/presets:
     post:
       operationId: createPodcastFilterPreset
@@ -287,6 +306,74 @@ paths:
                 $ref: "#/components/schemas/PodcastReleaseKit"
         "409":
           description: Script is not approved
+  /podcast/script/{id}/audio/decision:
+    post:
+      operationId: decidePodcastAudio
+      tags: [autography]
+      summary: Approve or reject audio generation for a staged release kit
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastAudioDecisionInput"
+      responses:
+        "200":
+          description: Updated script workspace and audio gate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastScriptWorkspace"
+        "409":
+          description: Script or release kit is not ready for audio approval
+  /podcast/script/{id}/audio:
+    post:
+      operationId: generatePodcastAudio
+      tags: [autography]
+      summary: Generate a short spoken clip from an audio-approved script
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          description: Generated playable podcast clip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastAudioClip"
+        "409":
+          description: Audio generation has not been approved
+    get:
+      operationId: getPodcastAudio
+      tags: [autography]
+      summary: Retrieve generated clip metadata
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Generated playable podcast clip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastAudioClip"
+        "404":
+          description: Audio clip has not been generated
+  /podcast/audio/{id}/stream:
+    get:
+      operationId: streamPodcastAudio
+      tags: [autography]
+      summary: Stream an approved generated podcast clip
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: WAV audio stream
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
   /context:
     get:
       operationId: getContext
@@ -763,6 +850,8 @@ components:
         access_mode:
           type: string
           enum: [fixture, public_url, manual_url]
+        source_class: { type: string }
+        evidence_type: { type: string }
     PodcastConcept:
       type: object
       required: [id, title, summary, relevance, urgency, engagement, freshness, source_diversity, source_ids, status, observed_signal, supported_context, unresolved_questions, recommended_route, next_reviewer, confidence_label, freshness_label]
@@ -811,6 +900,44 @@ components:
           type: string
           enum: [blocked_until_approval]
         selected_brief_id: { type: ["string", "null"] }
+    PodcastContextSearchInput:
+      type: object
+      required: [query, audience, use_case]
+      properties:
+        query: { type: string, minLength: 2, maxLength: 240 }
+        audience:
+          type: string
+          enum: [consumers, clients, users]
+        use_case:
+          type: string
+          enum: [recap, development, publicity, audience_strategy, cultural_context]
+        source_classes:
+          type: array
+          items: { type: string }
+    PodcastContextSearchResponse:
+      type: object
+      required: [query, audience, use_case, generated_at, search_mode, results]
+      properties:
+        query: { type: string }
+        audience: { type: string }
+        use_case: { type: string }
+        generated_at: { type: string }
+        search_mode:
+          type: string
+          enum: [curated_synthetic_index]
+        results:
+          type: array
+          items:
+            type: object
+            required: [concept, sources, match_reason, speculation, safest_next_reviewer]
+            properties:
+              concept: { $ref: "#/components/schemas/PodcastConcept" }
+              sources:
+                type: array
+                items: { $ref: "#/components/schemas/PodcastSource" }
+              match_reason: { type: string }
+              speculation: { type: string }
+              safest_next_reviewer: { type: string }
     PodcastFilterPreset:
       type: object
       required: [id, name, platforms, communities]
@@ -941,13 +1068,17 @@ components:
         review_note: { type: string }
         audio_status:
           type: string
-          enum: [blocked_until_script_approval]
+          enum: [blocked_until_script_approval, awaiting_audio_approval, ready_to_generate, generated, rejected]
         compatibility_normalized:
           type: boolean
           description: Whether restoring this workspace required compatibility normalization from an older saved format.
         release_kit:
           anyOf:
             - $ref: "#/components/schemas/PodcastReleaseKit"
+            - type: "null"
+        audio_clip:
+          anyOf:
+            - $ref: "#/components/schemas/PodcastAudioClip"
             - type: "null"
     PodcastReleaseKit:
       type: object
@@ -988,11 +1119,40 @@ components:
         provenance_summary: { type: string }
         audio_status:
           type: string
-          enum: [blocked_until_final_approval]
+          enum: [awaiting_audio_approval, ready_to_generate, generated, rejected]
         publishing_status:
           type: string
           enum: [blocked_until_final_approval]
         next_reviewer: { type: string }
+    PodcastAudioDecisionInput:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+    PodcastAudioClip:
+      type: object
+      required: [id, script_id, status, audio_url, mime_type, duration_seconds, transcript, voice_disclosure, format_disclosure, source_ids, provenance_summary, generated_at]
+      properties:
+        id: { type: string }
+        script_id: { type: string }
+        status:
+          type: string
+          enum: [ready]
+        audio_url: { type: string }
+        mime_type:
+          type: string
+          enum: [audio/wav]
+        duration_seconds: { type: number }
+        transcript: { type: string }
+        voice_disclosure: { type: string }
+        format_disclosure: { type: string }
+        source_ids:
+          type: array
+          items: { type: string }
+        provenance_summary: { type: string }
+        generated_at: { type: string }
     PodcastScriptDecisionInput:
       type: object
       required: [decision]
