@@ -2,16 +2,20 @@ import { GoogleGenAI } from "@google/genai";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
+  PodcastArchetype,
   PodcastBrief,
   PodcastAudioClip,
   PodcastContextSearchResponse,
+  PodcastDevelopmentPlan,
   PodcastFilterPreset,
+  PodcastFormatVariant,
+  PodcastLiveSnapshot,
   PodcastReleaseKit,
   PodcastScriptWorkspace,
   PodcastSource,
 } from "@workspace/api-zod";
 
-import { recordAgentStage, recordHumanDecision } from "./autography-fixtures";
+import { getLiveObservationSnapshot, recordAgentStage, recordHumanDecision } from "./autography-fixtures";
 
 const model = "gemini-3.6-flash";
 
@@ -234,11 +238,47 @@ export const podcastConcepts = [
   },
 ];
 
+export const podcastArchetypes: PodcastArchetype[] = [
+  {
+    id: "investigative-decoder",
+    label: "Investigative decoder",
+    point_of_view: "Reconstruct what the evidence establishes, what the edit compresses, and what remains unresolved.",
+    delivery_guidance: "Precise, curious, and paced around evidence turns rather than accusation.",
+    audience_fit: "Listeners who value reported context, chronology, and transparent uncertainty.",
+    non_impersonation_disclosure: "Fictional editorial lens only · never based on or performed as a real person.",
+  },
+  {
+    id: "warm-interviewer",
+    label: "Warm interviewer",
+    point_of_view: "Turn the evidence gap into humane questions that a responsible guest could answer without being cornered.",
+    delivery_guidance: "Inviting and clear, with room for pauses, context, and first-party boundaries.",
+    audience_fit: "Listeners who stay for emotional clarity and thoughtful conversation.",
+    non_impersonation_disclosure: "Fictional editorial lens only · house narration does not clone or imitate a host.",
+  },
+  {
+    id: "culture-critic",
+    label: "Culture critic",
+    point_of_view: "Connect the immediate signal to broader entertainment formats and audience expectations.",
+    delivery_guidance: "Analytical and vivid while distinguishing documented pattern from interpretation.",
+    audience_fit: "Listeners interested in media literacy, format choices, and cultural context.",
+    non_impersonation_disclosure: "Fictional editorial lens only · no living writer, critic, or performer is imitated.",
+  },
+  {
+    id: "comic-improviser",
+    label: "Comic improviser",
+    point_of_view: "Use playful format observations to make uncertainty listenable without making a person the punchline.",
+    delivery_guidance: "Quick, warm, and self-aware; humor targets the format problem, never an individual.",
+    audience_fit: "Listeners who prefer energetic recaps with a clear ethical boundary.",
+    non_impersonation_disclosure: "Fictional editorial lens only · no comedian, actor, or public figure is imitated.",
+  },
+];
+
 let currentBrief: PodcastBrief | null = null;
 let currentScript: PodcastWorkspaceWithCompatibility | null = null;
 const podcastBriefs = new Map<string, PodcastBrief>();
 const podcastScripts = new Map<string, PodcastWorkspaceWithCompatibility>();
 const podcastFilterPresets = new Map<string, PodcastFilterPreset>();
+const podcastDevelopmentPlans = new Map<string, PodcastDevelopmentPlan>();
 
 const podcastStatePath = join(process.cwd(), ".podcast-room-state.json");
 type PodcastStorageHealth = "healthy" | "degraded";
@@ -248,6 +288,7 @@ type PersistedPodcastState = {
   briefs: PodcastBrief[];
   scripts: PodcastWorkspaceWithCompatibility[];
   filterPresets?: PodcastFilterPreset[];
+  developmentPlans?: PodcastDevelopmentPlan[];
   currentBriefId: string | null;
   currentScriptId: string | null;
 };
@@ -289,6 +330,7 @@ function persistPodcastState(operation: string, artifactType: string) {
         briefs: [...podcastBriefs.values()],
         scripts: [...podcastScripts.values()],
         filterPresets: [...podcastFilterPresets.values()],
+        developmentPlans: [...podcastDevelopmentPlans.values()],
         currentBriefId: currentBrief?.id ?? null,
         currentScriptId: currentScript?.id ?? null,
       } satisfies PersistedPodcastState),
@@ -362,6 +404,7 @@ export function rehydratePodcastState(input: unknown) {
     podcastBriefs.clear();
     podcastScripts.clear();
     podcastFilterPresets.clear();
+    podcastDevelopmentPlans.clear();
     for (const brief of saved.briefs ?? []) {
       if (brief?.id) podcastBriefs.set(brief.id, brief);
     }
@@ -379,6 +422,9 @@ export function rehydratePodcastState(input: unknown) {
     }
     for (const preset of saved.filterPresets ?? []) {
       if (preset?.id) podcastFilterPresets.set(preset.id, preset);
+    }
+    for (const plan of saved.developmentPlans ?? []) {
+      if (plan?.id) podcastDevelopmentPlans.set(plan.id, plan);
     }
     currentBrief = saved.currentBriefId ? podcastBriefs.get(saved.currentBriefId) ?? null : null;
     currentScript = saved.currentScriptId ? podcastScripts.get(saved.currentScriptId) ?? null : null;
@@ -508,6 +554,227 @@ export function getPodcastRoom() {
     rendering_status: "blocked_until_approval" as const,
     selected_brief_id: currentBrief?.id ?? null,
   };
+}
+
+export function getPodcastLiveSnapshot(): PodcastLiveSnapshot {
+  const live = getLiveObservationSnapshot();
+  const refreshedAt = now();
+  if (live) {
+    const ageMinutes = Math.max(0, Math.round((Date.now() - new Date(live.received_at).getTime()) / 60_000));
+    return {
+      source_mode: "approved_live",
+      source_status: "active · approved consented source",
+      source_id: live.source_id,
+      source_class: live.source_class,
+      consent_reference: live.consent_ref,
+      policy_review_reference: live.policy_review_ref,
+      freshness: `${ageMinutes}m since receipt`,
+      refreshed_at: refreshedAt,
+      observation_window: live.observation_window,
+      aggregate_observations: live.observation_count,
+      signal_label: "live observation · aggregate-only",
+      data_notice: "Approved live newsroom observations are grouped and de-amplified. Identity fields and raw comments are not available to the Podcast Room.",
+    };
+  }
+  const starts = podcastSources.map((source) => source.timestamp).sort()[0] ?? refreshedAt;
+  const ends = podcastSources.map((source) => source.retrieved_at).sort().at(-1) ?? refreshedAt;
+  return {
+    source_mode: "synthetic_fixture",
+    source_status: "fixture fallback · no approved live batch available",
+    source_id: "podcast-curated-fixture-v1",
+    source_class: "synthetic_entertainment_index",
+    consent_reference: null,
+    policy_review_reference: null,
+    freshness: "fixed demonstration window",
+    refreshed_at: refreshedAt,
+    observation_window: { start: starts, end: ends },
+    aggregate_observations: podcastSources.length,
+    signal_label: "synthetic fixture · not a live audience measurement",
+    data_notice: "This fallback is synthetic and curated. It does not represent current public opinion, platform-wide behavior, or a popularity forecast.",
+  };
+}
+
+function percent(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value <= 1 ? value * 100 : value)));
+}
+
+function methodologyFactors(
+  concept: (typeof podcastConcepts)[number],
+  sourceIds: string[],
+  format: PodcastFormatVariant["format"],
+) {
+  const selectedSources = podcastSources.filter((source) => sourceIds.includes(source.id));
+  const retrieved = selectedSources.filter((source) => source.access_mode !== "manual_url").length;
+  const sourceClasses = new Set(selectedSources.map((source) => source.source_class ?? source.platform));
+  const formatBoost: Record<PodcastFormatVariant["format"], { clarity: number; pacing: number; title: number }> = {
+    cold_open_explainer: { clarity: 86, pacing: 91, title: 88 },
+    reported_explainer: { clarity: 93, pacing: 76, title: 81 },
+    structured_debate: { clarity: 78, pacing: 87, title: 84 },
+    context_recap: { clarity: 89, pacing: 82, title: 79 },
+    listener_question: { clarity: 84, pacing: 88, title: 86 },
+  };
+  const boost = formatBoost[format];
+  return [
+    { id: "audience-fit", label: "Audience fit", score: percent(concept.relevance), evidence: `${concept.confidence_label}; tailored to the selected audience and use case.`, uncertainty: "Fit is an editorial hypothesis until a controlled listening test is run." },
+    { id: "clarity", label: "Narrative clarity", score: boost.clarity, evidence: "The segment spine separates observation, supported context, interpretation, and unresolved questions.", uncertainty: "A script read-through is still needed to test comprehension." },
+    { id: "novelty", label: "Novelty", score: Math.round((percent(concept.relevance) + percent(concept.source_diversity)) / 2), evidence: `${sourceClasses.size} source classes support a format-level angle beyond raw reaction.`, uncertainty: "Novelty is relative to this bounded source set, not the whole market." },
+    { id: "tension", label: "Constructive tension", score: percent((concept.urgency + concept.engagement) / 2), evidence: concept.unresolved_questions[0] ?? "An unresolved editorial question remains visible.", uncertainty: "Tension must not be converted into unsupported certainty or targeting." },
+    { id: "source-diversity", label: "Source diversity", score: Math.min(100, Math.round((sourceClasses.size / Math.max(1, selectedSources.length)) * 100)), evidence: `${sourceClasses.size} distinct source classes across ${selectedSources.length} selected sources.`, uncertainty: `${retrieved} of ${selectedSources.length} selected sources are retrieval-complete.` },
+    { id: "freshness", label: "Freshness", score: percent(concept.freshness), evidence: concept.freshness_label, uncertainty: "Freshness describes the recorded observation window, not continuing audience momentum." },
+    { id: "pacing", label: "Pacing hypothesis", score: boost.pacing, evidence: "The proposed sequence alternates evidence, interpretation, and an open question.", uncertainty: "Pacing requires a timed table read or audio preview." },
+    { id: "title-promise", label: "Title promise", score: boost.title, evidence: "The title states a specific editorial question the cited segment spine can answer.", uncertainty: "Click and completion behavior cannot be inferred from a title alone." },
+  ];
+}
+
+function makeVariant(
+  concept: (typeof podcastConcepts)[number],
+  sourceIds: string[],
+  format: PodcastFormatVariant["format"],
+  title: string,
+  premise: string,
+  openingBeat: string,
+  tradeoff: string,
+): PodcastFormatVariant {
+  const factors = methodologyFactors(concept, sourceIds, format);
+  return {
+    id: `${format}-${concept.id}`,
+    title,
+    format,
+    premise,
+    opening_beat: openingBeat,
+    segment_spine: [
+      { label: "Open", purpose: openingBeat, source_ids: sourceIds },
+      { label: "Evidence turn", purpose: concept.supported_context, source_ids: sourceIds },
+      { label: "Unresolved turn", purpose: concept.unresolved_questions[0] ?? "Name what the available evidence cannot resolve.", source_ids: sourceIds },
+      { label: "Close", purpose: "Offer one answerable next question and state the limits of the forecast.", source_ids: sourceIds },
+    ],
+    citation_ids: sourceIds,
+    methodology_factors: factors,
+    hypotheses: [
+      { metric: "listen-through", statement: "A clear evidence turn may reduce early confusion and improve completion in a controlled comparison.", validation_method: "Compare aggregate 25%, 50%, and 90% completion across matched pilot variants." },
+      { metric: "subscription intent", statement: "A repeatable source-backed format may increase stated intent to hear the next episode.", validation_method: "Use an aggregate post-listen intent question; do not identify or retarget respondents." },
+    ],
+    risks: [
+      "A strong premise can overstate a directional signal if the uncertainty language is removed.",
+      "Forecast factors are hypotheses, not promises of popularity, conversion, or platform ranking.",
+    ],
+    tradeoff,
+    forecast_label: "Testable editorial hypothesis · not a popularity guarantee",
+  };
+}
+
+export function createPodcastDevelopment(
+  conceptId: string,
+  requestedSourceIds: string[],
+  audience: string,
+  useCase: string,
+) {
+  const concept = podcastConcepts.find((item) => item.id === conceptId);
+  if (!concept) return null;
+  const sourceIds = concept.source_ids.filter((id) => requestedSourceIds.includes(id));
+  if (!sourceIds.length) return null;
+  const snapshot = getPodcastLiveSnapshot();
+  const variants = [
+    makeVariant(concept, sourceIds, "cold_open_explainer", "The question before the answer", "Lead with the missing piece, then earn the explanation through cited context.", "Open on the shared question, then reveal which part the evidence can actually answer.", "Fastest hook, but the opening must not imply the unresolved point is already proven."),
+    makeVariant(concept, sourceIds, "reported_explainer", "What the record can support", "Build a compact reported explainer around chronology, source classes, and the limits of the available record.", "Begin with two facts from different source classes and the gap between them.", "Highest clarity, with less room for spontaneous host chemistry."),
+    makeVariant(concept, sourceIds, "structured_debate", "Certainty versus context", "Stage the strongest responsible interpretations against the evidence boundary without manufacturing conflict.", "State two plausible format readings, then disclose what neither can prove.", "Creates tension, but requires disciplined moderation to avoid false equivalence."),
+    makeVariant(concept, sourceIds, "context_recap", "The scene between the scenes", "Recap the episode through editorial choices and audience questions rather than a verdict about a person.", "Start at the edit point that made chronology difficult to follow.", "Familiar and accessible, but can feel conventional without a sharp evidence turn."),
+    makeVariant(concept, sourceIds, "listener_question", "The question the cut leaves open", "Use a grouped, answerable audience question as the recurring structure for a concise episode.", "Ask the safest unresolved question and explain why it is answerable only in part.", "Inviting and repeatable, but must not imply a small observed group represents all listeners."),
+  ];
+  const factorScores = Object.fromEntries(
+    variants[0].methodology_factors.map((factor) => [factor.id, factor.score]),
+  );
+  const id = `development-${concept.id}-${Date.now()}`;
+  const plan: PodcastDevelopmentPlan = {
+    id,
+    concept_id: concept.id,
+    source_ids: sourceIds,
+    audience,
+    use_case: useCase,
+    source_snapshot: snapshot,
+    archetypes: podcastArchetypes,
+    format_variants: variants,
+    methodology_note: "Scores expose the evidence and assumptions behind each editorial hypothesis. They rank neither people nor public opinion and cannot guarantee popularity, retention, subscriptions, revenue, or platform placement.",
+    measurement_record: {
+      id: `measurement-${id}`,
+      recorded_at: now(),
+      concept_id: concept.id,
+      source_ids: sourceIds,
+      source_mode: snapshot.source_mode,
+      archetype_id: null,
+      format_id: null,
+      factor_scores: factorScores,
+      validation_status: "pending",
+      validation_note: "Awaiting a human format decision. Future validation must use aggregate listening or approved outcome data.",
+    },
+    status: "draft",
+    selected_archetype_id: null,
+    selected_format_id: null,
+    decision_note: "Draft only. A human producer must select and validate one fictional editorial lens and one format before brief generation.",
+  };
+  podcastDevelopmentPlans.set(id, plan);
+  persistPodcastState("create", "podcast_development");
+  recordAgentStage("PODCAST-DEVELOPMENT", "draft", concept.title, `${variants.length} cited variants · ${snapshot.source_mode}`);
+  return plan;
+}
+
+export function recordPodcastDevelopmentValidation(
+  id: string,
+  decision: "validate" | "reject",
+  archetypeId: string,
+  formatId: string,
+  reviewer: string,
+) {
+  const plan = podcastDevelopmentPlans.get(id);
+  if (!plan) return null;
+  const archetype = plan.archetypes.find((item) => item.id === archetypeId);
+  const format = plan.format_variants.find((item) => item.id === formatId);
+  if (!archetype || !format) return null;
+  const status = decision === "validate" ? "validated" as const : "rejected" as const;
+  const updated: PodcastDevelopmentPlan = {
+    ...plan,
+    status,
+    selected_archetype_id: archetype.id,
+    selected_format_id: format.id,
+    decision_note: decision === "validate"
+      ? "Validated by a human producer as a development hypothesis. Brief, script, release, audio, and publishing gates remain separate."
+      : "Rejected by a human producer. No brief may be generated from this plan.",
+    measurement_record: {
+      ...plan.measurement_record,
+      archetype_id: archetype.id,
+      format_id: format.id,
+      factor_scores: Object.fromEntries(format.methodology_factors.map((factor) => [factor.id, factor.score])),
+      validation_status: status,
+      validation_note: decision === "validate"
+        ? "Human-selected hypothesis recorded for controlled listening validation."
+        : "Human rejected this hypothesis before brief generation.",
+    },
+  };
+  podcastDevelopmentPlans.set(id, updated);
+  if (!persistPodcastState("decision", "podcast_development")) {
+    podcastDevelopmentPlans.set(id, plan);
+    return false;
+  }
+  recordHumanDecision("development", id, decision, reviewer);
+  return updated;
+}
+
+export function getPodcastDevelopmentPlan(id: string) {
+  return podcastDevelopmentPlans.get(id) ?? null;
+}
+
+export function isPodcastDevelopmentReady(id: string, conceptId: string, sourceIds: string[]) {
+  const plan = podcastDevelopmentPlans.get(id);
+  if (
+    !plan ||
+    plan.status !== "validated" ||
+    !plan.selected_archetype_id ||
+    !plan.selected_format_id ||
+    plan.concept_id !== conceptId
+  ) return false;
+  const planned = [...new Set(plan.source_ids)].sort();
+  const requested = [...new Set(sourceIds)].sort();
+  return planned.length === requested.length && planned.every((sourceId, index) => sourceId === requested[index]);
 }
 
 export function createPodcastFilterPreset(
@@ -910,20 +1177,31 @@ export function addPodcastSource(sourceUrl: string) {
   return getPodcastRoom();
 }
 
-export async function generatePodcastBrief(conceptId: string, requestedSourceIds: string[]) {
+export async function generatePodcastBrief(
+  conceptId: string,
+  requestedSourceIds: string[],
+  developmentPlanId?: string,
+) {
   const concept = podcastConcepts.find((item) => item.id === conceptId);
   if (!concept) return null;
 
   const sourceIds = concept.source_ids.filter((id) => requestedSourceIds.includes(id));
   const selectedSources = podcastSources.filter((source) => sourceIds.includes(source.id));
   const fallback = fixtureBrief(conceptId, sourceIds);
+  const developmentPlan = developmentPlanId ? getPodcastDevelopmentPlan(developmentPlanId) : null;
+  const selectedArchetype = developmentPlan?.archetypes.find(
+    (item) => item.id === developmentPlan.selected_archetype_id,
+  );
+  const selectedFormat = developmentPlan?.format_variants.find(
+    (item) => item.id === developmentPlan.selected_format_id,
+  );
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model,
-        contents: `You are a read-only podcast development editor. Create a JSON podcast brief from the supplied audience concept and source metadata. Do not quote comments verbatim, do not identify people, do not invent facts, and do not publish or render anything. Preserve the supplied source links. Return fields topic_angle, audience_pain, why_now, key_tensions, risk_notes, episode_outline, suggested_title.\n\nCONCEPT:\n${JSON.stringify(concept)}\n\nSELECTED SOURCES:\n${JSON.stringify(selectedSources)}`,
+        contents: `You are a read-only podcast development editor. Create a JSON podcast brief from the supplied audience concept, source metadata, fictional editorial lens, and format hypothesis. Do not quote comments verbatim, identify people, imitate a real person's style, invent facts, guarantee popularity, or publish or render anything. Preserve the supplied source links. Return fields topic_angle, audience_pain, why_now, key_tensions, risk_notes, episode_outline, suggested_title.\n\nCONCEPT:\n${JSON.stringify(concept)}\n\nSELECTED SOURCES:\n${JSON.stringify(selectedSources)}\n\nFICTIONAL EDITORIAL LENS:\n${JSON.stringify(selectedArchetype ?? null)}\n\nFORMAT HYPOTHESIS:\n${JSON.stringify(selectedFormat ?? null)}`,
       config: { responseMimeType: "application/json" },
     });
     const parsed = JSON.parse(response.text ?? "{}");
@@ -935,6 +1213,10 @@ export async function generatePodcastBrief(conceptId: string, requestedSourceIds
       source_links: fallback.source_links,
       status: "draft",
       approval_note: fallback.approval_note,
+      development_plan_id: developmentPlan?.id,
+      editorial_archetype: selectedArchetype,
+      selected_format: selectedFormat,
+      methodology_summary: developmentPlan?.methodology_note,
     };
     podcastBriefs.set(currentBrief.id, currentBrief);
     persistPodcastState("create", "podcast_brief");
@@ -942,7 +1224,13 @@ export async function generatePodcastBrief(conceptId: string, requestedSourceIds
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Unknown Gemini runtime error.";
     recordAgentStage("PODCAST-BRIEF", "draft", concept.title, `fallback: ${reason}`);
-    currentBrief = fallback;
+    currentBrief = {
+      ...fallback,
+      development_plan_id: developmentPlan?.id,
+      editorial_archetype: selectedArchetype,
+      selected_format: selectedFormat,
+      methodology_summary: developmentPlan?.methodology_note,
+    };
     podcastBriefs.set(currentBrief.id, currentBrief);
     persistPodcastState("create", "podcast_brief");
   }

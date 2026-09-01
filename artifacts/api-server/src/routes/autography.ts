@@ -6,6 +6,8 @@ import {
   AddPodcastSourceResponse,
   CreatePodcastFilterPresetBody,
   CreatePodcastFilterPresetResponse,
+  CreatePodcastDevelopmentBody,
+  CreatePodcastDevelopmentResponse,
   DecidePodcastBriefBody,
   DecidePodcastBriefParams,
   DecidePodcastBriefResponse,
@@ -32,6 +34,7 @@ import {
   GetFloodQueryParams,
   GetFloodResponse,
   GetPodcastRoomResponse,
+  GetPodcastLiveSnapshotResponse,
   GeneratePodcastAudioParams,
   GeneratePodcastAudioResponse,
   GetPodcastAudioParams,
@@ -42,6 +45,9 @@ import {
   RenamePodcastFilterPresetBody,
   RenamePodcastFilterPresetParams,
   RenamePodcastFilterPresetResponse,
+  RecordPodcastDevelopmentValidationBody,
+  RecordPodcastDevelopmentValidationParams,
+  RecordPodcastDevelopmentValidationResponse,
   DeletePodcastFilterPresetParams,
   GetPullRequestParams,
   GetPullRequestResponse,
@@ -77,6 +83,7 @@ import { runAutographyAgentFlow } from "../lib/agent-builder-flow";
 import {
   addPodcastSource,
   createPodcastFilterPreset,
+  createPodcastDevelopment,
   deletePodcastFilterPreset,
   decidePodcastBrief,
   createPodcastScript,
@@ -88,12 +95,16 @@ import {
   getPodcastAudioByScript,
   getPodcastAudioPath,
   getPodcastRoom,
+  getPodcastLiveSnapshot,
+  getPodcastDevelopmentPlan,
   getPodcastScriptByBriefId,
   getPodcastScriptById,
   isPodcastEvidenceSufficient,
+  isPodcastDevelopmentReady,
   isBlockedLegacyPodcastBrief,
   recordPodcastDecision,
   renamePodcastFilterPreset,
+  recordPodcastDevelopmentValidation,
   searchPodcastContexts,
 } from "../lib/podcast-fixtures";
 
@@ -223,6 +234,54 @@ router.post("/podcast/search", requirePermission("stage"), (req, res): void => {
   )));
 });
 
+router.get("/podcast/live-snapshot", (_req, res): void => {
+  res.json(GetPodcastLiveSnapshotResponse.parse(getPodcastLiveSnapshot()));
+});
+
+router.post("/podcast/development", requirePermission("stage"), (req, res): void => {
+  const body = CreatePodcastDevelopmentBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const plan = createPodcastDevelopment(
+    body.data.concept_id,
+    body.data.source_ids,
+    body.data.audience,
+    body.data.use_case,
+  );
+  if (!plan) {
+    res.status(404).json({ error: "Podcast concept or cited source set not found" });
+    return;
+  }
+  res.status(201).json(CreatePodcastDevelopmentResponse.parse(plan));
+});
+
+router.post("/podcast/development/:id/validation", requirePermission("sign"), (req, res): void => {
+  const params = RecordPodcastDevelopmentValidationParams.safeParse(req.params);
+  const body = RecordPodcastDevelopmentValidationBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Invalid podcast development decision" });
+    return;
+  }
+  const plan = recordPodcastDevelopmentValidation(
+    params.data.id,
+    body.data.decision,
+    body.data.archetype_id,
+    body.data.format_id,
+    (req as Request & { autographyRole?: string }).autographyRole ?? "human reviewer",
+  );
+  if (plan === false) {
+    res.status(503).json({ error: "The development decision could not be persisted. The plan remains unvalidated." });
+    return;
+  }
+  if (!plan) {
+    res.status(404).json({ error: "Podcast development plan, archetype, or format not found" });
+    return;
+  }
+  res.json(RecordPodcastDevelopmentValidationResponse.parse(plan));
+});
+
 router.post("/podcast/presets", requirePermission("stage"), (req, res): void => {
   const body = CreatePodcastFilterPresetBody.safeParse(req.body);
   if (!body.success) {
@@ -270,7 +329,15 @@ router.post("/podcast/brief", requirePermission("stage"), async (req, res): Prom
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const brief = await generatePodcastBrief(body.data.concept_id, body.data.source_ids);
+  if (!isPodcastDevelopmentReady(body.data.development_plan_id, body.data.concept_id, body.data.source_ids)) {
+    res.status(409).json({ error: "A validated development plan with the same cited source set is required." });
+    return;
+  }
+  const brief = await generatePodcastBrief(
+    body.data.concept_id,
+    body.data.source_ids,
+    body.data.development_plan_id,
+  );
   if (!brief) {
     res.status(404).json({ error: "Podcast concept not found" });
     return;

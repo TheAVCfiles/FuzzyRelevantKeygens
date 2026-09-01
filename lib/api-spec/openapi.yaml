@@ -131,6 +131,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PodcastContextSearchResponse"
+  /podcast/live-snapshot:
+    get:
+      operationId: getPodcastLiveSnapshot
+      tags: [autography]
+      summary: Refresh the bounded podcast live-signal snapshot
+      description: Returns only aggregate metadata from the approved consented newsroom source, with an explicit synthetic fallback when no live batch is available.
+      responses:
+        "200":
+          description: Bounded live-signal snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastLiveSnapshot"
+  /podcast/development:
+    post:
+      operationId: createPodcastDevelopment
+      tags: [autography]
+      summary: Create source-backed podcast format variants for human review
+      description: Creates inspectable editorial hypotheses and never approves a brief, renders audio, imitates a real person, or publishes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastDevelopmentInput"
+      responses:
+        "201":
+          description: Draft development plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastDevelopmentPlan"
+  /podcast/development/{id}/validation:
+    post:
+      operationId: recordPodcastDevelopmentValidation
+      tags: [autography]
+      summary: Record a human development-plan decision
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastDevelopmentValidationInput"
+      responses:
+        "200":
+          description: Reviewed development plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastDevelopmentPlan"
   /podcast/presets:
     post:
       operationId: createPodcastFilterPreset
@@ -900,6 +952,170 @@ components:
           type: string
           enum: [blocked_until_approval]
         selected_brief_id: { type: ["string", "null"] }
+    PodcastLiveSnapshot:
+      type: object
+      required: [source_mode, source_status, source_id, source_class, consent_reference, policy_review_reference, freshness, refreshed_at, observation_window, aggregate_observations, signal_label, data_notice]
+      properties:
+        source_mode:
+          type: string
+          enum: [approved_live, synthetic_fixture]
+        source_status: { type: string }
+        source_id: { type: string }
+        source_class: { type: string }
+        consent_reference: { type: ["string", "null"] }
+        policy_review_reference: { type: ["string", "null"] }
+        freshness: { type: string }
+        refreshed_at: { type: string }
+        observation_window:
+          type: object
+          required: [start, end]
+          properties:
+            start: { type: string }
+            end: { type: string }
+        aggregate_observations: { type: number }
+        signal_label: { type: string }
+        data_notice: { type: string }
+    PodcastArchetype:
+      type: object
+      required: [id, label, point_of_view, delivery_guidance, audience_fit, non_impersonation_disclosure]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        point_of_view: { type: string }
+        delivery_guidance: { type: string }
+        audience_fit: { type: string }
+        non_impersonation_disclosure: { type: string }
+    PodcastMethodologyFactor:
+      type: object
+      required: [id, label, score, evidence, uncertainty]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        score: { type: number, minimum: 0, maximum: 100 }
+        evidence: { type: string }
+        uncertainty: { type: string }
+    PodcastFormatSegment:
+      type: object
+      required: [label, purpose, source_ids]
+      properties:
+        label: { type: string }
+        purpose: { type: string }
+        source_ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+    PodcastForecastHypothesis:
+      type: object
+      required: [metric, statement, validation_method]
+      properties:
+        metric: { type: string }
+        statement: { type: string }
+        validation_method: { type: string }
+    PodcastFormatVariant:
+      type: object
+      required: [id, title, format, premise, opening_beat, segment_spine, citation_ids, methodology_factors, hypotheses, risks, tradeoff, forecast_label]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        format:
+          type: string
+          enum: [cold_open_explainer, reported_explainer, structured_debate, context_recap, listener_question]
+        premise: { type: string }
+        opening_beat: { type: string }
+        segment_spine:
+          type: array
+          minItems: 3
+          items: { $ref: "#/components/schemas/PodcastFormatSegment" }
+        citation_ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+        methodology_factors:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastMethodologyFactor" }
+        hypotheses:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastForecastHypothesis" }
+        risks:
+          type: array
+          items: { type: string }
+        tradeoff: { type: string }
+        forecast_label: { type: string }
+    PodcastDevelopmentMeasurementRecord:
+      type: object
+      required: [id, recorded_at, concept_id, source_ids, source_mode, archetype_id, format_id, factor_scores, validation_status, validation_note]
+      properties:
+        id: { type: string }
+        recorded_at: { type: string }
+        concept_id: { type: string }
+        source_ids:
+          type: array
+          items: { type: string }
+        source_mode:
+          type: string
+          enum: [approved_live, synthetic_fixture]
+        archetype_id: { type: ["string", "null"] }
+        format_id: { type: ["string", "null"] }
+        factor_scores:
+          type: object
+          additionalProperties: { type: number }
+        validation_status:
+          type: string
+          enum: [pending, validated, rejected]
+        validation_note: { type: string }
+    PodcastDevelopmentPlan:
+      type: object
+      required: [id, concept_id, source_ids, audience, use_case, source_snapshot, archetypes, format_variants, methodology_note, measurement_record, status, selected_archetype_id, selected_format_id, decision_note]
+      properties:
+        id: { type: string }
+        concept_id: { type: string }
+        source_ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+        audience: { type: string }
+        use_case: { type: string }
+        source_snapshot: { $ref: "#/components/schemas/PodcastLiveSnapshot" }
+        archetypes:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/PodcastArchetype" }
+        format_variants:
+          type: array
+          minItems: 2
+          items: { $ref: "#/components/schemas/PodcastFormatVariant" }
+        methodology_note: { type: string }
+        measurement_record: { $ref: "#/components/schemas/PodcastDevelopmentMeasurementRecord" }
+        status:
+          type: string
+          enum: [draft, validated, rejected]
+        selected_archetype_id: { type: ["string", "null"] }
+        selected_format_id: { type: ["string", "null"] }
+        decision_note: { type: string }
+    PodcastDevelopmentInput:
+      type: object
+      required: [concept_id, source_ids, audience, use_case]
+      properties:
+        concept_id: { type: string }
+        source_ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+        audience:
+          type: string
+          enum: [consumers, clients, users]
+        use_case:
+          type: string
+          enum: [recap, development, publicity, audience_strategy, cultural_context]
+    PodcastDevelopmentValidationInput:
+      type: object
+      required: [decision, archetype_id, format_id]
+      properties:
+        decision:
+          type: string
+          enum: [validate, reject]
+        archetype_id: { type: string }
+        format_id: { type: string }
     PodcastContextSearchInput:
       type: object
       required: [query, audience, use_case]
@@ -973,7 +1189,7 @@ components:
         source_url: { type: string }
     GeneratePodcastBriefInput:
       type: object
-      required: [concept_id, source_ids]
+      required: [concept_id, source_ids, development_plan_id]
       properties:
         concept_id: { type: string }
         source_ids:
@@ -981,6 +1197,9 @@ components:
           minItems: 1
           description: Source IDs currently visible in the producer's comparison selection.
           items: { type: string }
+        development_plan_id:
+          type: string
+          description: Validated development plan that fixes the selected fictional archetype, format, and exact cited source set for this brief.
     PodcastBrief:
       type: object
       required: [id, concept_id, selected_source_ids, status, generated_mode, topic_angle, audience_pain, why_now, key_tensions, source_links, risk_notes, episode_outline, suggested_title, approval_note]
@@ -1025,6 +1244,10 @@ components:
               purpose: { type: string }
         suggested_title: { type: string }
         approval_note: { type: string }
+        development_plan_id: { type: string }
+        editorial_archetype: { $ref: "#/components/schemas/PodcastArchetype" }
+        selected_format: { $ref: "#/components/schemas/PodcastFormatVariant" }
+        methodology_summary: { type: string }
     PodcastBriefDecisionInput:
       type: object
       required: [decision]

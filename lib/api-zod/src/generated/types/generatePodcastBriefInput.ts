@@ -13,4 +13,6 @@ export interface GeneratePodcastBriefInput {
      * @minItems 1
      */
   source_ids: string[];
+  /** Validated development plan that fixes the selected fictional archetype, format, and exact cited source set for this brief. */
+  development_plan_id: string;
 }

@@ -445,6 +445,240 @@ export const SearchPodcastContextsResponse = zod.object({
 
 
 /**
+ * Returns only aggregate metadata from the approved consented newsroom source, with an explicit synthetic fallback when no live batch is available.
+ * @summary Refresh the bounded podcast live-signal snapshot
+ */
+export const GetPodcastLiveSnapshotResponse = zod.object({
+  "source_mode": zod.enum(['approved_live', 'synthetic_fixture']),
+  "source_status": zod.string(),
+  "source_id": zod.string(),
+  "source_class": zod.string(),
+  "consent_reference": zod.string().nullable(),
+  "policy_review_reference": zod.string().nullable(),
+  "freshness": zod.string(),
+  "refreshed_at": zod.string(),
+  "observation_window": zod.object({
+  "start": zod.string(),
+  "end": zod.string()
+}),
+  "aggregate_observations": zod.number(),
+  "signal_label": zod.string(),
+  "data_notice": zod.string()
+})
+
+
+/**
+ * Creates inspectable editorial hypotheses and never approves a brief, renders audio, imitates a real person, or publishes.
+ * @summary Create source-backed podcast format variants for human review
+ */
+
+
+
+export const CreatePodcastDevelopmentBody = zod.object({
+  "concept_id": zod.string(),
+  "source_ids": zod.array(zod.string()).min(1),
+  "audience": zod.enum(['consumers', 'clients', 'users']),
+  "use_case": zod.enum(['recap', 'development', 'publicity', 'audience_strategy', 'cultural_context'])
+})
+
+
+
+
+export const createPodcastDevelopmentResponseFormatVariantsItemSegmentSpineMin = 3;
+
+
+export const createPodcastDevelopmentResponseFormatVariantsItemMethodologyFactorsItemScoreMin = 0;
+export const createPodcastDevelopmentResponseFormatVariantsItemMethodologyFactorsItemScoreMax = 100;
+
+export const createPodcastDevelopmentResponseFormatVariantsMin = 2;
+
+
+
+export const CreatePodcastDevelopmentResponse = zod.object({
+  "id": zod.string(),
+  "concept_id": zod.string(),
+  "source_ids": zod.array(zod.string()).min(1),
+  "audience": zod.string(),
+  "use_case": zod.string(),
+  "source_snapshot": zod.object({
+  "source_mode": zod.enum(['approved_live', 'synthetic_fixture']),
+  "source_status": zod.string(),
+  "source_id": zod.string(),
+  "source_class": zod.string(),
+  "consent_reference": zod.string().nullable(),
+  "policy_review_reference": zod.string().nullable(),
+  "freshness": zod.string(),
+  "refreshed_at": zod.string(),
+  "observation_window": zod.object({
+  "start": zod.string(),
+  "end": zod.string()
+}),
+  "aggregate_observations": zod.number(),
+  "signal_label": zod.string(),
+  "data_notice": zod.string()
+}),
+  "archetypes": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "point_of_view": zod.string(),
+  "delivery_guidance": zod.string(),
+  "audience_fit": zod.string(),
+  "non_impersonation_disclosure": zod.string()
+})).min(1),
+  "format_variants": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "format": zod.enum(['cold_open_explainer', 'reported_explainer', 'structured_debate', 'context_recap', 'listener_question']),
+  "premise": zod.string(),
+  "opening_beat": zod.string(),
+  "segment_spine": zod.array(zod.object({
+  "label": zod.string(),
+  "purpose": zod.string(),
+  "source_ids": zod.array(zod.string()).min(1)
+})).min(createPodcastDevelopmentResponseFormatVariantsItemSegmentSpineMin),
+  "citation_ids": zod.array(zod.string()).min(1),
+  "methodology_factors": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "score": zod.number().min(createPodcastDevelopmentResponseFormatVariantsItemMethodologyFactorsItemScoreMin).max(createPodcastDevelopmentResponseFormatVariantsItemMethodologyFactorsItemScoreMax),
+  "evidence": zod.string(),
+  "uncertainty": zod.string()
+})),
+  "hypotheses": zod.array(zod.object({
+  "metric": zod.string(),
+  "statement": zod.string(),
+  "validation_method": zod.string()
+})),
+  "risks": zod.array(zod.string()),
+  "tradeoff": zod.string(),
+  "forecast_label": zod.string()
+})).min(createPodcastDevelopmentResponseFormatVariantsMin),
+  "methodology_note": zod.string(),
+  "measurement_record": zod.object({
+  "id": zod.string(),
+  "recorded_at": zod.string(),
+  "concept_id": zod.string(),
+  "source_ids": zod.array(zod.string()),
+  "source_mode": zod.enum(['approved_live', 'synthetic_fixture']),
+  "archetype_id": zod.string().nullable(),
+  "format_id": zod.string().nullable(),
+  "factor_scores": zod.record(zod.string(), zod.number()),
+  "validation_status": zod.enum(['pending', 'validated', 'rejected']),
+  "validation_note": zod.string()
+}),
+  "status": zod.enum(['draft', 'validated', 'rejected']),
+  "selected_archetype_id": zod.string().nullable(),
+  "selected_format_id": zod.string().nullable(),
+  "decision_note": zod.string()
+})
+
+
+/**
+ * @summary Record a human development-plan decision
+ */
+export const RecordPodcastDevelopmentValidationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const RecordPodcastDevelopmentValidationBody = zod.object({
+  "decision": zod.enum(['validate', 'reject']),
+  "archetype_id": zod.string(),
+  "format_id": zod.string()
+})
+
+
+
+
+export const recordPodcastDevelopmentValidationResponseFormatVariantsItemSegmentSpineMin = 3;
+
+
+export const recordPodcastDevelopmentValidationResponseFormatVariantsItemMethodologyFactorsItemScoreMin = 0;
+export const recordPodcastDevelopmentValidationResponseFormatVariantsItemMethodologyFactorsItemScoreMax = 100;
+
+export const recordPodcastDevelopmentValidationResponseFormatVariantsMin = 2;
+
+
+
+export const RecordPodcastDevelopmentValidationResponse = zod.object({
+  "id": zod.string(),
+  "concept_id": zod.string(),
+  "source_ids": zod.array(zod.string()).min(1),
+  "audience": zod.string(),
+  "use_case": zod.string(),
+  "source_snapshot": zod.object({
+  "source_mode": zod.enum(['approved_live', 'synthetic_fixture']),
+  "source_status": zod.string(),
+  "source_id": zod.string(),
+  "source_class": zod.string(),
+  "consent_reference": zod.string().nullable(),
+  "policy_review_reference": zod.string().nullable(),
+  "freshness": zod.string(),
+  "refreshed_at": zod.string(),
+  "observation_window": zod.object({
+  "start": zod.string(),
+  "end": zod.string()
+}),
+  "aggregate_observations": zod.number(),
+  "signal_label": zod.string(),
+  "data_notice": zod.string()
+}),
+  "archetypes": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "point_of_view": zod.string(),
+  "delivery_guidance": zod.string(),
+  "audience_fit": zod.string(),
+  "non_impersonation_disclosure": zod.string()
+})).min(1),
+  "format_variants": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "format": zod.enum(['cold_open_explainer', 'reported_explainer', 'structured_debate', 'context_recap', 'listener_question']),
+  "premise": zod.string(),
+  "opening_beat": zod.string(),
+  "segment_spine": zod.array(zod.object({
+  "label": zod.string(),
+  "purpose": zod.string(),
+  "source_ids": zod.array(zod.string()).min(1)
+})).min(recordPodcastDevelopmentValidationResponseFormatVariantsItemSegmentSpineMin),
+  "citation_ids": zod.array(zod.string()).min(1),
+  "methodology_factors": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "score": zod.number().min(recordPodcastDevelopmentValidationResponseFormatVariantsItemMethodologyFactorsItemScoreMin).max(recordPodcastDevelopmentValidationResponseFormatVariantsItemMethodologyFactorsItemScoreMax),
+  "evidence": zod.string(),
+  "uncertainty": zod.string()
+})),
+  "hypotheses": zod.array(zod.object({
+  "metric": zod.string(),
+  "statement": zod.string(),
+  "validation_method": zod.string()
+})),
+  "risks": zod.array(zod.string()),
+  "tradeoff": zod.string(),
+  "forecast_label": zod.string()
+})).min(recordPodcastDevelopmentValidationResponseFormatVariantsMin),
+  "methodology_note": zod.string(),
+  "measurement_record": zod.object({
+  "id": zod.string(),
+  "recorded_at": zod.string(),
+  "concept_id": zod.string(),
+  "source_ids": zod.array(zod.string()),
+  "source_mode": zod.enum(['approved_live', 'synthetic_fixture']),
+  "archetype_id": zod.string().nullable(),
+  "format_id": zod.string().nullable(),
+  "factor_scores": zod.record(zod.string(), zod.number()),
+  "validation_status": zod.enum(['pending', 'validated', 'rejected']),
+  "validation_note": zod.string()
+}),
+  "status": zod.enum(['draft', 'validated', 'rejected']),
+  "selected_archetype_id": zod.string().nullable(),
+  "selected_format_id": zod.string().nullable(),
+  "decision_note": zod.string()
+})
+
+
+/**
  * @summary Save a reusable podcast comparison filter preset
  */
 
@@ -505,8 +739,18 @@ export const DeletePodcastFilterPresetResponse = zod.void()
 
 export const GeneratePodcastBriefBody = zod.object({
   "concept_id": zod.string(),
-  "source_ids": zod.array(zod.string()).min(1).describe('Source IDs currently visible in the producer\'s comparison selection.')
+  "source_ids": zod.array(zod.string()).min(1).describe('Source IDs currently visible in the producer\'s comparison selection.'),
+  "development_plan_id": zod.string().describe('Validated development plan that fixes the selected fictional archetype, format, and exact cited source set for this brief.')
 })
+
+
+export const generatePodcastBriefResponseSelectedFormatSegmentSpineMin = 3;
+
+
+export const generatePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMin = 0;
+export const generatePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMax = 100;
+
+
 
 export const GeneratePodcastBriefResponse = zod.object({
   "id": zod.string(),
@@ -530,7 +774,45 @@ export const GeneratePodcastBriefResponse = zod.object({
   "purpose": zod.string()
 })),
   "suggested_title": zod.string(),
-  "approval_note": zod.string()
+  "approval_note": zod.string(),
+  "development_plan_id": zod.string().optional(),
+  "editorial_archetype": zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "point_of_view": zod.string(),
+  "delivery_guidance": zod.string(),
+  "audience_fit": zod.string(),
+  "non_impersonation_disclosure": zod.string()
+}).optional(),
+  "selected_format": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "format": zod.enum(['cold_open_explainer', 'reported_explainer', 'structured_debate', 'context_recap', 'listener_question']),
+  "premise": zod.string(),
+  "opening_beat": zod.string(),
+  "segment_spine": zod.array(zod.object({
+  "label": zod.string(),
+  "purpose": zod.string(),
+  "source_ids": zod.array(zod.string()).min(1)
+})).min(generatePodcastBriefResponseSelectedFormatSegmentSpineMin),
+  "citation_ids": zod.array(zod.string()).min(1),
+  "methodology_factors": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "score": zod.number().min(generatePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMin).max(generatePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMax),
+  "evidence": zod.string(),
+  "uncertainty": zod.string()
+})),
+  "hypotheses": zod.array(zod.object({
+  "metric": zod.string(),
+  "statement": zod.string(),
+  "validation_method": zod.string()
+})),
+  "risks": zod.array(zod.string()),
+  "tradeoff": zod.string(),
+  "forecast_label": zod.string()
+}).optional(),
+  "methodology_summary": zod.string().optional()
 })
 
 
@@ -544,6 +826,15 @@ export const DecidePodcastBriefParams = zod.object({
 export const DecidePodcastBriefBody = zod.object({
   "decision": zod.enum(['approve', 'reject'])
 })
+
+
+export const decidePodcastBriefResponseSelectedFormatSegmentSpineMin = 3;
+
+
+export const decidePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMin = 0;
+export const decidePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMax = 100;
+
+
 
 export const DecidePodcastBriefResponse = zod.object({
   "id": zod.string(),
@@ -567,7 +858,45 @@ export const DecidePodcastBriefResponse = zod.object({
   "purpose": zod.string()
 })),
   "suggested_title": zod.string(),
-  "approval_note": zod.string()
+  "approval_note": zod.string(),
+  "development_plan_id": zod.string().optional(),
+  "editorial_archetype": zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "point_of_view": zod.string(),
+  "delivery_guidance": zod.string(),
+  "audience_fit": zod.string(),
+  "non_impersonation_disclosure": zod.string()
+}).optional(),
+  "selected_format": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "format": zod.enum(['cold_open_explainer', 'reported_explainer', 'structured_debate', 'context_recap', 'listener_question']),
+  "premise": zod.string(),
+  "opening_beat": zod.string(),
+  "segment_spine": zod.array(zod.object({
+  "label": zod.string(),
+  "purpose": zod.string(),
+  "source_ids": zod.array(zod.string()).min(1)
+})).min(decidePodcastBriefResponseSelectedFormatSegmentSpineMin),
+  "citation_ids": zod.array(zod.string()).min(1),
+  "methodology_factors": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "score": zod.number().min(decidePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMin).max(decidePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMax),
+  "evidence": zod.string(),
+  "uncertainty": zod.string()
+})),
+  "hypotheses": zod.array(zod.object({
+  "metric": zod.string(),
+  "statement": zod.string(),
+  "validation_method": zod.string()
+})),
+  "risks": zod.array(zod.string()),
+  "tradeoff": zod.string(),
+  "forecast_label": zod.string()
+}).optional(),
+  "methodology_summary": zod.string().optional()
 })
 
 

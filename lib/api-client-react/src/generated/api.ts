@@ -40,9 +40,13 @@ import type {
   PodcastBriefDecisionInput,
   PodcastContextSearchInput,
   PodcastContextSearchResponse,
+  PodcastDevelopmentInput,
+  PodcastDevelopmentPlan,
+  PodcastDevelopmentValidationInput,
   PodcastFilterPreset,
   PodcastFilterPresetInput,
   PodcastFilterPresetRenameInput,
+  PodcastLiveSnapshot,
   PodcastReleaseKit,
   PodcastRoom,
   PodcastScriptDecisionInput,
@@ -616,6 +620,228 @@ export const useSearchPodcastContexts = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSearchPodcastContextsMutationOptions(options));
+    }
+
+export const getGetPodcastLiveSnapshotUrl = () => {
+
+
+
+
+  return `/api/podcast/live-snapshot`
+}
+
+/**
+ * Returns only aggregate metadata from the approved consented newsroom source, with an explicit synthetic fallback when no live batch is available.
+ * @summary Refresh the bounded podcast live-signal snapshot
+ */
+export const getPodcastLiveSnapshot = async ( options?: Parameters<typeof customFetch>[1]): Promise<PodcastLiveSnapshot> => {
+
+  return customFetch<PodcastLiveSnapshot>(getGetPodcastLiveSnapshotUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPodcastLiveSnapshotQueryKey = () => {
+    return [
+    `/api/podcast/live-snapshot`
+    ] as const;
+    }
+
+
+export const getGetPodcastLiveSnapshotQueryOptions = <TData = Awaited<ReturnType<typeof getPodcastLiveSnapshot>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastLiveSnapshot>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPodcastLiveSnapshotQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPodcastLiveSnapshot>>> = ({ signal }) => getPodcastLiveSnapshot({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPodcastLiveSnapshot>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPodcastLiveSnapshotQueryResult = NonNullable<Awaited<ReturnType<typeof getPodcastLiveSnapshot>>>
+export type GetPodcastLiveSnapshotQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Refresh the bounded podcast live-signal snapshot
+ */
+
+export function useGetPodcastLiveSnapshot<TData = Awaited<ReturnType<typeof getPodcastLiveSnapshot>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastLiveSnapshot>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPodcastLiveSnapshotQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePodcastDevelopmentUrl = () => {
+
+
+
+
+  return `/api/podcast/development`
+}
+
+/**
+ * Creates inspectable editorial hypotheses and never approves a brief, renders audio, imitates a real person, or publishes.
+ * @summary Create source-backed podcast format variants for human review
+ */
+export const createPodcastDevelopment = async (podcastDevelopmentInput: PodcastDevelopmentInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastDevelopmentPlan> => {
+
+  return customFetch<PodcastDevelopmentPlan>(getCreatePodcastDevelopmentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(podcastDevelopmentInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePodcastDevelopmentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPodcastDevelopment>>, TError,{data: BodyType<PodcastDevelopmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPodcastDevelopment>>, TError,{data: BodyType<PodcastDevelopmentInput>}, TContext> => {
+
+const mutationKey = ['createPodcastDevelopment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPodcastDevelopment>>, {data: BodyType<PodcastDevelopmentInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPodcastDevelopment(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePodcastDevelopmentMutationResult = NonNullable<Awaited<ReturnType<typeof createPodcastDevelopment>>>
+    export type CreatePodcastDevelopmentMutationBody = BodyType<PodcastDevelopmentInput>
+    export type CreatePodcastDevelopmentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create source-backed podcast format variants for human review
+ */
+export const useCreatePodcastDevelopment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPodcastDevelopment>>, TError,{data: BodyType<PodcastDevelopmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPodcastDevelopment>>,
+        TError,
+        {data: BodyType<PodcastDevelopmentInput>},
+        TContext
+      > => {
+      return useMutation(getCreatePodcastDevelopmentMutationOptions(options));
+    }
+
+export const getRecordPodcastDevelopmentValidationUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/development/${id}/validation`
+}
+
+/**
+ * @summary Record a human development-plan decision
+ */
+export const recordPodcastDevelopmentValidation = async (id: string,
+    podcastDevelopmentValidationInput: PodcastDevelopmentValidationInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastDevelopmentPlan> => {
+
+  return customFetch<PodcastDevelopmentPlan>(getRecordPodcastDevelopmentValidationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(podcastDevelopmentValidationInput)
+  }
+);}
+
+
+
+
+
+export const getRecordPodcastDevelopmentValidationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordPodcastDevelopmentValidation>>, TError,{id: string;data: BodyType<PodcastDevelopmentValidationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordPodcastDevelopmentValidation>>, TError,{id: string;data: BodyType<PodcastDevelopmentValidationInput>}, TContext> => {
+
+const mutationKey = ['recordPodcastDevelopmentValidation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordPodcastDevelopmentValidation>>, {id: string;data: BodyType<PodcastDevelopmentValidationInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  recordPodcastDevelopmentValidation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordPodcastDevelopmentValidationMutationResult = NonNullable<Awaited<ReturnType<typeof recordPodcastDevelopmentValidation>>>
+    export type RecordPodcastDevelopmentValidationMutationBody = BodyType<PodcastDevelopmentValidationInput>
+    export type RecordPodcastDevelopmentValidationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Record a human development-plan decision
+ */
+export const useRecordPodcastDevelopmentValidation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordPodcastDevelopmentValidation>>, TError,{id: string;data: BodyType<PodcastDevelopmentValidationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recordPodcastDevelopmentValidation>>,
+        TError,
+        {id: string;data: BodyType<PodcastDevelopmentValidationInput>},
+        TContext
+      > => {
+      return useMutation(getRecordPodcastDevelopmentValidationMutationOptions(options));
     }
 
 export const getCreatePodcastFilterPresetUrl = () => {

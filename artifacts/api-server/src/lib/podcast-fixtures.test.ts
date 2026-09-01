@@ -7,6 +7,7 @@ import app from "../app";
 import {
   buildSafePodcastDraft,
   blockedLegacyPodcastWorkspaceFixture,
+  createPodcastDevelopment,
   createPodcastFilterPreset,
   createPodcastScript,
   createPodcastReleaseKit,
@@ -15,17 +16,22 @@ import {
   decidePodcastBrief,
   decidePodcastScript,
   generatePodcastBrief,
+  getPodcastDevelopmentPlan,
+  getPodcastLiveSnapshot,
   getPodcastScriptByBriefId,
   getPodcastScriptById,
   getPodcastRoom,
   searchPodcastContexts,
   isPodcastEvidenceSufficient,
+  isPodcastDevelopmentReady,
   podcastSources,
   olderPersistedPodcastWorkspaceFixture,
   renamePodcastFilterPreset,
   rehydratePodcastState,
+  recordPodcastDevelopmentValidation,
   restorePodcastState,
 } from "./podcast-fixtures";
+import { ingestLiveObservations } from "./autography-fixtures";
 
 test("comparison filter presets persist, can be renamed, and do not alter source counts", { concurrency: false }, () => {
   const before = getPodcastRoom();
@@ -107,6 +113,128 @@ test("entertainment context search ranks cited packages and keeps speculation ex
     assert.ok(item.concept.source_ids.every((id) => podcastSources.some((source) => source.id === id)));
     assert.match(item.speculation, /unverified/i);
     assert.ok(item.safest_next_reviewer.length > 0);
+  }
+});
+
+test("live signal snapshots expose consent and observation boundaries without raw identities", { concurrency: false }, () => {
+  const observedAt = new Date().toISOString();
+  ingestLiveObservations({
+    source_id: "consented-newsroom-v1",
+    source_class: "consented_newsroom",
+    consent_ref: "consent-regression-fixture",
+    policy_review_ref: "policy-regression-fixture",
+    observations: [{
+      id: "aggregate-observation-1",
+      text: "This text must never appear in a podcast snapshot.",
+      observed_at: observedAt,
+      observation_window: { start: observedAt, end: observedAt },
+      confidence: "high",
+    }],
+  });
+  const snapshot = getPodcastLiveSnapshot();
+  assert.equal(snapshot.source_mode, "approved_live");
+  assert.equal(snapshot.source_class, "consented_newsroom");
+  assert.equal(snapshot.consent_reference, "consent-regression-fixture");
+  assert.equal(snapshot.policy_review_reference, "policy-regression-fixture");
+  assert.equal(snapshot.aggregate_observations, 1);
+  assert.doesNotMatch(JSON.stringify(snapshot), /This text must never appear/);
+  assert.match(snapshot.data_notice, /Identity fields and raw comments are not available/i);
+});
+
+test("development plans preserve citations, disclose fictional lenses, and expose scoring uncertainty", { concurrency: false }, () => {
+  assert.equal(rehydratePodcastState({ briefs: [], scripts: [], filterPresets: [], developmentPlans: [], currentBriefId: null, currentScriptId: null }), true);
+  const concept = getPodcastRoom().concepts[0];
+  assert.ok(concept);
+  const plan = createPodcastDevelopment(concept.id, concept.source_ids, "consumers", "development");
+  assert.ok(plan);
+  assert.equal(plan.format_variants.length, 5);
+  assert.ok(plan.archetypes.every((archetype) => /fictional editorial lens/i.test(archetype.non_impersonation_disclosure)));
+  for (const variant of plan.format_variants) {
+    assert.deepEqual(variant.citation_ids, concept.source_ids);
+    assert.ok(variant.segment_spine.every((segment) => segment.source_ids.length > 0));
+    assert.ok(variant.methodology_factors.every((factor) => factor.score >= 0 && factor.score <= 100));
+    assert.ok(variant.methodology_factors.every((factor) => factor.evidence && factor.uncertainty));
+    assert.match(variant.forecast_label, /not a popularity guarantee/i);
+    assert.ok(variant.risks.some((risk) => /unsupported certainty|not promises/i.test(risk)));
+  }
+});
+
+test("human development validation persists and locks the selected hypothesis for a cited brief", { concurrency: false }, async () => {
+  assert.equal(rehydratePodcastState({ briefs: [], scripts: [], filterPresets: [], developmentPlans: [], currentBriefId: null, currentScriptId: null }), true);
+  const concept = getPodcastRoom().concepts[1];
+  assert.ok(concept);
+  const plan = createPodcastDevelopment(concept.id, concept.source_ids, "clients", "recap");
+  assert.ok(plan);
+  assert.equal(isPodcastDevelopmentReady(plan.id, concept.id, concept.source_ids), false);
+  const archetype = plan.archetypes[0];
+  const format = plan.format_variants[1];
+  assert.ok(archetype && format);
+  const validated = recordPodcastDevelopmentValidation(plan.id, "validate", archetype.id, format.id, "producer regression");
+  assert.ok(validated);
+  assert.equal(validated.status, "validated");
+  assert.equal(validated.measurement_record.validation_status, "validated");
+  assert.equal(isPodcastDevelopmentReady(plan.id, concept.id, concept.source_ids), true);
+  assert.equal(isPodcastDevelopmentReady(plan.id, concept.id, [...concept.source_ids, "unreviewed-source"]), false);
+  assert.equal(isPodcastDevelopmentReady(plan.id, concept.id, concept.source_ids.slice(0, 1)), false);
+  restorePodcastState();
+  assert.equal(getPodcastDevelopmentPlan(plan.id)?.selected_format_id, format.id);
+
+  const originalKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  try {
+    const brief = await generatePodcastBrief(concept.id, concept.source_ids, plan.id);
+    assert.equal(brief?.development_plan_id, plan.id);
+    assert.equal(brief?.editorial_archetype?.id, archetype.id);
+    assert.equal(brief?.selected_format?.id, format.id);
+    assert.deepEqual(brief?.selected_format?.citation_ids, concept.source_ids);
+  } finally {
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
+  }
+});
+
+test("draft development plans cannot pass the brief route gate", { concurrency: false }, async () => {
+  assert.equal(rehydratePodcastState({ briefs: [], scripts: [], filterPresets: [], developmentPlans: [], currentBriefId: null, currentScriptId: null }), true);
+  const concept = getPodcastRoom().concepts[0];
+  assert.ok(concept);
+  const plan = createPodcastDevelopment(concept.id, concept.source_ids, "users", "cultural_context");
+  assert.ok(plan);
+
+  const server = createServer(app);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/podcast/brief`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-autography-role": "producer",
+        "x-autography-user": "development-route-regression",
+      },
+      body: JSON.stringify({
+        concept_id: concept.id,
+        source_ids: concept.source_ids,
+        development_plan_id: plan.id,
+      }),
+    });
+    assert.equal(response.status, 409);
+    const omitted = await fetch(`http://127.0.0.1:${address.port}/api/podcast/brief`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-autography-role": "producer",
+        "x-autography-user": "development-route-regression",
+      },
+      body: JSON.stringify({
+        concept_id: concept.id,
+        source_ids: concept.source_ids,
+      }),
+    });
+    assert.equal(omitted.status, 400);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
 

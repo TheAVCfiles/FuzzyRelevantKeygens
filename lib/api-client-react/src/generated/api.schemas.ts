@@ -364,6 +364,205 @@ export interface PodcastRoom {
   selected_brief_id: string | null;
 }
 
+export type PodcastLiveSnapshotSourceMode = typeof PodcastLiveSnapshotSourceMode[keyof typeof PodcastLiveSnapshotSourceMode];
+
+
+export const PodcastLiveSnapshotSourceMode = {
+  approved_live: 'approved_live',
+  synthetic_fixture: 'synthetic_fixture',
+} as const;
+
+export type PodcastLiveSnapshotObservationWindow = {
+  start: string;
+  end: string;
+};
+
+export interface PodcastLiveSnapshot {
+  source_mode: PodcastLiveSnapshotSourceMode;
+  source_status: string;
+  source_id: string;
+  source_class: string;
+  /** @nullable */
+  consent_reference: string | null;
+  /** @nullable */
+  policy_review_reference: string | null;
+  freshness: string;
+  refreshed_at: string;
+  observation_window: PodcastLiveSnapshotObservationWindow;
+  aggregate_observations: number;
+  signal_label: string;
+  data_notice: string;
+}
+
+export interface PodcastArchetype {
+  id: string;
+  label: string;
+  point_of_view: string;
+  delivery_guidance: string;
+  audience_fit: string;
+  non_impersonation_disclosure: string;
+}
+
+export interface PodcastMethodologyFactor {
+  id: string;
+  label: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  evidence: string;
+  uncertainty: string;
+}
+
+export interface PodcastFormatSegment {
+  label: string;
+  purpose: string;
+  /** @minItems 1 */
+  source_ids: string[];
+}
+
+export interface PodcastForecastHypothesis {
+  metric: string;
+  statement: string;
+  validation_method: string;
+}
+
+export type PodcastFormatVariantFormat = typeof PodcastFormatVariantFormat[keyof typeof PodcastFormatVariantFormat];
+
+
+export const PodcastFormatVariantFormat = {
+  cold_open_explainer: 'cold_open_explainer',
+  reported_explainer: 'reported_explainer',
+  structured_debate: 'structured_debate',
+  context_recap: 'context_recap',
+  listener_question: 'listener_question',
+} as const;
+
+export interface PodcastFormatVariant {
+  id: string;
+  title: string;
+  format: PodcastFormatVariantFormat;
+  premise: string;
+  opening_beat: string;
+  /** @minItems 3 */
+  segment_spine: PodcastFormatSegment[];
+  /** @minItems 1 */
+  citation_ids: string[];
+  methodology_factors: PodcastMethodologyFactor[];
+  hypotheses: PodcastForecastHypothesis[];
+  risks: string[];
+  tradeoff: string;
+  forecast_label: string;
+}
+
+export type PodcastDevelopmentMeasurementRecordSourceMode = typeof PodcastDevelopmentMeasurementRecordSourceMode[keyof typeof PodcastDevelopmentMeasurementRecordSourceMode];
+
+
+export const PodcastDevelopmentMeasurementRecordSourceMode = {
+  approved_live: 'approved_live',
+  synthetic_fixture: 'synthetic_fixture',
+} as const;
+
+export type PodcastDevelopmentMeasurementRecordFactorScores = {[key: string]: number};
+
+export type PodcastDevelopmentMeasurementRecordValidationStatus = typeof PodcastDevelopmentMeasurementRecordValidationStatus[keyof typeof PodcastDevelopmentMeasurementRecordValidationStatus];
+
+
+export const PodcastDevelopmentMeasurementRecordValidationStatus = {
+  pending: 'pending',
+  validated: 'validated',
+  rejected: 'rejected',
+} as const;
+
+export interface PodcastDevelopmentMeasurementRecord {
+  id: string;
+  recorded_at: string;
+  concept_id: string;
+  source_ids: string[];
+  source_mode: PodcastDevelopmentMeasurementRecordSourceMode;
+  /** @nullable */
+  archetype_id: string | null;
+  /** @nullable */
+  format_id: string | null;
+  factor_scores: PodcastDevelopmentMeasurementRecordFactorScores;
+  validation_status: PodcastDevelopmentMeasurementRecordValidationStatus;
+  validation_note: string;
+}
+
+export type PodcastDevelopmentPlanStatus = typeof PodcastDevelopmentPlanStatus[keyof typeof PodcastDevelopmentPlanStatus];
+
+
+export const PodcastDevelopmentPlanStatus = {
+  draft: 'draft',
+  validated: 'validated',
+  rejected: 'rejected',
+} as const;
+
+export interface PodcastDevelopmentPlan {
+  id: string;
+  concept_id: string;
+  /** @minItems 1 */
+  source_ids: string[];
+  audience: string;
+  use_case: string;
+  source_snapshot: PodcastLiveSnapshot;
+  /** @minItems 1 */
+  archetypes: PodcastArchetype[];
+  /** @minItems 2 */
+  format_variants: PodcastFormatVariant[];
+  methodology_note: string;
+  measurement_record: PodcastDevelopmentMeasurementRecord;
+  status: PodcastDevelopmentPlanStatus;
+  /** @nullable */
+  selected_archetype_id: string | null;
+  /** @nullable */
+  selected_format_id: string | null;
+  decision_note: string;
+}
+
+export type PodcastDevelopmentInputAudience = typeof PodcastDevelopmentInputAudience[keyof typeof PodcastDevelopmentInputAudience];
+
+
+export const PodcastDevelopmentInputAudience = {
+  consumers: 'consumers',
+  clients: 'clients',
+  users: 'users',
+} as const;
+
+export type PodcastDevelopmentInputUseCase = typeof PodcastDevelopmentInputUseCase[keyof typeof PodcastDevelopmentInputUseCase];
+
+
+export const PodcastDevelopmentInputUseCase = {
+  recap: 'recap',
+  development: 'development',
+  publicity: 'publicity',
+  audience_strategy: 'audience_strategy',
+  cultural_context: 'cultural_context',
+} as const;
+
+export interface PodcastDevelopmentInput {
+  concept_id: string;
+  /** @minItems 1 */
+  source_ids: string[];
+  audience: PodcastDevelopmentInputAudience;
+  use_case: PodcastDevelopmentInputUseCase;
+}
+
+export type PodcastDevelopmentValidationInputDecision = typeof PodcastDevelopmentValidationInputDecision[keyof typeof PodcastDevelopmentValidationInputDecision];
+
+
+export const PodcastDevelopmentValidationInputDecision = {
+  validate: 'validate',
+  reject: 'reject',
+} as const;
+
+export interface PodcastDevelopmentValidationInput {
+  decision: PodcastDevelopmentValidationInputDecision;
+  archetype_id: string;
+  format_id: string;
+}
+
 export type PodcastContextSearchInputAudience = typeof PodcastContextSearchInputAudience[keyof typeof PodcastContextSearchInputAudience];
 
 
@@ -442,6 +641,8 @@ export interface GeneratePodcastBriefInput {
      * @minItems 1
      */
   source_ids: string[];
+  /** Validated development plan that fixes the selected fictional archetype, format, and exact cited source set for this brief. */
+  development_plan_id: string;
 }
 
 export type PodcastBriefStatus = typeof PodcastBriefStatus[keyof typeof PodcastBriefStatus];
@@ -488,6 +689,10 @@ export interface PodcastBrief {
   episode_outline: PodcastBriefEpisodeOutlineItem[];
   suggested_title: string;
   approval_note: string;
+  development_plan_id?: string;
+  editorial_archetype?: PodcastArchetype;
+  selected_format?: PodcastFormatVariant;
+  methodology_summary?: string;
 }
 
 export type PodcastBriefDecisionInputDecision = typeof PodcastBriefDecisionInputDecision[keyof typeof PodcastBriefDecisionInputDecision];

@@ -43,9 +43,11 @@ import {
   type PodcastReleaseKit,
   type PodcastAudioClip,
   type PodcastContextSearchResponse,
+  type PodcastDevelopmentPlan,
 } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DevelopmentStudio } from './podcast/DevelopmentStudio';
 
 function formatDate(value?: string) {
   if (!value) return '—';
@@ -369,6 +371,13 @@ function BriefPanel({
             {brief.selected_source_ids?.length ?? brief.source_links?.length ?? 0} sources recorded for this draft · concept {brief.concept_id}
           </p>
         </BriefSection>
+        {brief.editorial_archetype && brief.selected_format && (
+          <BriefSection label="Validated development hypothesis">
+            <p className="text-sm text-[#f0e8de]" data-testid="text-brief-archetype">{brief.editorial_archetype.label} · {statusLabel(brief.selected_format.format)}</p>
+            <p className="mt-2 text-xs leading-5 text-[#b7aaa0]">{brief.editorial_archetype.non_impersonation_disclosure}</p>
+            <p className="mt-2 font-mono text-[9px] uppercase tracking-[.08em] text-[#d8a36c]">{brief.selected_format.forecast_label}</p>
+          </BriefSection>
+        )}
       </div>
       <div className="mt-5">
         <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Evidence trail</p>
@@ -566,7 +575,7 @@ function ScriptWorkspacePanel({
         )}
         {releaseKit && <div className="mt-4 border-t border-[#46696e] pt-4" data-testid="panel-release-kit">
           <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#a8d0c9]">Title options</p>
-          <div className="mt-2 flex flex-wrap gap-2">{releaseKit.title_options.map((title) => <span key={title} className="border border-[#6b9698] px-2 py-1 text-xs text-[#f0e8de]">{title}</span>)}</div>
+          <div className="mt-2 flex flex-wrap gap-2">{releaseKit.title_options.map((title, index) => <span key={`${title}-${index}`} className="border border-[#6b9698] px-2 py-1 text-xs text-[#f0e8de]">{title}</span>)}</div>
           <p className="mt-4 text-sm leading-6 text-[#f0e8de]">{releaseKit.episode_description}</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div><p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#a8d0c9]">Chapters</p><ul className="mt-2 space-y-1 text-xs text-[#c5d8d5]">{releaseKit.chapters.map((chapter) => <li key={chapter.label}><span className="text-[#d8a36c]">{chapter.timing}</span> · {chapter.label}</li>)}</ul></div>
@@ -621,6 +630,8 @@ export function Podcast() {
   });
   const [sourceUrl, setSourceUrl] = useState('');
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
+  const [isDevValidated, setIsDevValidated] = useState(false);
+  const [developmentPlan, setDevelopmentPlan] = useState<PodcastDevelopmentPlan | null>(null);
   const [visibleSourceIds, setVisibleSourceIds] = useState<string[]>([]);
   const [brief, setBrief] = useState<PodcastBrief | null>(null);
   const [script, setScript] = useState<PodcastScriptWorkspace | null>(null);
@@ -660,11 +671,17 @@ export function Podcast() {
   const handleVisibleSourcesChange = useCallback((sourceIds: string[]) => {
     setVisibleSourceIds((current) => current.join(',') === sourceIds.join(',') ? current : sourceIds);
   }, []);
+  const handleDevelopmentPlanChange = useCallback((nextPlan: PodcastDevelopmentPlan | null) => {
+    setDevelopmentPlan(nextPlan);
+    setIsDevValidated(nextPlan?.status === 'validated');
+  }, []);
 
   useEffect(() => {
     if (!selectedConceptId && concepts[0]) {
       setSelectedConceptId(concepts[0].id);
       setVisibleSourceIds(concepts[0].source_ids);
+      setIsDevValidated(false);
+      setDevelopmentPlan(null);
     }
   }, [concepts, selectedConceptId]);
 
@@ -728,6 +745,8 @@ export function Podcast() {
         if (first) {
           setSelectedConceptId(first.id);
           setVisibleSourceIds(first.source_ids);
+          setIsDevValidated(false);
+          setDevelopmentPlan(null);
           setBrief(null);
           setScript(null);
         }
@@ -759,9 +778,15 @@ export function Podcast() {
   };
 
   const generate = () => {
-    if (!selectedConcept) return;
+    if (!selectedConcept || developmentPlan?.status !== 'validated') return;
     setLocalError('');
-    generateBrief.mutate({ data: { concept_id: selectedConcept.id, source_ids: visibleSourceIds } });
+    generateBrief.mutate({
+      data: {
+        concept_id: selectedConcept.id,
+        source_ids: visibleSourceIds,
+        development_plan_id: developmentPlan.id,
+      },
+    });
   };
 
   const roomError = roomQuery.error ? 'The intelligence room could not be loaded. Try again to reconnect to the source desk.' : '';
@@ -777,8 +802,8 @@ export function Podcast() {
               <span className="h-2 w-2 rounded-full bg-[#b34b36]" />
               Autography / production room
             </div>
-            <h1 className="podcast-display text-4xl leading-none sm:text-5xl" data-testid="text-podcast-title">Podcast intelligence</h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-[#b7aaa0]">A source-backed editorial desk for deciding what deserves a human-led episode.</p>
+            <h1 className="podcast-display text-4xl leading-none sm:text-5xl" data-testid="text-podcast-title">Podcast hit development</h1>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-[#b7aaa0]">A source-backed studio for testing what could earn attention—without promising popularity or surrendering human control.</p>
           </div>
           <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[#b7aaa0]">
             <span className="h-2 w-2 rounded-full bg-[#87a895]" />
@@ -857,7 +882,7 @@ export function Podcast() {
 
                 {concepts.length ? (
                   <div className="space-y-3" data-testid="list-concepts">
-                     {concepts.map((concept) => <ConceptCard key={concept.id} concept={concept} sources={sources} presets={room?.filter_presets ?? []} selected={concept.id === selectedConcept?.id} onSelect={() => { setSelectedConceptId(concept.id); setVisibleSourceIds(concept.source_ids); setBrief(null); setScript(null); }} onVisibleSourcesChange={handleVisibleSourcesChange} onSavePreset={(platforms, communities) => { const name = window.prompt('Name this comparison preset'); if (name?.trim()) createPreset.mutate({ data: { name: name.trim(), platforms, communities } }); }} onRenamePreset={(preset) => { const name = window.prompt('Rename comparison preset', preset.name); if (name?.trim()) renamePreset.mutate({ id: preset.id, data: { name: name.trim() } }); }} onDeletePreset={(preset) => { if (window.confirm(`Remove preset “${preset.name}”?`)) deletePreset.mutate({ id: preset.id }); }} />)}
+                     {concepts.map((concept) => <ConceptCard key={concept.id} concept={concept} sources={sources} presets={room?.filter_presets ?? []} selected={concept.id === selectedConcept?.id} onSelect={() => { setSelectedConceptId(concept.id); setVisibleSourceIds(concept.source_ids); setBrief(null); setScript(null); setIsDevValidated(false); setDevelopmentPlan(null); }} onVisibleSourcesChange={handleVisibleSourcesChange} onSavePreset={(platforms, communities) => { const name = window.prompt('Name this comparison preset'); if (name?.trim()) createPreset.mutate({ data: { name: name.trim(), platforms, communities } }); }} onRenamePreset={(preset) => { const name = window.prompt('Rename comparison preset', preset.name); if (name?.trim()) renamePreset.mutate({ id: preset.id, data: { name: name.trim() } }); }} onDeletePreset={(preset) => { if (window.confirm(`Remove preset “${preset.name}”?`)) deletePreset.mutate({ id: preset.id }); }} />)}
                   </div>
                 ) : (
                   <div className="podcast-panel p-8 text-center" data-testid="empty-concepts">
@@ -880,16 +905,25 @@ export function Podcast() {
               </section>
 
               <div className="space-y-4">
+                {selectedConcept && (
+                  <DevelopmentStudio
+                    conceptId={selectedConcept.id}
+                    sourceIds={visibleSourceIds}
+                    audience={searchAudience}
+                    useCase={searchUseCase}
+                    onPlanChange={handleDevelopmentPlanChange}
+                  />
+                )}
                  <BriefPanel brief={brief} concept={selectedConcept} onDecide={(decision) => brief && decideBrief.mutate({ id: brief.id, data: { decision } })} isDeciding={decideBrief.isPending} evidenceSufficient={evidenceSufficient} />
                   <ScriptWorkspacePanel script={script} releaseKit={script?.release_kit ?? null} audioClip={script?.audio_clip ?? null} canCreate={brief?.status === 'approved'} isCreating={createScript.isPending} isDeciding={decideScript.isPending} isCreatingReleaseKit={createReleaseKit.isPending} isDecidingAudio={decideAudio.isPending} isGeneratingAudio={generateAudio.isPending} onCreate={() => brief && createScript.mutate({ id: brief.id })} onCreateReleaseKit={() => script && createReleaseKit.mutate({ id: script.id })} onDecide={(decision) => script && decideScript.mutate({ id: script.id, data: { decision } })} onAudioDecision={(decision) => script && decideAudio.mutate({ id: script.id, data: { decision } })} onGenerateAudio={() => script && generateAudio.mutate({ id: script.id })} />
                 <div className="podcast-panel p-5" data-testid="panel-next-action">
                   <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#b34b36]" strokeWidth={1.5} /><p className="podcast-kicker">Next editorial action</p></div>
-                  <p className="mt-3 text-sm leading-6 text-[#5f554e]">You are looking at <strong className="font-medium text-[#201b19]">{selectedConcept?.title || 'the shortlist'}</strong>. Generate its brief only when the source trail is sufficient for a producer review.</p>
-                  <Button type="button" className="mt-5 w-full bg-[#b34b36] text-[#f9f0e5] hover:bg-[#9e3e2d]" disabled={!selectedConcept || !visibleSourceIds.length || generateBrief.isPending} onClick={generate} data-testid="button-generate-brief">
+                  <p className="mt-3 text-sm leading-6 text-[#5f554e]">You are looking at <strong className="font-medium text-[#201b19]">{selectedConcept?.title || 'the shortlist'}</strong>. Synthesize the development plan first, then generate its brief only when the source trail is sufficient for a producer review.</p>
+                  <Button type="button" className="mt-5 w-full bg-[#b34b36] text-[#f9f0e5] hover:bg-[#9e3e2d] disabled:opacity-40" disabled={!selectedConcept || !visibleSourceIds.length || generateBrief.isPending || !isDevValidated} onClick={generate} data-testid="button-generate-brief">
                     {generateBrief.isPending ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" strokeWidth={1.5} />}
-                    {generateBrief.isPending ? 'Compiling evidence' : 'Generate source-backed brief'}
+                    {generateBrief.isPending ? 'Compiling evidence' : isDevValidated ? 'Generate source-backed brief' : 'Development plan validation required'}
                   </Button>
-                  <p className="mt-3 text-center font-mono text-[9px] uppercase leading-4 tracking-[0.08em] text-[#73675f]">Evidence → brief → script → audio approval → listen · publishing stays blocked</p>
+                  <p className="mt-3 text-center font-mono text-[9px] uppercase leading-4 tracking-[0.08em] text-[#73675f]">Dev plan → brief → script → audio approval → listen · publishing stays blocked</p>
                 </div>
                 <div className="border-l-2 border-[#365f67] bg-[#dbe4e0]/60 p-4" data-testid="notice-podcast-data">
                   <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#365f67]">Data notice</p>

@@ -141,6 +141,23 @@ export function ingestLiveObservations(batch: LiveObservationBatch) {
   return flood("live");
 }
 
+export function getLiveObservationSnapshot() {
+  if (!liveBatch || !liveReceivedAt) return null;
+  const observations = liveBatch.observations;
+  return {
+    source_id: liveBatch.source_id,
+    source_class: liveBatch.source_class,
+    consent_ref: liveBatch.consent_ref,
+    policy_review_ref: liveBatch.policy_review_ref,
+    received_at: liveReceivedAt,
+    observation_count: observations.length,
+    observation_window: {
+      start: observations[0]?.observation_window.start ?? liveReceivedAt,
+      end: observations[observations.length - 1]?.observation_window.end ?? liveReceivedAt,
+    },
+  };
+}
+
 const evidence = [
   {
     id: "ev_01",
@@ -780,9 +797,9 @@ export function recordAgentStage(
 }
 
 export function recordHumanDecision(
-  artifact: "brief" | "script" | "audio",
+  artifact: "brief" | "script" | "audio" | "development",
   id: string,
-  decision: "approve" | "reject",
+  decision: "approve" | "reject" | "validate",
   reviewer: string,
 ) {
   appendReceipt(

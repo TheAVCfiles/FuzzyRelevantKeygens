@@ -5,10 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PodcastArchetype } from './podcastArchetype';
 import type { PodcastBriefEpisodeOutlineItem } from './podcastBriefEpisodeOutlineItem';
 import type { PodcastBriefGeneratedMode } from './podcastBriefGeneratedMode';
 import type { PodcastBriefSourceLinksItem } from './podcastBriefSourceLinksItem';
 import type { PodcastBriefStatus } from './podcastBriefStatus';
+import type { PodcastFormatVariant } from './podcastFormatVariant';
 
 export interface PodcastBrief {
   id: string;
@@ -25,4 +27,8 @@ export interface PodcastBrief {
   episode_outline: PodcastBriefEpisodeOutlineItem[];
   suggested_title: string;
   approval_note: string;
+  development_plan_id?: string;
+  editorial_archetype?: PodcastArchetype;
+  selected_format?: PodcastFormatVariant;
+  methodology_summary?: string;
 }
