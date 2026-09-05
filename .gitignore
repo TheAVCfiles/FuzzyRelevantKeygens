@@ -10,6 +10,8 @@ out-tsc
 
 # dependencies
 node_modules
+artifacts/autography/test-results/
+artifacts/autography/playwright-report/
 
 # IDEs and editors
 /.idea
