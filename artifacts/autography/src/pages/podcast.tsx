@@ -446,10 +446,8 @@ function ProtectedAudioPlayer({ clip }: { clip: PodcastAudioClip }) {
   useEffect(() => {
     const controller = new AbortController();
     let nextUrl = '';
-    const token = localStorage.getItem('autography_pilot_token');
     fetch(clip.audio_url, {
       signal: controller.signal,
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     })
       .then((response) => {
         if (!response.ok) throw new Error(`Audio stream returned ${response.status}`);

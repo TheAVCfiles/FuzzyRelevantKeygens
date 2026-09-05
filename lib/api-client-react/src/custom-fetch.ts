@@ -357,14 +357,6 @@ export async function customFetch<T = unknown>(
       headers.set("authorization", `Bearer ${token}`);
     }
   }
-  // The web pilot stores its short-lived signed session here. Keeping this
-  // in the shared fetch layer means generated API hooks cannot accidentally
-  // omit the server-side role assertion.
-  if (!_authTokenGetter && !headers.has("authorization") && typeof localStorage !== "undefined") {
-    const pilotToken = localStorage.getItem("autography_pilot_token");
-    if (pilotToken) headers.set("authorization", `Bearer ${pilotToken}`);
-  }
-
   const requestInfo = { method, url: resolveUrl(input) };
 
   const response = await fetch(input, { ...init, method, headers });

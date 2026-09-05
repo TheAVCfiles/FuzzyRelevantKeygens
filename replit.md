@@ -11,6 +11,15 @@ Autography is a synthetic broadcast-control-room experience for staging, signing
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `GEMINI_API_KEY` is required for the live four-stage read/classify/reconcile/draft enrichment flow.
 
+## Producer access
+
+- Shared and production approvals require a verified Clerk session.
+- Producer permission comes from Clerk user `publicMetadata.autography_role` set to `producer`. This metadata is server-controlled and cannot be changed by the browser.
+- Grant or revoke producer access from Replit's Auth user management pane by editing that user's public metadata. Removing the key returns the user to read-only `viewer` access on their next request.
+- Local preview impersonation is available only when both `NODE_ENV=development` and `AUTOGRAPHY_PREVIEW_ROLE_MODE=true`; it is never an authorization path in shared or production environments.
+- Production Clerk frontend requests default to the same-origin `/api/__clerk` proxy; development uses Clerk's hosted endpoint because development instances reject custom proxy hosts.
+- The web and API use browser-managed cookies. Do not enable wildcard credentialed CORS or add browser bearer-token storage.
+
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9

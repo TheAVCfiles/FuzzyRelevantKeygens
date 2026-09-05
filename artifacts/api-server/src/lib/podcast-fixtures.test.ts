@@ -33,6 +33,13 @@ import {
 } from "./podcast-fixtures";
 import { ingestLiveObservations } from "./autography-fixtures";
 
+function previewProducerHeaders(userId = "route-regression-test") {
+  return {
+    "x-autography-role": "producer",
+    "x-autography-user": userId,
+  };
+}
+
 test("comparison filter presets persist, can be renamed, and do not alter source counts", { concurrency: false }, () => {
   const before = getPodcastRoom();
   const preset = createPodcastFilterPreset("Reddit communities", ["Reddit"], ["r/television"]);
@@ -210,8 +217,7 @@ test("draft development plans cannot pass the brief route gate", { concurrency: 
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-autography-role": "producer",
-        "x-autography-user": "development-route-regression",
+        ...previewProducerHeaders("development-route-regression"),
       },
       body: JSON.stringify({
         concept_id: concept.id,
@@ -224,8 +230,7 @@ test("draft development plans cannot pass the brief route gate", { concurrency: 
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-autography-role": "producer",
-        "x-autography-user": "development-route-regression",
+        ...previewProducerHeaders("development-route-regression"),
       },
       body: JSON.stringify({
         concept_id: concept.id,
@@ -423,10 +428,7 @@ test("legacy workspaces keep compatibility and production gates through both API
     const address = server.address();
     assert.ok(address && typeof address !== "string");
     const baseUrl = `http://127.0.0.1:${address.port}/api`;
-    const headers = {
-      "x-autography-role": "producer",
-      "x-autography-user": "route-regression-test",
-    };
+    const headers = previewProducerHeaders();
     const briefId = olderPersistedPodcastWorkspaceFixture.currentBriefId;
     const scriptId = olderPersistedPodcastWorkspaceFixture.currentScriptId;
     assert.ok(briefId);
@@ -472,10 +474,7 @@ test("restored legacy draft and rejected workspaces stay blocked through both AP
     const address = server.address();
     assert.ok(address && typeof address !== "string");
     const baseUrl = `http://127.0.0.1:${address.port}/api`;
-    const headers = {
-      "x-autography-role": "producer",
-      "x-autography-user": "route-regression-test",
-    };
+    const headers = previewProducerHeaders();
 
     for (const status of ["draft", "rejected"] as const) {
       const briefId = `legacy-${status}-brief`;
@@ -514,8 +513,7 @@ test("restored legacy draft and rejected workspaces stay blocked through all API
     const baseUrl = `http://127.0.0.1:${address.port}/api`;
     const headers = {
       "content-type": "application/json",
-      "x-autography-role": "producer",
-      "x-autography-user": "route-regression-test",
+      ...previewProducerHeaders(),
     };
 
     for (const status of ["draft", "rejected"] as const) {
@@ -572,8 +570,7 @@ test("approved legacy workspaces retain brief approval, script approval, and rel
     const baseUrl = `http://127.0.0.1:${address.port}/api`;
     const headers = {
       "content-type": "application/json",
-      "x-autography-role": "producer",
-      "x-autography-user": "route-regression-test",
+      ...previewProducerHeaders(),
     };
     const briefId = olderPersistedPodcastWorkspaceFixture.currentBriefId;
     const scriptId = olderPersistedPodcastWorkspaceFixture.currentScriptId;

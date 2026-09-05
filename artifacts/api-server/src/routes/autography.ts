@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { clerkClient, getAuth } from "@clerk/express";
 import { createReadStream, statSync } from "node:fs";
 import {
   AddPodcastSourceBody,
@@ -110,56 +110,117 @@ import {
 
 const router: IRouter = Router();
 
-type PilotRole = "producer" | "talent" | "publicity" | "safety";
+type PilotRole = "producer" | "talent" | "publicity" | "safety" | "viewer";
+type AutographyPrincipal = {
+  role: PilotRole;
+  reviewerId: string;
+  source: "verified_session" | "preview";
+};
+type AutographyRequest = Request & {
+  autographyPrincipal?: AutographyPrincipal;
+};
 const rolePermissions: Record<PilotRole, Set<string>> = {
   producer: new Set(["read", "ingest", "evaluate", "stage", "sign", "dismiss"]),
   talent: new Set(["read", "evaluate", "sign"]),
   publicity: new Set(["read", "ingest", "evaluate", "stage"]),
   safety: new Set(["read", "evaluate"]),
+  viewer: new Set(["read"]),
 };
 
-function requestedRole(req: Request): PilotRole | null {
-  const role = req.header("x-autography-role") as PilotRole | undefined;
-  const user = req.header("x-autography-user");
-  if (role && user && rolePermissions[role]) return role;
-  const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) return process.env.NODE_ENV === "development" ? "producer" : null;
-  const [prefix, tokenRole, userId, signature] = token.split(":");
-  if (prefix !== "pilot" || !tokenRole || !userId || !signature || !rolePermissions[tokenRole as PilotRole]) return null;
-  const expected = createHmac("sha256", process.env.SESSION_SECRET ?? "development-only")
-    .update(`${tokenRole}:${userId}`)
-    .digest("hex");
-  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
-  return tokenRole as PilotRole;
+function previewRoleModeEnabled() {
+  return process.env.NODE_ENV === "development" &&
+    process.env.AUTOGRAPHY_PREVIEW_ROLE_MODE === "true";
+}
+
+export function principalFromVerifiedClerkUser(
+  userId: string,
+  publicMetadata: Record<string, unknown>,
+): AutographyPrincipal {
+  const metadataRole = publicMetadata.autography_role;
+  const role = typeof metadataRole === "string" && rolePermissions[metadataRole as PilotRole]
+    ? metadataRole as PilotRole
+    : "viewer";
+  return { role, reviewerId: userId, source: "verified_session" };
+}
+
+async function requestedPrincipal(req: Request): Promise<AutographyPrincipal | null> {
+  if (previewRoleModeEnabled()) {
+    const role = req.header("x-autography-role") as PilotRole | undefined;
+    const user = req.header("x-autography-user");
+    if (role && user && rolePermissions[role]) {
+      return { role, reviewerId: user, source: "preview" };
+    }
+  }
+
+  const auth = getAuth(req);
+  if (auth.userId) {
+    const user = await clerkClient.users.getUser(auth.userId);
+    return principalFromVerifiedClerkUser(
+      auth.userId,
+      user.publicMetadata as Record<string, unknown>,
+    );
+  }
+
+  return previewRoleModeEnabled()
+    ? { role: "producer", reviewerId: "local-preview-producer", source: "preview" }
+    : null;
 }
 
 function requirePermission(permission: string) {
-  return (req: any, res: any, next: any): void => {
-    const role = requestedRole(req);
-    if (!role) {
-      res.status(401).json({ error: "Pilot authentication required." });
-      return;
+  return async (req: any, res: any, next: any): Promise<void> => {
+    try {
+      const principal = await requestedPrincipal(req);
+      if (!principal) {
+        res.status(401).json({ error: "Pilot authentication required." });
+        return;
+      }
+      if (!rolePermissions[principal.role].has(permission)) {
+        res.status(403).json({ error: `Role ${principal.role} cannot perform ${permission}.` });
+        return;
+      }
+      req.autographyPrincipal = principal;
+      next();
+    } catch (error) {
+      next(error);
     }
-    if (!rolePermissions[role].has(permission)) {
-      res.status(403).json({ error: `Role ${role} cannot perform ${permission}.` });
-      return;
-    }
-    req.autographyRole = role;
-    next();
   };
 }
 
-router.post("/auth/session", (req, res): void => {
-  const role = req.body?.role as PilotRole;
-  const userId = typeof req.body?.user_id === "string" ? req.body.user_id : "";
-  if (!rolePermissions[role] || !userId) {
-    res.status(400).json({ error: "A valid role and user_id are required." });
+router.post("/auth/preview/producer", async (req, res, next): Promise<void> => {
+  if (!previewRoleModeEnabled()) {
+    res.status(404).json({ error: "Preview producer provisioning is unavailable." });
     return;
   }
-  const signature = createHmac("sha256", process.env.SESSION_SECRET ?? "development-only")
-    .update(`${role}:${userId}`)
-    .digest("hex");
-  res.json({ token: `pilot:${role}:${userId}:${signature}`, role, user_id: userId });
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "A verified Clerk session is required." });
+    return;
+  }
+  try {
+    await clerkClient.users.updateUserMetadata(auth.userId, {
+      publicMetadata: { autography_role: "producer" },
+    });
+    res.json({ role: "producer", reviewer_id: auth.userId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/auth/me", async (req, res, next): Promise<void> => {
+  try {
+    const principal = await requestedPrincipal(req);
+    if (!principal) {
+      res.status(401).json({ error: "Pilot authentication required." });
+      return;
+    }
+    res.json({
+      role: principal.role,
+      reviewer_id: principal.reviewerId,
+      source: principal.source,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Every room read is authenticated as well; development keeps the existing
@@ -269,7 +330,7 @@ router.post("/podcast/development/:id/validation", requirePermission("sign"), (r
     body.data.decision,
     body.data.archetype_id,
     body.data.format_id,
-    (req as Request & { autographyRole?: string }).autographyRole ?? "human reviewer",
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
   );
   if (plan === false) {
     res.status(503).json({ error: "The development decision could not be persisted. The plan remains unvalidated." });
@@ -374,7 +435,7 @@ router.post("/podcast/brief/:id/decision", requirePermission("sign"), (req, res)
     "brief",
     brief.id,
     body.data.decision,
-    (req as Request & { autographyRole?: string }).autographyRole ?? "human reviewer",
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
   );
   res.json(DecidePodcastBriefResponse.parse(brief));
 });
@@ -454,7 +515,7 @@ router.post("/podcast/script/:id/decision", requirePermission("sign"), (req, res
     "script",
     script.id,
     body.data.decision,
-    (req as Request & { autographyRole?: string }).autographyRole ?? "human reviewer",
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
   );
   res.json(DecidePodcastScriptResponse.parse(script));
 });
@@ -497,7 +558,7 @@ router.post("/podcast/script/:id/audio/decision", requirePermission("sign"), (re
     "audio",
     result.script.id,
     body.data.decision,
-    (req as Request & { autographyRole?: string }).autographyRole ?? "human reviewer",
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
   );
   res.json(DecidePodcastAudioResponse.parse(result.script));
 });
