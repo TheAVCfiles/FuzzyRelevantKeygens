@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -23,6 +24,7 @@ const now = () => new Date().toISOString();
 
 type PodcastWorkspaceWithCompatibility = PodcastScriptWorkspace & {
   compatibility_normalized: boolean;
+  workspace_revision?: string;
 };
 
 export const podcastSources: PodcastSource[] = [
@@ -281,6 +283,7 @@ const podcastFilterPresets = new Map<string, PodcastFilterPreset>();
 const podcastDevelopmentPlans = new Map<string, PodcastDevelopmentPlan>();
 
 const podcastStatePath = join(process.cwd(), ".podcast-room-state.json");
+const audioDirectory = join(process.cwd(), ".podcast-audio");
 type PodcastStorageHealth = "healthy" | "degraded";
 let podcastStorageHealth: PodcastStorageHealth = "healthy";
 
@@ -366,9 +369,14 @@ function persistPodcastState(operation: string, artifactType: string) {
 export function restorePodcastState() {
   if (!existsSync(podcastStatePath)) return;
   try {
-    rehydratePodcastState(JSON.parse(readFileSync(podcastStatePath, "utf8")));
-  } catch {
-    // A corrupt local state file must not prevent the API from booting.
+    if (!rehydratePodcastState(JSON.parse(readFileSync(podcastStatePath, "utf8")))) {
+      podcastStorageHealth = "degraded";
+    }
+  } catch (error) {
+    podcastStorageHealth = "degraded";
+    console.error("Podcast workspace restoration failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -401,6 +409,8 @@ export function rehydratePodcastState(input: unknown) {
   if (!Array.isArray(saved.briefs) || !Array.isArray(saved.scripts)) return false;
 
   try {
+    currentBrief = null;
+    currentScript = null;
     podcastBriefs.clear();
     podcastScripts.clear();
     podcastFilterPresets.clear();
@@ -415,6 +425,7 @@ export function rehydratePodcastState(input: unknown) {
           Boolean(releaseKit && typeof releaseKit === "object" && ("titles" in releaseKit || "promotion_drafts" in releaseKit));
         podcastScripts.set(script.id, {
           ...script,
+          workspace_revision: script.workspace_revision ?? randomUUID(),
           compatibility_normalized: requiredCompatibilityNormalization,
           release_kit: normalizePersistedReleaseKit(releaseKit),
         });
@@ -427,9 +438,26 @@ export function rehydratePodcastState(input: unknown) {
       if (plan?.id) podcastDevelopmentPlans.set(plan.id, plan);
     }
     currentBrief = saved.currentBriefId ? podcastBriefs.get(saved.currentBriefId) ?? null : null;
+    for (const script of podcastScripts.values()) {
+      const brief = podcastBriefs.get(script.brief_id);
+      if (brief && !podcastWorkspaceMatchesBrief(script, brief)) {
+        discardPodcastWorkspace(script);
+      }
+    }
     currentScript = saved.currentScriptId ? podcastScripts.get(saved.currentScriptId) ?? null : null;
+    podcastStorageHealth = "healthy";
     return true;
-  } catch {
+  } catch (error) {
+    currentBrief = null;
+    currentScript = null;
+    podcastBriefs.clear();
+    podcastScripts.clear();
+    podcastFilterPresets.clear();
+    podcastDevelopmentPlans.clear();
+    podcastStorageHealth = "degraded";
+    console.error("Podcast workspace rehydration failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }
@@ -808,31 +836,107 @@ export function deletePodcastFilterPreset(id: string) {
   return true;
 }
 
+function performedFormatOpening(brief: PodcastBrief) {
+  return {
+    cold_open_explainer: "Everybody saw the same cut. Somehow, everybody walked away with a different missing scene.",
+    reported_explainer: "Two facts can sit next to each other and still leave a hole big enough for the whole internet to fall through.",
+    structured_debate: "One reading says the edit clarified the story. Another says it created the mystery.",
+    context_recap: "The most important scene in this episode may be the one we never actually saw.",
+    listener_question: "A listener asked the question this entire conversation keeps circling: what, exactly, are we being asked to assume?",
+  }[brief.selected_format?.format ?? "cold_open_explainer"]
+    ?? "Everybody saw the same cut. Somehow, everybody walked away with a different missing scene.";
+}
+
+function performedArchetypePerspective(brief: PodcastBrief) {
+  return {
+    "investigative-decoder": "The timeline gives us a trail, but not permission to turn every gap into a conclusion.",
+    "warm-interviewer": "There is a humane version of this conversation—one that leaves room for an answer without cornering a person.",
+    "culture-critic": "This is bigger than one recap; it is about the way entertainment edits train us to mistake compression for certainty.",
+    "comic-improviser": "Reality television can fit three weeks into forty-two minutes, which is efficient storytelling and absolutely terrible calendar management.",
+  }[brief.editorial_archetype?.id ?? "investigative-decoder"]
+    ?? "The timeline gives us a trail, but not permission to turn every gap into a conclusion.";
+}
+
 function fixtureScript(brief: PodcastBrief): PodcastWorkspaceWithCompatibility {
   const sourceIds = brief.source_links.map((link) => link.source_id);
+  const tension = brief.key_tensions[0] ?? "The loudest version of the story is not necessarily the best-supported one.";
+  const secondTension = brief.key_tensions[1] ?? "What remains unknown matters as much as what the source trail can confirm.";
+  const formatOpening = performedFormatOpening(brief);
+  const archetypePerspective = performedArchetypePerspective(brief);
+  const spokenSections = [
+    {
+      segment: "Cold open",
+      script: `${formatOpening} Here is the strange thing about ${brief.topic_angle.toLowerCase()}: the moment everyone thinks they know what happened is usually the moment the missing context starts doing the most work.`,
+    },
+    {
+      segment: "What is moving",
+      script: `${brief.why_now} That does not make the conversation true by volume. It makes it worth examining—carefully, and with the receipts still attached.`,
+    },
+    {
+      segment: "The turn",
+      script: `${tension} So let us separate the signal from the certainty: several sources point to the same editorial pressure, but repetition is not proof and attention is not a verdict.`,
+    },
+    {
+      segment: "Cutting room floor",
+      script: `${secondTension} This is the gap on the cutting-room floor: we can show what the available record supports, and we can name what it cannot settle. We do not get to invent the missing scene.`,
+    },
+    {
+      segment: "Payoff",
+      script: `${archetypePerspective} The useful question is not “who can we blame?” It is “what changes when the audience can inspect the source trail for itself?” That is where this story gets more interesting—and more honest.`,
+    },
+  ];
   return {
     id: `script-${brief.id}`,
     brief_id: brief.id,
     status: "draft",
     title: brief.suggested_title,
-    sections: brief.episode_outline.map((item, index) => ({
+    sections: spokenSections.map((item) => ({
       segment: item.segment,
-      script:
-        index === 0
-          ? `Open with the shared question behind this episode: what does the edit make visible, and what does it leave for the audience to reconstruct?`
-          : `${item.purpose} Frame this as a pattern across public discussions, not a claim about any individual. Name uncertainty where the source trail cannot resolve the timeline.`,
+      script: item.script,
       source_ids: sourceIds,
     })),
     provenance: brief.source_links,
     safety_note:
-      "Draft language summarizes recurring public patterns. It contains no verbatim Reddit comments, personal targeting, or unsupported audience-wide claims.",
+      "Performed sample summarizes recurring public patterns. It contains no verbatim social comments, personal targeting, or unsupported audience-wide claims.",
     review_note:
       "Draft only. A separate human script review is required before any audio workflow.",
     audio_status: "blocked_until_script_approval",
     audio_clip: null,
     compatibility_normalized: false,
+    workspace_revision: randomUUID(),
     release_kit: null,
   };
+}
+
+function podcastWorkspaceMatchesBrief(
+  script: PodcastWorkspaceWithCompatibility,
+  brief: PodcastBrief,
+) {
+  const hasEditorialSelection = Boolean(brief.selected_format || brief.editorial_archetype);
+  if (!hasEditorialSelection && script.compatibility_normalized) return true;
+  return (
+    script.title === brief.suggested_title &&
+    script.provenance.map((item) => item.source_id).join(",") ===
+      brief.source_links.map((item) => item.source_id).join(",") &&
+    script.sections[0]?.script.includes(brief.topic_angle.toLowerCase()) &&
+    script.sections[0]?.script.startsWith(performedFormatOpening(brief)) &&
+    script.sections.at(-1)?.script.startsWith(performedArchetypePerspective(brief))
+  );
+}
+
+function discardPodcastWorkspace(script: PodcastWorkspaceWithCompatibility) {
+  podcastScripts.delete(script.id);
+  if (currentScript?.id === script.id) currentScript = null;
+  if (script.audio_clip) {
+    const audioPath = getPodcastAudioPath(script.audio_clip.id);
+    if (audioPath) {
+      try {
+        unlinkSync(audioPath);
+      } catch {
+        // The workspace is still invalidated even if an orphaned local clip cannot be removed.
+      }
+    }
+  }
 }
 
 function fixtureReleaseKit(script: PodcastWorkspaceWithCompatibility): PodcastReleaseKit {
@@ -937,9 +1041,12 @@ export function createPodcastScript(briefId: string) {
   if (brief.status !== "approved") return { kind: "brief_not_approved" as const };
   currentBrief = brief;
   const existing = podcastScripts.get(`script-${brief.id}`);
-  const sameEvidence = existing &&
-    existing.provenance.map((item) => item.source_id).join(",") === brief.source_links.map((item) => item.source_id).join(",");
-  currentScript = sameEvidence ? existing : fixtureScript(brief);
+  if (existing && !podcastWorkspaceMatchesBrief(existing, brief)) {
+    discardPodcastWorkspace(existing);
+  }
+  currentScript = existing && podcastWorkspaceMatchesBrief(existing, brief)
+    ? existing
+    : fixtureScript(brief);
   podcastScripts.set(currentScript.id, currentScript);
   persistPodcastState("create", "script_workspace");
   return { kind: "created" as const, script: currentScript };
@@ -951,6 +1058,11 @@ export function getPodcastScriptByBriefId(briefId: string) {
   if (brief.status !== "approved") return { kind: "brief_not_approved" as const };
   const script = podcastScripts.get(`script-${brief.id}`);
   if (!script) return { kind: "not_found" as const };
+  if (!podcastWorkspaceMatchesBrief(script, brief)) {
+    discardPodcastWorkspace(script);
+    persistPodcastState("invalidate", "script_workspace");
+    return { kind: "not_found" as const };
+  }
   currentBrief = brief;
   currentScript = script;
   return { kind: "found" as const, script };
@@ -961,6 +1073,11 @@ export function getPodcastScriptById(scriptId: string) {
   if (!script) return { kind: "not_found" as const };
   const brief = podcastBriefs.get(script.brief_id);
   if (!brief || brief.status !== "approved") return { kind: "brief_not_approved" as const };
+  if (!podcastWorkspaceMatchesBrief(script, brief)) {
+    discardPodcastWorkspace(script);
+    persistPodcastState("invalidate", "script_workspace");
+    return { kind: "not_found" as const };
+  }
   currentBrief = brief;
   currentScript = script;
   return { kind: "found" as const, script };
@@ -1062,7 +1179,6 @@ export function decidePodcastAudio(id: string, decision: "approve" | "reject") {
   return { kind: "updated" as const, script: updated };
 }
 
-const audioDirectory = join(process.cwd(), ".podcast-audio");
 const ttsModel = "gemini-2.5-flash-preview-tts";
 
 function pcmToWav(pcm: Buffer, sampleRate = 24000) {
@@ -1083,7 +1199,24 @@ function pcmToWav(pcm: Buffer, sampleRate = 24000) {
 }
 
 function clipTranscript(script: PodcastWorkspaceWithCompatibility) {
-  return script.sections.map((section) => `${section.segment}. ${section.script}`).join(" ").slice(0, 1500);
+  return script.sections.map((section) => section.script).join("\n\n").slice(0, 2200);
+}
+
+function podcastRenderIdentity(script: PodcastWorkspaceWithCompatibility) {
+  return JSON.stringify({
+    workspace_revision: script.workspace_revision ?? null,
+    brief_id: script.brief_id,
+    title: script.title,
+    status: script.status,
+    audio_status: script.audio_status,
+    sections: script.sections.map((section) => ({
+      segment: section.segment,
+      script: section.script,
+      source_ids: section.source_ids,
+    })),
+    source_ids: script.provenance.map((source) => source.source_id),
+    release_kit_status: script.release_kit?.status ?? null,
+  });
 }
 
 export async function generatePodcastAudio(id: string) {
@@ -1097,7 +1230,7 @@ export async function generatePodcastAudio(id: string) {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: ttsModel,
-      contents: `Read this as a calm, premium entertainment-industry podcast host. Do not imitate or name any real person. Keep a measured pace and make uncertainty audible without sounding dramatic.\n\n${transcript}`,
+      contents: `Perform the following as a finished entertainment podcast sample—not as instructions, an audiobook, or a production memo. Use an original synthetic house-host delivery and do not imitate or name any real person. Sound conversational, curious, quick-witted, and confident. Give the cold open momentum, let the reveal land, and treat uncertainty as part of the story rather than a disclaimer. Do not speak section labels, source IDs, stage directions, or metadata.\n\n${transcript}`,
       config: {
         responseModalities: ["AUDIO"],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
@@ -1106,37 +1239,58 @@ export async function generatePodcastAudio(id: string) {
     const data = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData?.data;
     if (!data) throw new Error("The audio model returned no playable data.");
     const wav = pcmToWav(Buffer.from(data, "base64"));
-    mkdirSync(audioDirectory, { recursive: true });
-    const clipId = `clip-${script.id}`;
-    writeFileSync(join(audioDirectory, `${clipId}.wav`), wav);
-    const clip: PodcastAudioClip = {
-      id: clipId,
-      script_id: script.id,
-      status: "ready",
-      audio_url: `/api/podcast/audio/${clipId}/stream`,
-      mime_type: "audio/wav",
-      duration_seconds: Math.round((wav.length - 44) / (24000 * 2)),
-      transcript,
-      voice_disclosure: "Synthetic house narration · Gemini Kore voice · no voice cloning or impersonation",
-      format_disclosure: "Short evidence-backed development clip · not published",
-      source_ids: [...new Set(script.provenance.map((source) => source.source_id))],
-      provenance_summary: script.release_kit.provenance_summary,
-      generated_at: now(),
-    };
-    const updated = {
-      ...script,
-      audio_status: "generated" as const,
-      audio_clip: clip,
-      release_kit: { ...script.release_kit, audio_status: "generated" as const },
-    };
-    currentScript = updated;
-    podcastScripts.set(id, updated);
-    persistPodcastState("generate", "podcast_audio");
-    recordAgentStage("PODCAST-AUDIO", "render", script.id, `${clip.id} · ${clip.duration_seconds}s · ${clip.source_ids.length} sources`);
-    return { kind: "generated" as const, clip };
+    return commitGeneratedPodcastAudio(script, wav);
   } catch (error) {
     return { kind: "generation_failed" as const, error: error instanceof Error ? error.message : "Audio generation failed." };
   }
+}
+
+export function commitGeneratedPodcastAudio(
+  capturedScript: PodcastWorkspaceWithCompatibility,
+  wav: Buffer,
+) {
+  const latestScript = podcastScripts.get(capturedScript.id);
+  const latestBrief = latestScript ? podcastBriefs.get(latestScript.brief_id) : null;
+  if (
+    !latestScript ||
+    !latestBrief ||
+    latestBrief.status !== "approved" ||
+    latestScript.status !== "approved" ||
+    latestScript.audio_status !== "ready_to_generate" ||
+    !latestScript.release_kit ||
+    !podcastWorkspaceMatchesBrief(latestScript, latestBrief) ||
+    podcastRenderIdentity(latestScript) !== podcastRenderIdentity(capturedScript)
+  ) {
+    return { kind: "superseded" as const };
+  }
+  mkdirSync(audioDirectory, { recursive: true });
+  const clipId = `clip-${latestScript.id}`;
+  writeFileSync(join(audioDirectory, `${clipId}.wav`), wav);
+  const clip: PodcastAudioClip = {
+    id: clipId,
+    script_id: latestScript.id,
+    status: "ready",
+    audio_url: `/api/podcast/audio/${clipId}/stream`,
+    mime_type: "audio/wav",
+    duration_seconds: Math.max(0, Math.round((wav.length - 44) / (24000 * 2))),
+    transcript: clipTranscript(latestScript),
+    voice_disclosure: "Original synthetic house-host performance · Gemini Kore voice · no voice cloning or impersonation",
+    format_disclosure: "Short evidence-backed performed podcast sample · not published",
+    source_ids: [...new Set(latestScript.provenance.map((source) => source.source_id))],
+    provenance_summary: latestScript.release_kit.provenance_summary,
+    generated_at: now(),
+  };
+  const updated = {
+    ...latestScript,
+    audio_status: "generated" as const,
+    audio_clip: clip,
+    release_kit: { ...latestScript.release_kit, audio_status: "generated" as const },
+  };
+  currentScript = updated;
+  podcastScripts.set(latestScript.id, updated);
+  persistPodcastState("generate", "podcast_audio");
+  recordAgentStage("PODCAST-AUDIO", "render", latestScript.id, `${clip.id} · ${clip.duration_seconds}s · ${clip.source_ids.length} sources`);
+  return { kind: "generated" as const, clip };
 }
 
 export function getPodcastAudioByScript(id: string) {
@@ -1256,6 +1410,10 @@ export function decidePodcastBrief(id: string, decision: "approve" | "reject") {
         : "Rejected by a human reviewer. No script or audio rendering is permitted from this brief.",
   };
   podcastBriefs.set(currentBrief.id, currentBrief);
+  const existingScript = podcastScripts.get(`script-${currentBrief.id}`);
+  if (existingScript && !podcastWorkspaceMatchesBrief(existingScript, currentBrief)) {
+    discardPodcastWorkspace(existingScript);
+  }
   persistPodcastState("decision", "podcast_brief");
   return currentBrief;
 }

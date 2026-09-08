@@ -15,11 +15,12 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
-
+const server = app.listen(port, () => {
   logger.info({ port }, "Server listening");
 });
+
+// Keep connections bounded while allowing audio streams and normal API calls
+// enough time to complete on slower clients.
+server.requestTimeout = 120_000;
+server.headersTimeout = 65_000;
+server.keepAliveTimeout = 5_000;

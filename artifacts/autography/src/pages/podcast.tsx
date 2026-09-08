@@ -521,7 +521,7 @@ function ScriptWorkspacePanel({
   return (
     <section className="podcast-panel-dark p-5 sm:p-6" data-testid="panel-script-workspace">
       <div className="flex items-start justify-between gap-4 border-b border-[#4f4944] pb-5">
-        <div><p className="podcast-kicker !text-[#d8a36c]">Script-only workspace</p><p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[#80756c]" data-testid="text-script-id">{script.id}</p></div>
+        <div><p className="podcast-kicker !text-[#d8a36c]">Performed sample script</p><p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[#80756c]" data-testid="text-script-id">{script.id}</p></div>
         <span className={`border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] ${script.status === 'approved' ? 'border-[#87a895] text-[#9bc8a9]' : script.status === 'rejected' ? 'border-[#c27a68] text-[#e39a86]' : 'border-[#d8a36c] text-[#d8a36c]'}`} data-testid="status-script">{script.status}</span>
       </div>
       {script.compatibility_normalized && (
@@ -534,7 +534,7 @@ function ScriptWorkspacePanel({
         {script.sections.map((section, index) => (
           <div key={`${section.segment}-${index}`} className="border-b border-[#4f4944] py-4 last:border-b-0" data-testid={`section-script-${index}`}>
             <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#c7a481]">{section.segment}</p>
-            <p className="mt-2 text-sm leading-6 text-[#f0e8de]">{section.script}</p>
+             <p className="mt-2 whitespace-pre-line text-base leading-7 text-[#f0e8de]">{section.script}</p>
             <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] text-[#9bc8a9]">sources: {section.source_ids.join(', ')}</p>
           </div>
         ))}
@@ -582,7 +582,7 @@ function ScriptWorkspacePanel({
           <div className="mt-4 border-t border-[#46696e] pt-3 text-xs leading-5 text-[#c5d8d5]"><strong className="font-medium text-[#f0e8de]">Next reviewer:</strong> {releaseKit.next_reviewer}<br /><strong className="font-medium text-[#f0e8de]">Audio:</strong> {statusLabel(releaseKit.audio_status)} · <strong className="font-medium text-[#f0e8de]">Publishing:</strong> {statusLabel(releaseKit.publishing_status)}</div>
           <div className="mt-4 border-t border-[#46696e] pt-4" data-testid="panel-audio-studio">
             <div className="flex items-center gap-2"><Headphones className="h-4 w-4 text-[#d8a36c]" /><p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#a8d0c9]">Listening studio / gate 04</p></div>
-            <p className="mt-2 text-xs leading-5 text-[#c5d8d5]">A human must clear synthetic narration before the house voice can render this approved script. Publishing remains blocked.</p>
+             <p className="mt-2 text-xs leading-5 text-[#c5d8d5]">A human must clear the original synthetic house-host performance before this approved sample can be rendered. It performs the script itself—never production instructions. Publishing remains blocked.</p>
             {script.audio_status === 'awaiting_audio_approval' && (
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Button size="sm" disabled={isDecidingAudio} onClick={() => onAudioDecision('approve')} className="bg-[#d8a36c] text-[#2c2927]" data-testid="button-approve-audio">Approve audio</Button>
@@ -592,13 +592,13 @@ function ScriptWorkspacePanel({
             {script.audio_status === 'ready_to_generate' && (
               <Button size="sm" disabled={isGeneratingAudio} onClick={onGenerateAudio} className="mt-3 w-full bg-[#b34b36] text-[#f9f0e5]" data-testid="button-generate-audio">
                 {isGeneratingAudio ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Headphones className="mr-2 h-4 w-4" />}
-                {isGeneratingAudio ? 'Rendering house voice' : 'Generate playable clip'}
+                 {isGeneratingAudio ? 'Performing sample' : 'Generate performed sample'}
               </Button>
             )}
             {script.audio_status === 'rejected' && <p className="mt-3 border border-[#895948] px-3 py-2 text-xs text-[#e4a38d]">Audio rejected. No file was rendered.</p>}
             {audioClip && (
               <div className="mt-4 border border-[#6b9698] bg-[#182d30] p-3" data-testid="audio-player-ready">
-                <div className="flex items-center justify-between gap-3"><strong className="font-serif text-lg text-[#f0e8de]">House clip ready</strong><span className="font-mono text-[9px] uppercase text-[#9bc8a9]">{audioClip.duration_seconds}s · WAV</span></div>
+                 <div className="flex items-center justify-between gap-3"><strong className="font-serif text-lg text-[#f0e8de]">Performed sample ready</strong><span className="font-mono text-[9px] uppercase text-[#9bc8a9]">{audioClip.duration_seconds}s · WAV</span></div>
                 <ProtectedAudioPlayer clip={audioClip} />
                 <p className="mt-3 text-[11px] leading-5 text-[#c5d8d5]">{audioClip.voice_disclosure}</p>
                 <details className="mt-2 text-xs text-[#c5d8d5]"><summary className="cursor-pointer font-mono text-[9px] uppercase tracking-[.1em] text-[#d8a36c]">Transcript & provenance</summary><p className="mt-2 leading-5">{audioClip.transcript}</p><p className="mt-2 text-[#9bc8a9]">{audioClip.provenance_summary}</p></details>

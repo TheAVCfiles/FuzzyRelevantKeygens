@@ -223,7 +223,32 @@ router.get("/auth/me", async (req, res, next): Promise<void> => {
   }
 });
 
-// Every room read is authenticated as well; development keeps the existing
+// Issued artifacts and hash lookup are intentionally public proof surfaces.
+// Production rooms and their decision history remain authenticated below.
+router.get("/drop/:id", (req, res): void => {
+  const params = GetDropParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const drop = getDrop(params.data.id);
+  if (!drop) {
+    res.status(404).json({ error: "Drop not found" });
+    return;
+  }
+  res.json(GetDropResponse.parse(drop));
+});
+
+router.post("/verify", (req, res): void => {
+  const body = VerifyDropBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  res.json(VerifyDropResponse.parse(verifyDrop(body.data.lookup)));
+});
+
+// Every production-room read is authenticated; development keeps the existing
 // local preview usable as the producer role.
 router.use(requirePermission("read"));
 
@@ -582,6 +607,10 @@ router.post("/podcast/script/:id/audio", requirePermission("stage"), async (req,
     res.status(502).json({ error: result.error });
     return;
   }
+  if (result.kind === "superseded") {
+    res.status(409).json({ error: "The approved script changed while audio was rendering. The obsolete clip was discarded." });
+    return;
+  }
   res.status(201).json(GeneratePodcastAudioResponse.parse(result.clip));
 });
 
@@ -610,9 +639,84 @@ router.get("/podcast/audio/:id/stream", (req, res): void => {
     res.status(404).json({ error: "Podcast audio file not found" });
     return;
   }
+  let size: number;
+  try {
+    const stats = statSync(filePath);
+    if (!stats.isFile()) {
+      res.status(404).json({ error: "Podcast audio file not found" });
+      return;
+    }
+    size = stats.size;
+  } catch {
+    res.status(404).json({ error: "Podcast audio file not found" });
+    return;
+  }
+
+  const range = req.header("range");
+  let start = 0;
+  let end = size - 1;
+  let partial = false;
+
+  if (range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    if (!match || (match[1] === "" && match[2] === "")) {
+      res.setHeader("Content-Range", `bytes */${size}`);
+      res.status(416).end();
+      return;
+    }
+
+    if (match[1] === "") {
+      const suffixLength = Number(match[2]);
+      if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0 || size === 0) {
+        res.setHeader("Content-Range", `bytes */${size}`);
+        res.status(416).end();
+        return;
+      }
+      start = Math.max(size - suffixLength, 0);
+    } else {
+      start = Number(match[1]);
+      end = match[2] === "" ? size - 1 : Number(match[2]);
+      if (
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start < 0 ||
+        start >= size ||
+        end < start
+      ) {
+        res.setHeader("Content-Range", `bytes */${size}`);
+        res.status(416).end();
+        return;
+      }
+      end = Math.min(end, size - 1);
+    }
+    partial = true;
+  }
+
+  const contentLength = end - start + 1;
+  res.status(partial ? 206 : 200);
   res.type("audio/wav");
-  res.setHeader("Content-Length", statSync(filePath).size);
-  createReadStream(filePath).pipe(res);
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Content-Length", contentLength);
+  if (partial) {
+    res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
+  }
+  if (size === 0) {
+    res.end();
+    return;
+  }
+
+  const stream = createReadStream(filePath, { start, end });
+  stream.on("error", (error) => {
+    req.log.warn({ code: (error as NodeJS.ErrnoException).code }, "Podcast audio stream failed");
+    if (!res.headersSent) {
+      res.removeHeader("Content-Length");
+      res.removeHeader("Content-Range");
+      res.status(404).json({ error: "Podcast audio file not found" });
+      return;
+    }
+    res.destroy();
+  });
+  stream.pipe(res);
 });
 
 router.get("/context", (_req, res): void => {
@@ -676,29 +780,6 @@ router.post("/pr/:id/dismiss", requirePermission("dismiss"), (req, res): void =>
     return;
   }
   res.json(DismissPullRequestResponse.parse(dismissPullRequest()));
-});
-
-router.get("/drop/:id", (req, res): void => {
-  const params = GetDropParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
-  const drop = getDrop(params.data.id);
-  if (!drop) {
-    res.status(404).json({ error: "Drop not found" });
-    return;
-  }
-  res.json(GetDropResponse.parse(drop));
-});
-
-router.post("/verify", (req, res): void => {
-  const body = VerifyDropBody.safeParse(req.body);
-  if (!body.success) {
-    res.status(400).json({ error: body.error.message });
-    return;
-  }
-  res.json(VerifyDropResponse.parse(verifyDrop(body.data.lookup)));
 });
 
 router.get("/pilot/report", requirePermission("read"), (_req, res): void => {

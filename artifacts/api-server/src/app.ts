@@ -1,4 +1,5 @@
 import express, { type Express } from "express";
+import { randomUUID } from "node:crypto";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import pinoHttp from "pino-http";
@@ -15,6 +16,7 @@ const app: Express = express();
 app.use(
   pinoHttp({
     logger,
+    genReqId: () => randomUUID(),
     serializers: {
       req(req) {
         return {
@@ -32,10 +34,19 @@ app.use(
   }),
 );
 
+app.use((req, res, next) => {
+  res.setHeader("X-Request-Id", String(req.id));
+  next();
+});
+
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({
+  extended: true,
+  limit: "100kb",
+  parameterLimit: 100,
+}));
 
 app.use(
   clerkMiddleware((req) => ({
@@ -47,5 +58,34 @@ app.use(
 );
 
 app.use("/api", router);
+
+app.use((_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+app.use((error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const status = typeof error === "object" && error !== null &&
+    "status" in error && typeof error.status === "number"
+    ? error.status
+    : 500;
+  const errorType = typeof error === "object" && error !== null &&
+    "type" in error && typeof error.type === "string"
+    ? error.type
+    : undefined;
+  const statusCode = status >= 400 && status < 600 ? status : 500;
+
+  req.log.error({ statusCode, errorType }, "Request failed");
+  if (res.headersSent) {
+    res.destroy();
+    return;
+  }
+
+  const message = statusCode === 413
+    ? "Request body exceeds the allowed size."
+    : statusCode >= 400 && statusCode < 500
+    ? "Invalid request."
+    : "Internal server error.";
+  res.status(statusCode).json({ error: message });
+});
 
 export default app;

@@ -135,9 +135,32 @@ function PublicHome() {
         >
           Producer sign in
         </Link>
+        <Link href="/verify" className="mt-5 block font-mono text-[10px] uppercase tracking-[0.16em] text-[#d0ad6b] hover:text-[#e2c58c]">
+          Verify a public artifact
+        </Link>
       </section>
     </main>
   );
+}
+
+function PublicRegistryRoute({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-[100dvh] bg-house text-oyster">
+      <header className="flex items-center justify-between border-b border-sepia/30 px-4 py-4 sm:px-6">
+        <Link href="/" className="font-serif text-lg tracking-[0.08em] text-brass">AUTOGRAPHY</Link>
+        <Link href="/sign-in" className="font-system text-xs tracking-[0.12em] text-sepia hover:text-oyster">PRODUCER SIGN IN</Link>
+      </header>
+      <main>{children}</main>
+    </div>
+  );
+}
+
+function PublicVerifyRoute() {
+  return <PublicRegistryRoute><Verify /></PublicRegistryRoute>;
+}
+
+function PublicDropRoute() {
+  return <PublicRegistryRoute><DropView /></PublicRegistryRoute>;
 }
 
 function SignInPage() {
@@ -199,6 +222,8 @@ function Router() {
     <Switch>
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
+      <Route path="/verify" component={PublicVerifyRoute} />
+      <Route path="/drop/:id" component={PublicDropRoute} />
       <Route path="/" component={HomeRoute} />
       <Route component={ProtectedRoutes} />
     </Switch>

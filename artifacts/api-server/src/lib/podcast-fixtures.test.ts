@@ -7,6 +7,7 @@ import app from "../app";
 import {
   buildSafePodcastDraft,
   blockedLegacyPodcastWorkspaceFixture,
+  commitGeneratedPodcastAudio,
   createPodcastDevelopment,
   createPodcastFilterPreset,
   createPodcastScript,
@@ -391,6 +392,114 @@ test("approved scripts prepare and rehydrate a staged release kit without unlock
   assert.equal(restored.script.release_kit?.status, "staged");
   assert.equal(restored.script.release_kit?.audio_status, "awaiting_audio_approval");
   assert.equal(restored.script.release_kit?.publishing_status, "blocked_until_final_approval");
+});
+
+test("script workspaces contain performed podcast copy rather than production instructions", { concurrency: false }, async () => {
+  const originalKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  try {
+    const concept = getPodcastRoom().concepts[0];
+    assert.ok(concept);
+    const firstPlan = createPodcastDevelopment(concept.id, concept.source_ids, "consumers", "recap");
+    assert.ok(firstPlan);
+    const firstValidated = recordPodcastDevelopmentValidation(
+      firstPlan.id,
+      "validate",
+      firstPlan.archetypes[0].id,
+      firstPlan.format_variants[0].id,
+      "performed-sample-test",
+    );
+    assert.ok(firstValidated);
+    assert.equal(firstValidated.status, "validated");
+    const firstBrief = await generatePodcastBrief(concept.id, concept.source_ids, firstPlan.id);
+    assert.ok(firstBrief);
+    assert.equal(decidePodcastBrief(firstBrief.id, "approve")?.status, "approved");
+    const firstCreated = createPodcastScript(firstBrief.id);
+    assert.equal(firstCreated.kind, "created");
+    if (firstCreated.kind !== "created") return;
+
+    const firstTranscript = firstCreated.script.sections.map((section) => section.script).join(" ");
+    assert.match(firstTranscript, /Here is the strange thing/i);
+    assert.match(firstTranscript, /cutting-room floor/i);
+    assert.doesNotMatch(firstTranscript, /\b(Open on|Open with|Begin with|State two|Start at|Frame this as|Name uncertainty)\b/i);
+    assert.ok(firstCreated.script.sections.every((section) => section.source_ids.length > 0));
+    assert.equal(decidePodcastScript(firstCreated.script.id, "approve")?.status, "approved");
+    assert.equal(createPodcastReleaseKit(firstCreated.script.id).kind, "created");
+    assert.equal(decidePodcastAudio(firstCreated.script.id, "approve").kind, "updated");
+    const pendingAudioWorkspace = getPodcastScriptById(firstCreated.script.id);
+    assert.equal(pendingAudioWorkspace.kind, "found");
+    if (pendingAudioWorkspace.kind !== "found") return;
+
+    const secondPlan = createPodcastDevelopment(concept.id, concept.source_ids, "consumers", "recap");
+    assert.ok(secondPlan);
+    recordPodcastDevelopmentValidation(
+      secondPlan.id,
+      "validate",
+      secondPlan.archetypes[3].id,
+      secondPlan.format_variants[4].id,
+      "performed-sample-test",
+    );
+    const secondBrief = await generatePodcastBrief(concept.id, concept.source_ids, secondPlan.id);
+    assert.ok(secondBrief);
+    const approvedSecondBrief = decidePodcastBrief(secondBrief.id, "approve");
+    assert.ok(approvedSecondBrief);
+    assert.equal(getPodcastScriptByBriefId(secondBrief.id).kind, "not_found");
+    assert.equal(getPodcastScriptById(firstCreated.script.id).kind, "not_found");
+    assert.equal(rehydratePodcastState({
+      briefs: [approvedSecondBrief],
+      scripts: [pendingAudioWorkspace.script],
+      currentBriefId: approvedSecondBrief.id,
+      currentScriptId: pendingAudioWorkspace.script.id,
+    }), true);
+    assert.equal(getPodcastScriptByBriefId(approvedSecondBrief.id).kind, "not_found");
+    const secondCreated = createPodcastScript(secondBrief.id);
+    assert.equal(secondCreated.kind, "created");
+    if (secondCreated.kind !== "created") return;
+    const reopenedSecond = getPodcastScriptById(secondCreated.script.id);
+    assert.equal(reopenedSecond.kind, "found");
+    if (reopenedSecond.kind !== "found") return;
+    assert.equal(reopenedSecond.script.audio_clip, null);
+    assert.equal(reopenedSecond.script.sections[0]?.script, secondCreated.script.sections[0]?.script);
+    const secondTranscript = secondCreated.script.sections.map((section) => section.script).join(" ");
+    assert.notEqual(secondTranscript, firstTranscript);
+    assert.match(secondTranscript, /Reality television can fit three weeks/i);
+
+    const thirdPlan = createPodcastDevelopment(concept.id, concept.source_ids, "consumers", "recap");
+    assert.ok(thirdPlan);
+    recordPodcastDevelopmentValidation(
+      thirdPlan.id,
+      "validate",
+      thirdPlan.archetypes[0].id,
+      thirdPlan.format_variants[0].id,
+      "performed-sample-test",
+    );
+    const thirdBrief = await generatePodcastBrief(concept.id, concept.source_ids, thirdPlan.id);
+    assert.ok(thirdBrief);
+    decidePodcastBrief(thirdBrief.id, "approve");
+    assert.equal(getPodcastScriptByBriefId(thirdBrief.id).kind, "not_found");
+    const thirdCreated = createPodcastScript(thirdBrief.id);
+    assert.equal(thirdCreated.kind, "created");
+    if (thirdCreated.kind !== "created") return;
+    const thirdTranscript = thirdCreated.script.sections.map((section) => section.script).join(" ");
+    assert.notEqual(thirdTranscript, secondTranscript);
+    assert.match(thirdTranscript, /The timeline gives us a trail/i);
+    assert.match(thirdTranscript, /Everybody saw the same cut/i);
+    assert.equal(decidePodcastScript(thirdCreated.script.id, "approve")?.status, "approved");
+    assert.equal(createPodcastReleaseKit(thirdCreated.script.id).kind, "created");
+    assert.equal(decidePodcastAudio(thirdCreated.script.id, "approve").kind, "updated");
+    assert.equal(
+      commitGeneratedPodcastAudio(pendingAudioWorkspace.script, Buffer.alloc(48)).kind,
+      "superseded",
+    );
+    const reopenedThird = getPodcastScriptById(thirdCreated.script.id);
+    assert.equal(reopenedThird.kind, "found");
+    if (reopenedThird.kind !== "found") return;
+    assert.equal(reopenedThird.script.audio_status, "ready_to_generate");
+    assert.equal(reopenedThird.script.audio_clip, null);
+  } finally {
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
+  }
 });
 
 test("older persisted workspaces retain release kits after storage rehydration", { concurrency: false }, () => {

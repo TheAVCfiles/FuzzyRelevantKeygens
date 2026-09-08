@@ -8,6 +8,7 @@ await build({
     "src/lib/autography-fixtures.test.ts",
     "src/lib/podcast-fixtures.test.ts",
     "src/routes/autography-auth.test.ts",
+    "src/app.test.ts",
   ],
   bundle: true,
   format: "esm",

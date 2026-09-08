@@ -888,8 +888,14 @@ export function getDrop(id: string) {
 }
 
 export function verifyDrop(lookup: string) {
-  const drop =
+  const candidate =
     drops.find((candidate) => candidate.drop_id === lookup || candidate.hash === lookup) ??
     null;
+  const expectedHash = candidate
+    ? `sha256:${createHash("sha256")
+      .update(canonicalDropPayload(candidate.title, candidate.claims))
+      .digest("hex")}`
+    : null;
+  const drop = candidate && candidate.hash === expectedHash ? candidate : null;
   return { status: drop ? "SEALED" : "NOT_IN_REGISTRY", drop };
 }

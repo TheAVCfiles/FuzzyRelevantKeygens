@@ -4,6 +4,7 @@ import {
   type ErrorInfo,
   type ReactNode,
 } from 'react';
+import { AlertTriangle } from 'lucide-react';
 
 export interface ErrorFallbackProps {
   error: Error;
@@ -37,27 +38,29 @@ function toError(value: unknown): Error {
 
 function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 p-6">
-      <div className="max-w-lg w-full text-center">
-        <h1 className="text-xl font-semibold text-gray-900">
+    <div className="min-h-screen w-full flex items-center justify-center bg-house text-oyster p-6">
+      <div className="max-w-lg w-full text-center flex flex-col items-center border border-velvet/30 bg-velvet/5 p-8 sm:p-12 shadow-2xl">
+        <div className="w-16 h-16 bg-velvet/20 flex items-center justify-center mb-6">
+          <AlertTriangle className="w-8 h-8 text-velvet" />
+        </div>
+        <h1 className="text-3xl font-serif text-oyster mb-4">
           Something went wrong
         </h1>
-        <p className="mt-2 text-sm text-gray-600">
-          This part of the app hit an error. The rest of the app is still
-          running.
+        <p className="font-sans text-sm text-sepia leading-relaxed mb-6">
+          This part of the app hit an unexpected error. The rest of the app should still be running.
         </p>
         {/* Dev only: messages can carry API responses and other internals. */}
         {import.meta.env.DEV ? (
-          <pre className="mt-4 overflow-x-auto rounded bg-gray-100 p-3 text-left text-xs text-gray-800">
+          <pre className="w-full overflow-x-auto border border-sepia/30 bg-house/80 p-4 text-left font-mono text-[10px] text-sepia leading-relaxed mb-8 shadow-inner">
             {error.message || String(error)}
           </pre>
         ) : null}
         <button
           type="button"
           onClick={resetError}
-          className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-700"
+          className="border border-oyster/30 bg-house px-8 py-3 font-system text-xs tracking-[0.15em] text-oyster transition-colors hover:bg-oyster/10 hover:border-oyster/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         >
-          Try again
+          TRY AGAIN
         </button>
       </div>
     </div>

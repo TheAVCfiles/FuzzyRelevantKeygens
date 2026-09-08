@@ -5,9 +5,10 @@ import { getPodcastStorageHealth } from "../lib/podcast-fixtures";
 const router: IRouter = Router();
 
 router.get("/healthz", (_req, res) => {
+  const storage = getPodcastStorageHealth().status;
   const data = HealthCheckResponse.parse({
-    status: "ok",
-    storage: getPodcastStorageHealth().status,
+    status: storage === "healthy" ? "ok" : "degraded",
+    storage,
   });
   res.json(data);
 });
