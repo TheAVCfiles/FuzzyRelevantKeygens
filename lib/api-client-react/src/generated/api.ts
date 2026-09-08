@@ -40,6 +40,9 @@ import type {
   PodcastBriefDecisionInput,
   PodcastContextSearchInput,
   PodcastContextSearchResponse,
+  PodcastCutKey,
+  PodcastCuttingRoomAttestation,
+  PodcastCuttingRoomAttestationInput,
   PodcastDevelopmentInput,
   PodcastDevelopmentPlan,
   PodcastDevelopmentValidationInput,
@@ -48,6 +51,7 @@ import type {
   PodcastFilterPresetRenameInput,
   PodcastLiveSnapshot,
   PodcastReleaseKit,
+  PodcastResetResponse,
   PodcastRoom,
   PodcastScriptDecisionInput,
   PodcastScriptWorkspace,
@@ -620,6 +624,78 @@ export const useSearchPodcastContexts = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSearchPodcastContextsMutationOptions(options));
+    }
+
+export const getAttestPodcastCuttingRoomUrl = (id: string,) => {
+
+
+
+
+  return `/api/podcast/runs/${id}/attestation`
+}
+
+/**
+ * @summary Add or decline a private cutting-room attestation for the active grounded run
+ */
+export const attestPodcastCuttingRoom = async (id: string,
+    podcastCuttingRoomAttestationInput: PodcastCuttingRoomAttestationInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastCuttingRoomAttestation> => {
+
+  return customFetch<PodcastCuttingRoomAttestation>(getAttestPodcastCuttingRoomUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(podcastCuttingRoomAttestationInput)
+  }
+);}
+
+
+
+
+
+export const getAttestPodcastCuttingRoomMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof attestPodcastCuttingRoom>>, TError,{id: string;data: BodyType<PodcastCuttingRoomAttestationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof attestPodcastCuttingRoom>>, TError,{id: string;data: BodyType<PodcastCuttingRoomAttestationInput>}, TContext> => {
+
+const mutationKey = ['attestPodcastCuttingRoom'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof attestPodcastCuttingRoom>>, {id: string;data: BodyType<PodcastCuttingRoomAttestationInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  attestPodcastCuttingRoom(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AttestPodcastCuttingRoomMutationResult = NonNullable<Awaited<ReturnType<typeof attestPodcastCuttingRoom>>>
+    export type AttestPodcastCuttingRoomMutationBody = BodyType<PodcastCuttingRoomAttestationInput>
+    export type AttestPodcastCuttingRoomMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add or decline a private cutting-room attestation for the active grounded run
+ */
+export const useAttestPodcastCuttingRoom = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof attestPodcastCuttingRoom>>, TError,{id: string;data: BodyType<PodcastCuttingRoomAttestationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof attestPodcastCuttingRoom>>,
+        TError,
+        {id: string;data: BodyType<PodcastCuttingRoomAttestationInput>},
+        TContext
+      > => {
+      return useMutation(getAttestPodcastCuttingRoomMutationOptions(options));
     }
 
 export const getGetPodcastLiveSnapshotUrl = () => {
@@ -1857,6 +1933,231 @@ export function useStreamPodcastAudio<TData = Awaited<ReturnType<typeof streamPo
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getStreamPodcastAudioQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getResetPodcastDemoUrl = () => {
+
+
+
+
+  return `/api/podcast/reset`
+}
+
+/**
+ * @summary Reset authenticated podcast demo state and return a pre-staged input
+ */
+export const resetPodcastDemo = async ( options?: Parameters<typeof customFetch>[1]): Promise<PodcastResetResponse> => {
+
+  return customFetch<PodcastResetResponse>(getResetPodcastDemoUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResetPodcastDemoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetPodcastDemo>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetPodcastDemo>>, TError,void, TContext> => {
+
+const mutationKey = ['resetPodcastDemo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetPodcastDemo>>, void> = () => {
+
+
+          return  resetPodcastDemo(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetPodcastDemoMutationResult = NonNullable<Awaited<ReturnType<typeof resetPodcastDemo>>>
+
+    export type ResetPodcastDemoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reset authenticated podcast demo state and return a pre-staged input
+ */
+export const useResetPodcastDemo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetPodcastDemo>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetPodcastDemo>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getResetPodcastDemoMutationOptions(options));
+    }
+
+export const getGetPodcastCutKeyUrl = (key: string,) => {
+
+
+
+
+  return `/api/podcast/cut-keys/${key}`
+}
+
+/**
+ * @summary Get a public integrity manifest for an approved podcast cut
+ */
+export const getPodcastCutKey = async (key: string, options?: Parameters<typeof customFetch>[1]): Promise<PodcastCutKey> => {
+
+  return customFetch<PodcastCutKey>(getGetPodcastCutKeyUrl(key),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPodcastCutKeyQueryKey = (key: string,) => {
+    return [
+    `/api/podcast/cut-keys/${key}`
+    ] as const;
+    }
+
+
+export const getGetPodcastCutKeyQueryOptions = <TData = Awaited<ReturnType<typeof getPodcastCutKey>>, TError = ErrorType<void>>(key: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastCutKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPodcastCutKeyQueryKey(key);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPodcastCutKey>>> = ({ signal }) => getPodcastCutKey(key, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: key !== null && key !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPodcastCutKey>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPodcastCutKeyQueryResult = NonNullable<Awaited<ReturnType<typeof getPodcastCutKey>>>
+export type GetPodcastCutKeyQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a public integrity manifest for an approved podcast cut
+ */
+
+export function useGetPodcastCutKey<TData = Awaited<ReturnType<typeof getPodcastCutKey>>, TError = ErrorType<void>>(
+ key: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastCutKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPodcastCutKeyQueryOptions(key,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getStreamPodcastCutKeyAudioUrl = (key: string,) => {
+
+
+
+
+  return `/api/podcast/cut-keys/${key}/audio`
+}
+
+/**
+ * @summary Stream audio only when resolved by a current public Cut Key
+ */
+export const streamPodcastCutKeyAudio = async (key: string, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getStreamPodcastCutKeyAudioUrl(key),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getStreamPodcastCutKeyAudioQueryKey = (key: string,) => {
+    return [
+    `/api/podcast/cut-keys/${key}/audio`
+    ] as const;
+    }
+
+
+export const getStreamPodcastCutKeyAudioQueryOptions = <TData = Awaited<ReturnType<typeof streamPodcastCutKeyAudio>>, TError = ErrorType<unknown>>(key: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamPodcastCutKeyAudio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStreamPodcastCutKeyAudioQueryKey(key);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof streamPodcastCutKeyAudio>>> = ({ signal }) => streamPodcastCutKeyAudio(key, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: key !== null && key !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof streamPodcastCutKeyAudio>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type StreamPodcastCutKeyAudioQueryResult = NonNullable<Awaited<ReturnType<typeof streamPodcastCutKeyAudio>>>
+export type StreamPodcastCutKeyAudioQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Stream audio only when resolved by a current public Cut Key
+ */
+
+export function useStreamPodcastCutKeyAudio<TData = Awaited<ReturnType<typeof streamPodcastCutKeyAudio>>, TError = ErrorType<unknown>>(
+ key: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamPodcastCutKeyAudio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getStreamPodcastCutKeyAudioQueryOptions(key,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

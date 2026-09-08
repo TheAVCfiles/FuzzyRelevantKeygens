@@ -5,9 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PodcastScriptSectionClassification } from './podcastScriptSectionClassification';
+import type { PodcastScriptSectionSpeaker } from './podcastScriptSectionSpeaker';
 
 export interface PodcastScriptSection {
   segment: string;
   script: string;
   source_ids: string[];
+  classification: PodcastScriptSectionClassification;
+  speaker: PodcastScriptSectionSpeaker;
 }

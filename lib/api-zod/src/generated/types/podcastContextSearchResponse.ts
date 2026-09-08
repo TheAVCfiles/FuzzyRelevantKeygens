@@ -7,6 +7,7 @@
  */
 import type { PodcastContextSearchResponseResultsItem } from './podcastContextSearchResponseResultsItem';
 import type { PodcastContextSearchResponseSearchMode } from './podcastContextSearchResponseSearchMode';
+import type { PodcastGroundedRun } from './podcastGroundedRun';
 
 export interface PodcastContextSearchResponse {
   query: string;
@@ -14,5 +15,6 @@ export interface PodcastContextSearchResponse {
   use_case: string;
   generated_at: string;
   search_mode: PodcastContextSearchResponseSearchMode;
+  grounded_run: PodcastGroundedRun;
   results: PodcastContextSearchResponseResultsItem[];
 }

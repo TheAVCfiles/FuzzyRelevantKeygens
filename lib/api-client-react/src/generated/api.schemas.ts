@@ -598,7 +598,8 @@ export type PodcastContextSearchResponseSearchMode = typeof PodcastContextSearch
 
 
 export const PodcastContextSearchResponseSearchMode = {
-  curated_synthetic_index: 'curated_synthetic_index',
+  google_search_grounded: 'google_search_grounded',
+  synthetic_demo: 'synthetic_demo',
 } as const;
 
 export type PodcastContextSearchResponseResultsItem = {
@@ -609,12 +610,92 @@ export type PodcastContextSearchResponseResultsItem = {
   safest_next_reviewer: string;
 };
 
+export type PodcastGroundedRunRuntimeStatus = typeof PodcastGroundedRunRuntimeStatus[keyof typeof PodcastGroundedRunRuntimeStatus];
+
+
+export const PodcastGroundedRunRuntimeStatus = {
+  Live_Gemini: 'Live Gemini',
+  Synthetic_Demo: 'Synthetic Demo',
+  Failed: 'Failed',
+} as const;
+
+export type PodcastGroundingSourceClassification = typeof PodcastGroundingSourceClassification[keyof typeof PodcastGroundingSourceClassification];
+
+
+export const PodcastGroundingSourceClassification = {
+  source_backed: 'source_backed',
+  first_party_attested: 'first_party_attested',
+  disputed: 'disputed',
+  unresolved: 'unresolved',
+} as const;
+
+export interface PodcastGroundingSource {
+  id: string;
+  url: string;
+  title: string;
+  retrieved_at: string;
+  snippet?: string;
+  source_type: string;
+  classification: PodcastGroundingSourceClassification;
+  what_it_supports: string;
+  what_remains_uncertain: string;
+}
+
+export type PodcastAgentExecutionAgent = typeof PodcastAgentExecutionAgent[keyof typeof PodcastAgentExecutionAgent];
+
+
+export const PodcastAgentExecutionAgent = {
+  source_scout: 'source_scout',
+  evidence_editor: 'evidence_editor',
+  script_performer: 'script_performer',
+  audio_performer: 'audio_performer',
+  authority_check: 'authority_check',
+} as const;
+
+export type PodcastAgentExecutionStatus = typeof PodcastAgentExecutionStatus[keyof typeof PodcastAgentExecutionStatus];
+
+
+export const PodcastAgentExecutionStatus = {
+  completed: 'completed',
+  held: 'held',
+  failed: 'failed',
+} as const;
+
+export interface PodcastAgentExecution {
+  agent: PodcastAgentExecutionAgent;
+  provider: string;
+  model: string;
+  execution_id: string;
+  tools: string[];
+  latency_ms: number;
+  status: PodcastAgentExecutionStatus;
+  activity?: string;
+}
+
+export interface PodcastGroundedRun {
+  id: string;
+  query: string;
+  runtime_status: PodcastGroundedRunRuntimeStatus;
+  /**
+     * @minItems 3
+     * @maxItems 5
+     */
+  sources: PodcastGroundingSource[];
+  concept: PodcastConcept;
+  /** @minItems 1 */
+  uncertainties: string[];
+  grounding_support: string;
+  /** @minItems 2 */
+  agent_executions: PodcastAgentExecution[];
+}
+
 export interface PodcastContextSearchResponse {
   query: string;
   audience: string;
   use_case: string;
   generated_at: string;
   search_mode: PodcastContextSearchResponseSearchMode;
+  grounded_run: PodcastGroundedRun;
   results: PodcastContextSearchResponseResultsItem[];
 }
 
@@ -659,7 +740,7 @@ export type PodcastBriefGeneratedMode = typeof PodcastBriefGeneratedMode[keyof t
 
 export const PodcastBriefGeneratedMode = {
   gemini: 'gemini',
-  fixture_fallback: 'fixture_fallback',
+  synthetic_demo: 'synthetic_demo',
 } as const;
 
 export type PodcastBriefSourceLinksItem = {
@@ -678,6 +759,10 @@ export interface PodcastBrief {
   id: string;
   concept_id: string;
   selected_source_ids: string[];
+  /** @nullable */
+  run_id: string | null;
+  /** @nullable */
+  attestation_id: string | null;
   status: PodcastBriefStatus;
   generated_mode: PodcastBriefGeneratedMode;
   topic_angle: string;
@@ -707,10 +792,30 @@ export interface PodcastBriefDecisionInput {
   decision: PodcastBriefDecisionInputDecision;
 }
 
+export type PodcastScriptSectionClassification = typeof PodcastScriptSectionClassification[keyof typeof PodcastScriptSectionClassification];
+
+
+export const PodcastScriptSectionClassification = {
+  source_backed: 'source_backed',
+  first_party_attested: 'first_party_attested',
+  disputed: 'disputed',
+  unresolved: 'unresolved',
+} as const;
+
+export type PodcastScriptSectionSpeaker = typeof PodcastScriptSectionSpeaker[keyof typeof PodcastScriptSectionSpeaker];
+
+
+export const PodcastScriptSectionSpeaker = {
+  FRONT_ROW: 'FRONT ROW',
+  BACKSTAGE: 'BACKSTAGE',
+} as const;
+
 export interface PodcastScriptSection {
   segment: string;
   script: string;
   source_ids: string[];
+  classification: PodcastScriptSectionClassification;
+  speaker: PodcastScriptSectionSpeaker;
 }
 
 export type PodcastScriptWorkspaceStatus = typeof PodcastScriptWorkspaceStatus[keyof typeof PodcastScriptWorkspaceStatus];
@@ -808,6 +913,10 @@ export const PodcastAudioClipMimeType = {
 export interface PodcastAudioClip {
   id: string;
   script_id: string;
+  /** @nullable */
+  run_id: string | null;
+  /** @nullable */
+  attestation_id: string | null;
   status: PodcastAudioClipStatus;
   audio_url: string;
   mime_type: PodcastAudioClipMimeType;
@@ -818,11 +927,17 @@ export interface PodcastAudioClip {
   source_ids: string[];
   provenance_summary: string;
   generated_at: string;
+  /** @nullable */
+  cut_key?: string | null;
 }
 
 export interface PodcastScriptWorkspace {
   id: string;
   brief_id: string;
+  /** @nullable */
+  run_id: string | null;
+  /** @nullable */
+  attestation_id: string | null;
   status: PodcastScriptWorkspaceStatus;
   title: string;
   sections: PodcastScriptSection[];
@@ -846,6 +961,130 @@ export const PodcastAudioDecisionInputDecision = {
 
 export interface PodcastAudioDecisionInput {
   decision: PodcastAudioDecisionInputDecision;
+}
+
+export type PodcastCuttingRoomAttestationInputDecision = typeof PodcastCuttingRoomAttestationInputDecision[keyof typeof PodcastCuttingRoomAttestationInputDecision];
+
+
+export const PodcastCuttingRoomAttestationInputDecision = {
+  add: 'add',
+  decline: 'decline',
+} as const;
+
+export interface PodcastCuttingRoomAttestationInput {
+  decision: PodcastCuttingRoomAttestationInputDecision;
+  /** @minLength 1 */
+  raw_text?: string;
+  /** @minLength 1 */
+  permitted_public_summary?: string;
+  /** @minItems 1 */
+  authorized_uses?: string[];
+}
+
+export type PodcastCuttingRoomAttestationDecision = typeof PodcastCuttingRoomAttestationDecision[keyof typeof PodcastCuttingRoomAttestationDecision];
+
+
+export const PodcastCuttingRoomAttestationDecision = {
+  add: 'add',
+  decline: 'decline',
+} as const;
+
+export interface PodcastCuttingRoomAttestation {
+  id: string;
+  run_id: string;
+  decision: PodcastCuttingRoomAttestationDecision;
+  attested: boolean;
+  /** @nullable */
+  signer: string | null;
+  /** @nullable */
+  permitted_public_summary: string | null;
+  authorized_uses: string[];
+  created_at: string;
+}
+
+export type PodcastCutKeyLineMappingsItemSpeaker = typeof PodcastCutKeyLineMappingsItemSpeaker[keyof typeof PodcastCutKeyLineMappingsItemSpeaker];
+
+
+export const PodcastCutKeyLineMappingsItemSpeaker = {
+  FRONT_ROW: 'FRONT ROW',
+  BACKSTAGE: 'BACKSTAGE',
+} as const;
+
+export type PodcastCutKeyLineMappingsItemClassification = typeof PodcastCutKeyLineMappingsItemClassification[keyof typeof PodcastCutKeyLineMappingsItemClassification];
+
+
+export const PodcastCutKeyLineMappingsItemClassification = {
+  source_backed: 'source_backed',
+  first_party_attested: 'first_party_attested',
+  disputed: 'disputed',
+  unresolved: 'unresolved',
+} as const;
+
+export type PodcastCutKeyLineMappingsItem = {
+  segment: string;
+  text: string;
+  speaker: PodcastCutKeyLineMappingsItemSpeaker;
+  classification: PodcastCutKeyLineMappingsItemClassification;
+  source_ids: string[];
+};
+
+export type PodcastCutKeyApprovalReceiptsItemStage = typeof PodcastCutKeyApprovalReceiptsItemStage[keyof typeof PodcastCutKeyApprovalReceiptsItemStage];
+
+
+export const PodcastCutKeyApprovalReceiptsItemStage = {
+  development: 'development',
+  brief: 'brief',
+  script: 'script',
+  audio: 'audio',
+} as const;
+
+export type PodcastCutKeyApprovalReceiptsItem = {
+  stage: PodcastCutKeyApprovalReceiptsItemStage;
+  reviewer: string;
+  decided_at: string;
+};
+
+export type PodcastCutKeyPrivateAttestation = {
+  exists: boolean;
+  /** @nullable */
+  classification: string | null;
+  /** @nullable */
+  signer: string | null;
+  /** @nullable */
+  permitted_public_summary: string | null;
+};
+
+export interface PodcastCutKey {
+  key: string;
+  clip_id: string;
+  /** @nullable */
+  run_id: string | null;
+  /** @nullable */
+  attestation_id: string | null;
+  audio_url: string;
+  citations: PodcastGroundingSource[];
+  line_mappings: PodcastCutKeyLineMappingsItem[];
+  retrievals: string[];
+  script_sha256: string;
+  audio_sha256: string;
+  /**
+     * @minItems 4
+     * @maxItems 4
+     */
+  approval_receipts: PodcastCutKeyApprovalReceiptsItem[];
+  version: number;
+  /** @nullable */
+  supersedes: string | null;
+  /** @nullable */
+  superseded_by: string | null;
+  executions: PodcastAgentExecution[];
+  integrity_disclaimer: string;
+  private_attestation: PodcastCutKeyPrivateAttestation;
+}
+
+export interface PodcastResetResponse {
+  room: PodcastRoom;
+  pre_staged_input: PodcastContextSearchInput;
 }
 
 export type PodcastScriptDecisionInputDecision = typeof PodcastScriptDecisionInputDecision[keyof typeof PodcastScriptDecisionInputDecision];

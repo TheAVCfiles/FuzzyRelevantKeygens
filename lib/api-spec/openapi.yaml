@@ -131,6 +131,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PodcastContextSearchResponse"
+  /podcast/runs/{id}/attestation:
+    post:
+      operationId: attestPodcastCuttingRoom
+      tags: [autography]
+      summary: Add or decline a private cutting-room attestation for the active grounded run
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastCuttingRoomAttestationInput"
+      responses:
+        "200":
+          description: Private attestation receipt for the grounded run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastCuttingRoomAttestation"
   /podcast/live-snapshot:
     get:
       operationId: getPodcastLiveSnapshot
@@ -418,6 +438,55 @@ paths:
       summary: Stream an approved generated podcast clip
       parameters:
         - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: WAV audio stream
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+  /podcast/reset:
+    post:
+      operationId: resetPodcastDemo
+      tags: [autography]
+      summary: Reset authenticated podcast demo state and return a pre-staged input
+      responses:
+        "200":
+          description: Reset state and a pre-staged project input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastResetResponse"
+  /podcast/cut-keys/{key}:
+    get:
+      operationId: getPodcastCutKey
+      tags: [autography]
+      summary: Get a public integrity manifest for an approved podcast cut
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Public Cut Key manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastCutKey"
+        "404":
+          description: Cut Key not found
+  /podcast/cut-keys/{key}/audio:
+    get:
+      operationId: streamPodcastCutKeyAudio
+      tags: [autography]
+      summary: Stream audio only when resolved by a current public Cut Key
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
       responses:
         "200":
           description: WAV audio stream
@@ -1132,7 +1201,7 @@ components:
           items: { type: string }
     PodcastContextSearchResponse:
       type: object
-      required: [query, audience, use_case, generated_at, search_mode, results]
+      required: [query, audience, use_case, generated_at, search_mode, results, grounded_run]
       properties:
         query: { type: string }
         audience: { type: string }
@@ -1140,7 +1209,9 @@ components:
         generated_at: { type: string }
         search_mode:
           type: string
-          enum: [curated_synthetic_index]
+          enum: [google_search_grounded, synthetic_demo]
+        grounded_run:
+          $ref: "#/components/schemas/PodcastGroundedRun"
         results:
           type: array
           items:
@@ -1202,19 +1273,21 @@ components:
           description: Validated development plan that fixes the selected fictional archetype, format, and exact cited source set for this brief.
     PodcastBrief:
       type: object
-      required: [id, concept_id, selected_source_ids, status, generated_mode, topic_angle, audience_pain, why_now, key_tensions, source_links, risk_notes, episode_outline, suggested_title, approval_note]
+      required: [id, concept_id, selected_source_ids, run_id, attestation_id, status, generated_mode, topic_angle, audience_pain, why_now, key_tensions, source_links, risk_notes, episode_outline, suggested_title, approval_note]
       properties:
         id: { type: string }
         concept_id: { type: string }
         selected_source_ids:
           type: array
           items: { type: string }
+        run_id: { type: ["string", "null"] }
+        attestation_id: { type: ["string", "null"] }
         status:
           type: string
           enum: [draft, approved, rejected]
         generated_mode:
           type: string
-          enum: [gemini, fixture_fallback]
+          enum: [gemini, synthetic_demo]
         topic_angle: { type: string }
         audience_pain: { type: string }
         why_now: { type: string }
@@ -1257,19 +1330,27 @@ components:
           enum: [approve, reject]
     PodcastScriptSection:
       type: object
-      required: [segment, script, source_ids]
+      required: [segment, script, source_ids, classification, speaker]
       properties:
         segment: { type: string }
         script: { type: string }
         source_ids:
           type: array
           items: { type: string }
+        classification:
+          type: string
+          enum: [source_backed, first_party_attested, disputed, unresolved]
+        speaker:
+          type: string
+          enum: [FRONT ROW, BACKSTAGE]
     PodcastScriptWorkspace:
       type: object
-      required: [id, brief_id, status, title, sections, provenance, safety_note, review_note, audio_status, release_kit, compatibility_normalized]
+      required: [id, brief_id, run_id, attestation_id, status, title, sections, provenance, safety_note, review_note, audio_status, release_kit, compatibility_normalized]
       properties:
         id: { type: string }
         brief_id: { type: string }
+        run_id: { type: ["string", "null"] }
+        attestation_id: { type: ["string", "null"] }
         status:
           type: string
           enum: [draft, approved, rejected]
@@ -1356,10 +1437,12 @@ components:
           enum: [approve, reject]
     PodcastAudioClip:
       type: object
-      required: [id, script_id, status, audio_url, mime_type, duration_seconds, transcript, voice_disclosure, format_disclosure, source_ids, provenance_summary, generated_at]
+      required: [id, script_id, run_id, attestation_id, status, audio_url, mime_type, duration_seconds, transcript, voice_disclosure, format_disclosure, source_ids, provenance_summary, generated_at]
       properties:
         id: { type: string }
         script_id: { type: string }
+        run_id: { type: ["string", "null"] }
+        attestation_id: { type: ["string", "null"] }
         status:
           type: string
           enum: [ready]
@@ -1376,6 +1459,157 @@ components:
           items: { type: string }
         provenance_summary: { type: string }
         generated_at: { type: string }
+        cut_key: { type: ["string", "null"] }
+    PodcastAgentExecution:
+      type: object
+      required: [agent, provider, model, execution_id, tools, latency_ms, status]
+      properties:
+        agent:
+          type: string
+          enum: [source_scout, evidence_editor, script_performer, audio_performer, authority_check]
+        provider: { type: string }
+        model: { type: string }
+        execution_id: { type: string }
+        tools:
+          type: array
+          items: { type: string }
+        latency_ms: { type: number }
+        status:
+          type: string
+          enum: [completed, held, failed]
+        activity: { type: string }
+    PodcastGroundingSource:
+      type: object
+      required: [id, url, title, retrieved_at, source_type, classification, what_it_supports, what_remains_uncertain]
+      properties:
+        id: { type: string }
+        url: { type: string }
+        title: { type: string }
+        retrieved_at: { type: string }
+        snippet: { type: string }
+        source_type: { type: string }
+        classification:
+          type: string
+          enum: [source_backed, first_party_attested, disputed, unresolved]
+        what_it_supports: { type: string }
+        what_remains_uncertain: { type: string }
+    PodcastGroundedRun:
+      type: object
+      required: [id, query, runtime_status, sources, concept, uncertainties, agent_executions, grounding_support]
+      properties:
+        id: { type: string }
+        query: { type: string }
+        runtime_status:
+          type: string
+          enum: [Live Gemini, Synthetic Demo, Failed]
+        sources:
+          type: array
+          minItems: 3
+          maxItems: 5
+          items: { $ref: "#/components/schemas/PodcastGroundingSource" }
+        concept: { $ref: "#/components/schemas/PodcastConcept" }
+        uncertainties:
+          type: array
+          minItems: 1
+          items: { type: string }
+        grounding_support: { type: string }
+        agent_executions:
+          type: array
+          minItems: 2
+          items: { $ref: "#/components/schemas/PodcastAgentExecution" }
+    PodcastCuttingRoomAttestationInput:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [add, decline]
+        raw_text: { type: string, minLength: 1 }
+        permitted_public_summary: { type: string, minLength: 1 }
+        authorized_uses:
+          type: array
+          minItems: 1
+          items: { type: string }
+    PodcastCuttingRoomAttestation:
+      type: object
+      required: [id, run_id, decision, attested, signer, permitted_public_summary, authorized_uses, created_at]
+      properties:
+        id: { type: string }
+        run_id: { type: string }
+        decision:
+          type: string
+          enum: [add, decline]
+        attested: { type: boolean }
+        signer: { type: ["string", "null"] }
+        permitted_public_summary: { type: ["string", "null"] }
+        authorized_uses:
+          type: array
+          items: { type: string }
+        created_at: { type: string }
+    PodcastCutKey:
+      type: object
+      required: [key, clip_id, run_id, attestation_id, audio_url, citations, line_mappings, retrievals, script_sha256, audio_sha256, approval_receipts, version, supersedes, superseded_by, executions, integrity_disclaimer, private_attestation]
+      properties:
+        key: { type: string }
+        clip_id: { type: string }
+        run_id: { type: ["string", "null"] }
+        attestation_id: { type: ["string", "null"] }
+        audio_url: { type: string }
+        citations:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastGroundingSource" }
+        line_mappings:
+          type: array
+          items:
+            type: object
+            required: [segment, text, speaker, classification, source_ids]
+            properties:
+              segment: { type: string }
+              text: { type: string }
+              speaker: { type: string, enum: [FRONT ROW, BACKSTAGE] }
+              classification:
+                type: string
+                enum: [source_backed, first_party_attested, disputed, unresolved]
+              source_ids:
+                type: array
+                items: { type: string }
+        retrievals:
+          type: array
+          items: { type: string }
+        script_sha256: { type: string }
+        audio_sha256: { type: string }
+        approval_receipts:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            type: object
+            required: [stage, reviewer, decided_at]
+            properties:
+              stage: { type: string, enum: [development, brief, script, audio] }
+              reviewer: { type: string }
+              decided_at: { type: string }
+        version: { type: number }
+        supersedes: { type: ["string", "null"] }
+        superseded_by: { type: ["string", "null"] }
+        executions:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastAgentExecution" }
+        integrity_disclaimer: { type: string }
+        private_attestation:
+          type: object
+          required: [exists, classification, signer, permitted_public_summary]
+          properties:
+            exists: { type: boolean }
+            classification: { type: ["string", "null"] }
+            signer: { type: ["string", "null"] }
+            permitted_public_summary: { type: ["string", "null"] }
+    PodcastResetResponse:
+      type: object
+      required: [room, pre_staged_input]
+      properties:
+        room: { $ref: "#/components/schemas/PodcastRoom" }
+        pre_staged_input: { $ref: "#/components/schemas/PodcastContextSearchInput" }
     PodcastScriptDecisionInput:
       type: object
       required: [decision]

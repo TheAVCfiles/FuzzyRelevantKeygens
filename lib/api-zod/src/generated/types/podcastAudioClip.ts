@@ -11,6 +11,10 @@ import type { PodcastAudioClipStatus } from './podcastAudioClipStatus';
 export interface PodcastAudioClip {
   id: string;
   script_id: string;
+  /** @nullable */
+  run_id: string | null;
+  /** @nullable */
+  attestation_id: string | null;
   status: PodcastAudioClipStatus;
   audio_url: string;
   mime_type: PodcastAudioClipMimeType;
@@ -21,4 +25,6 @@ export interface PodcastAudioClip {
   source_ids: string[];
   provenance_summary: string;
   generated_at: string;
+  /** @nullable */
+  cut_key?: string | null;
 }

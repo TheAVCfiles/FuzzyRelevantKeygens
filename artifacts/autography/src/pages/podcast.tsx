@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { Link } from 'wouter';
 import {
   ArrowUpRight,
   Check,
@@ -16,6 +17,7 @@ import {
   Sparkles,
   Target,
   X,
+  Activity,
 } from 'lucide-react';
 import {
   getGetPodcastRoomQueryKey,
@@ -34,6 +36,8 @@ import {
   useGetPodcastScriptByBrief,
   useGetPodcastRoom,
   useRenamePodcastFilterPreset,
+  useResetPodcastDemo,
+  useAttestPodcastCuttingRoom,
   type PodcastBrief,
   type PodcastConcept,
   type PodcastFilterPreset,
@@ -602,6 +606,13 @@ function ScriptWorkspacePanel({
                 <ProtectedAudioPlayer clip={audioClip} />
                 <p className="mt-3 text-[11px] leading-5 text-[#c5d8d5]">{audioClip.voice_disclosure}</p>
                 <details className="mt-2 text-xs text-[#c5d8d5]"><summary className="cursor-pointer font-mono text-[9px] uppercase tracking-[.1em] text-[#d8a36c]">Transcript & provenance</summary><p className="mt-2 leading-5">{audioClip.transcript}</p><p className="mt-2 text-[#9bc8a9]">{audioClip.provenance_summary}</p></details>
+                {audioClip.cut_key && (
+                  <div className="mt-4 border-t border-[#46696e] pt-4">
+                    <Link href={`/cut/${audioClip.cut_key}`} className="inline-flex items-center gap-2 border border-[#d8a36c] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[#d8a36c] transition-colors hover:bg-[#d8a36c] hover:text-[#182d30]" data-testid="link-cut-key">
+                      Open Public Cut Key <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -610,6 +621,179 @@ function ScriptWorkspacePanel({
       <div className="mt-5">
         <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Attached provenance</p>
        <div className="space-y-2">{script.provenance.map((source) => <a key={source.source_id} href={source.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 border border-[#4f4944] px-3 py-3 text-xs text-[#d8cbc1] hover:border-[#d8a36c]" data-testid={`link-script-source-${source.source_id}`}><span className="min-w-0 truncate">{source.label}<span className="ml-2 text-[9px] uppercase tracking-[0.08em] text-[#80756c]">retrieved {formatDate(source.retrieved_at)}</span></span><ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-[#d8a36c]" /></a>)}</div>
+      </div>
+    </section>
+  );
+}
+
+import {
+  type PodcastGroundedRun,
+  type PodcastGroundingSource,
+  type PodcastAgentExecution,
+} from '@workspace/api-client-react';
+
+function formatLatency(ms?: number) {
+  if (!ms) return '0s';
+  return (ms / 1000).toFixed(1) + 's';
+}
+
+function GroundedRunDesk({
+  run,
+  onAttest,
+  isAttesting,
+}: {
+  run: PodcastGroundedRun;
+  onAttest: (decision: 'add' | 'decline', data: any) => void;
+  isAttesting: boolean;
+}) {
+  const [attested, setAttested] = useState(false);
+  const [rawText, setRawText] = useState('');
+  const [publicSummary, setPublicSummary] = useState('');
+  const [authorizedUses, setAuthorizedUses] = useState<string[]>(['development']);
+
+  const toggleUse = (use: string) => {
+    setAuthorizedUses(current =>
+      current.includes(use) ? current.filter(u => u !== use) : [...current, use]
+    );
+  };
+
+  const handleAttest = (decision: 'add' | 'decline') => {
+    if (decision === 'add') {
+      onAttest('add', {
+        decision: 'add',
+        raw_text: rawText || undefined,
+        permitted_public_summary: publicSummary || undefined,
+        authorized_uses: authorizedUses.length > 0 ? authorizedUses : undefined,
+      });
+    } else {
+      onAttest('decline', { decision: 'decline' });
+    }
+  };
+
+  return (
+    <section className="podcast-panel mb-6 overflow-hidden border-[#365f67]" data-testid="panel-grounded-run">
+      <div className="bg-[#20383c] p-5 text-[#f0e8de] sm:p-6 border-b border-[#46696e]">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-[#a8d0c9]" />
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#a8d0c9]">Run Context</p>
+            </div>
+            <h2 className="mt-2 font-serif text-3xl">Grounded Query Desk</h2>
+          </div>
+          <div className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] ${run.runtime_status === 'Failed' ? 'border-[#e4a38d] text-[#e4a38d]' : run.runtime_status === 'Live Gemini' ? 'border-[#a8d0c9] text-[#a8d0c9]' : 'border-[#d8a36c] text-[#d8a36c]'}`} data-testid="status-runtime">
+            {run.runtime_status}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-2">
+        <div>
+          <h3 className="font-serif text-xl text-[#201b19]">Grounded sources & gaps</h3>
+          <p className="mt-2 text-sm leading-6 text-[#5f554e]">{run.grounding_support}</p>
+
+          <div className="mt-4 space-y-3">
+            <h4 className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#365f67]">Retrieved Sources</h4>
+            {run.sources.map(source => (
+              <div key={source.id} className="border border-[#c7b9aa] bg-[#eee7dc]/70 p-3 text-sm">
+                <a href={source.url} target="_blank" rel="noreferrer" className="font-medium text-[#201b19] hover:text-[#b34b36] hover:underline">{source.title}</a>
+                <div className="mt-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.08em] text-[#73675f]">
+                  <span className="text-[#365f67]">{source.classification.replaceAll('_', ' ')}</span>
+                  <span>{formatDate(source.retrieved_at)}</span>
+                </div>
+                {source.what_remains_uncertain && (
+                  <p className="mt-2 border-t border-[#d4c8bb] pt-2 text-[11px] leading-5 text-[#9e3e2d]">Gap: {source.what_remains_uncertain}</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {run.uncertainties.length > 0 && (
+            <div className="mt-5 border border-[#895948] bg-[#482e29] p-4 text-[#f0d0c4]">
+              <h4 className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#e4a38d]">Uncertainties</h4>
+              <ul className="mt-2 space-y-1 text-xs leading-5">
+                {run.uncertainties.map((u, idx) => (
+                  <li key={idx}>/ {u}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          <div>
+            <h4 className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#365f67]">Agent Executions</h4>
+            <div className="mt-3 space-y-2">
+              {run.agent_executions.map(exec => (
+                <div key={exec.execution_id} className="border border-[#c7b9aa] bg-[#f4eee5] p-3 text-xs">
+                  <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.1em]">
+                    <span className="text-[#201b19] font-semibold">{exec.agent.replaceAll('_', ' ')}</span>
+                    <span className={exec.status === 'completed' ? 'text-[#365f67]' : 'text-[#9e3e2d]'}>{exec.status}</span>
+                  </div>
+                  {exec.activity && <p className="mt-1 text-[#5f554e]">{exec.activity}</p>}
+                  <div className="mt-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.08em] text-[#73675f]">
+                    <span>{exec.model}</span>
+                    <span>{formatLatency(exec.latency_ms)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border border-[#46696e] bg-[#20383c] p-4" data-testid="panel-attestation">
+            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[#a8d0c9]">
+              <ShieldCheck className="h-3.5 w-3.5" /> Cutting-room Context
+            </div>
+            <p className="mt-2 text-xs leading-5 text-[#c5d8d5]">
+              Add private attestation to bridge gaps in the public signal, or decline to proceed with public context only.
+            </p>
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#8ea8a2]">Private Raw Text (Optional)</span>
+                <textarea
+                  className="mt-1 w-full border border-[#46696e] bg-[#182d30] p-2 text-xs text-[#f0e8de] placeholder-[#46696e]"
+                  rows={2}
+                  placeholder="Only visible to production agents..."
+                  value={rawText}
+                  onChange={(e) => setRawText(e.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#8ea8a2]">Permitted Public Summary (Optional)</span>
+                <textarea
+                  className="mt-1 w-full border border-[#46696e] bg-[#182d30] p-2 text-xs text-[#f0e8de] placeholder-[#46696e]"
+                  rows={2}
+                  placeholder="Appears on Cut Key..."
+                  value={publicSummary}
+                  onChange={(e) => setPublicSummary(e.target.value)}
+                />
+              </label>
+              <div>
+                <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#8ea8a2]">Authorized Uses</span>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {['development', 'script_context', 'public_summary'].map(use => (
+                    <button
+                      key={use}
+                      type="button"
+                      onClick={() => toggleUse(use)}
+                      className={`border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.08em] ${authorizedUses.includes(use) ? 'border-[#a8d0c9] bg-[#a8d0c9] text-[#182d30]' : 'border-[#46696e] text-[#8ea8a2]'}`}
+                    >
+                      {use.replaceAll('_', ' ')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <Button type="button" disabled={isAttesting} onClick={() => handleAttest('add')} className="bg-[#a8d0c9] text-[#182d30] hover:bg-[#8ea8a2]" data-testid="button-attest-add">
+                {isAttesting ? <LoaderCircle className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Check className="mr-2 h-3.5 w-3.5" />} Add context
+              </Button>
+              <Button type="button" variant="outline" disabled={isAttesting} onClick={() => handleAttest('decline')} className="border-[#46696e] text-[#a8d0c9] hover:bg-[#182d30]" data-testid="button-attest-decline">
+                Decline
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -764,6 +948,30 @@ export function Podcast() {
     },
   });
 
+  const resetDemo = useResetPodcastDemo({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getGetPodcastRoomQueryKey() });
+        setSearchResult(null);
+        setSearchQuery(data.pre_staged_input.query || 'What context did the final cut leave out?');
+        setSelectedConceptId(null);
+        setVisibleSourceIds([]);
+        setDevelopmentPlan(null);
+        setBrief(null);
+        setScript(null);
+        setLocalError('');
+      },
+    },
+  });
+
+  const attestContext = useAttestPodcastCuttingRoom({
+    mutation: {
+      onSuccess: () => {
+        setLocalError('');
+      },
+    },
+  });
+
   const submitSource = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const value = sourceUrl.trim();
@@ -817,6 +1025,10 @@ export function Podcast() {
             <h2 className="podcast-display mt-2 text-3xl text-[#201b19] sm:text-4xl" data-testid="text-room-heading">What is moving, and why it matters now.</h2>
           </div>
           <div className="flex items-center gap-4 font-mono text-[10px] uppercase tracking-[0.1em] text-[#73675f]">
+            <Button type="button" variant="outline" size="sm" className="h-8 border-[#c7b9aa] text-[#73675f] hover:bg-[#d9cdbf]" onClick={() => resetDemo.mutate()} disabled={resetDemo.isPending} data-testid="button-reset-demo">
+              {resetDemo.isPending ? <LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />} Reset Demo
+            </Button>
+            <span className="h-4 w-px bg-[#c7b9aa]" />
             <span data-testid="text-source-count">{sources.length} sources</span>
             <span className="h-4 w-px bg-[#c7b9aa]" />
             <span data-testid="text-concept-count">{concepts.length} ranked concepts</span>
@@ -903,6 +1115,13 @@ export function Podcast() {
               </section>
 
               <div className="space-y-4">
+                {searchResult?.grounded_run && (
+                  <GroundedRunDesk
+                    run={searchResult.grounded_run}
+                    onAttest={(decision, data) => attestContext.mutate({ id: searchResult.grounded_run.id, data })}
+                    isAttesting={attestContext.isPending}
+                  />
+                )}
                 {selectedConcept && (
                   <DevelopmentStudio
                     conceptId={selectedConcept.id}

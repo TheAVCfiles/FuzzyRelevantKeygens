@@ -7,7 +7,7 @@
     "dev": "export NODE_ENV=${NODE_ENV:-development} AUTOGRAPHY_PREVIEW_ROLE_MODE=${AUTOGRAPHY_PREVIEW_ROLE_MODE:-true} && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "test": "NODE_ENV=development AUTOGRAPHY_PREVIEW_ROLE_MODE=true node ./test-build.mjs && NODE_ENV=development AUTOGRAPHY_PREVIEW_ROLE_MODE=true node --test --test-concurrency=1 $(find .test-dist -name '*.test.js' -print)",
+    "test": "NODE_ENV=development AUTOGRAPHY_PREVIEW_ROLE_MODE=true node ./test-build.mjs && NODE_ENV=development AUTOGRAPHY_PREVIEW_ROLE_MODE=true PODCAST_STATE_PATH=/tmp/autography-podcast-test-state-$$.json PODCAST_AUDIO_DIRECTORY=/tmp/autography-podcast-test-audio-$$ node --test --test-concurrency=1 $(find .test-dist -name '*.test.js' -print)",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

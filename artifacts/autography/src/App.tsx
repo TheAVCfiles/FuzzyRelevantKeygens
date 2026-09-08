@@ -30,6 +30,7 @@ import { DropView } from '@/pages/drop';
 import { Verify } from '@/pages/verify';
 import { Receipts } from '@/pages/receipts';
 import Podcast from '@/pages/podcast';
+import { CutKeyView } from '@/pages/cut';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -163,6 +164,10 @@ function PublicDropRoute() {
   return <PublicRegistryRoute><DropView /></PublicRegistryRoute>;
 }
 
+function PublicCutKeyRoute() {
+  return <PublicRegistryRoute><CutKeyView /></PublicRegistryRoute>;
+}
+
 function SignInPage() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-[#100c0d] px-4">
@@ -224,6 +229,7 @@ function Router() {
       <Route path="/sign-up/*?" component={SignUpPage} />
       <Route path="/verify" component={PublicVerifyRoute} />
       <Route path="/drop/:id" component={PublicDropRoute} />
+      <Route path="/cut/:key" component={PublicCutKeyRoute} />
       <Route path="/" component={HomeRoute} />
       <Route component={ProtectedRoutes} />
     </Switch>

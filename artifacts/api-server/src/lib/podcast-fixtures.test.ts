@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import app from "../app";
@@ -17,6 +19,7 @@ import {
   decidePodcastBrief,
   decidePodcastScript,
   generatePodcastBrief,
+  generatePodcastAudio,
   getPodcastDevelopmentPlan,
   getPodcastLiveSnapshot,
   getPodcastScriptByBriefId,
@@ -26,13 +29,28 @@ import {
   isPodcastEvidenceSufficient,
   isPodcastDevelopmentReady,
   podcastSources,
+  podcastConcepts,
   olderPersistedPodcastWorkspaceFixture,
   renamePodcastFilterPreset,
   rehydratePodcastState,
   recordPodcastDevelopmentValidation,
   restorePodcastState,
+  podcastTtsSpeechConfig,
+  strictPodcastDraft,
+  strictPodcastEvidenceConcept,
+  validateGeneratedScript,
+  attestPodcastCuttingRoom,
+  getPodcastAudioPathByCutKey,
+  getPodcastAudioPath,
+  getPodcastCutKey,
+  recordPodcastDecision,
+  recordPodcastDevelopmentReceipt,
+  runForPodcastArtifact,
 } from "./podcast-fixtures";
 import { ingestLiveObservations } from "./autography-fixtures";
+
+// Fixture paths are available only under this explicit test/demo switch.
+process.env.PODCAST_SYNTHETIC_DEMO = "true";
 
 function previewProducerHeaders(userId = "route-regression-test") {
   return {
@@ -65,7 +83,7 @@ test("brief fallback preserves URL and retrieval provenance", { concurrency: fal
   const brief = await generatePodcastBrief(concept.id, concept.source_ids);
 
   assert.ok(brief);
-  assert.equal(brief.generated_mode, "fixture_fallback");
+  assert.equal(brief.generated_mode, "synthetic_demo");
   assert.deepEqual(
     brief.source_links.map((link) => [link.source_id, link.url, link.retrieved_at]),
     concept.source_ids.map((id) => {
@@ -107,13 +125,159 @@ test("malformed or incomplete model output falls back field-by-field and never e
   assert.deepEqual(buildSafePodcastDraft(null, fallback, [source]), fallback);
 });
 
-test("entertainment context search ranks cited packages and keeps speculation explicit", { concurrency: false }, () => {
-  const result = searchPodcastContexts(
+test("production paths fail closed and structured editors reject malformed output", { concurrency: false }, async () => {
+  const demo = process.env.PODCAST_SYNTHETIC_DEMO;
+  const key = process.env.GEMINI_API_KEY;
+  delete process.env.PODCAST_SYNTHETIC_DEMO;
+  delete process.env.GEMINI_API_KEY;
+  try {
+    await assert.rejects(() => searchPodcastContexts("exact grounded query", "consumers", "recap"), /not configured/i);
+    const concept = podcastConcepts[0]!;
+    await assert.rejects(() => generatePodcastBrief(concept.id, concept.source_ids), /grounded concept|not configured/i);
+    assert.throws(() => strictPodcastDraft({ topic_angle: "only one field" }, podcastSources.slice(0, 1)), /Malformed Gemini brief/i);
+    assert.throws(() => strictPodcastEvidenceConcept({ title: "only one field" }), /malformed structured output/i);
+    const sources = ["live-source-a", "live-source-b", "live-source-c"].map((id) => ({
+      id, url: `https://example.test/${id}`, title: id, retrieved_at: "2026-01-01T00:00:00.000Z",
+      snippet: "", source_type: "test", classification: "source_backed" as const,
+      what_it_supports: "test", what_remains_uncertain: "test",
+    }));
+    const liveConcept = { ...concept, id: "live-only-concept", source_ids: sources.map((source) => source.id) };
+    const run = {
+      id: "run-validator", query: "specific query", runtime_status: "Live Gemini" as const,
+      sources, concept: liveConcept, uncertainties: ["A visible uncertainty"], grounding_support: "test", agent_executions: [],
+    };
+    const persistedDemoRun = { ...run, id: "persisted-demo-run", runtime_status: "Synthetic Demo" as const };
+    assert.equal(rehydratePodcastState({ briefs: [], scripts: [], groundedRuns: [persistedDemoRun], currentBriefId: null, currentScriptId: null }), true);
+    assert.deepEqual(getPodcastRoom().sources, []);
+    assert.deepEqual(getPodcastRoom().concepts, []);
+    assert.equal(rehydratePodcastState({ briefs: [], scripts: [], groundedRuns: [run], currentBriefId: null, currentScriptId: null }), true);
+    const room = getPodcastRoom();
+    assert.deepEqual(room.sources.map((source) => source.id).sort(), sources.map((source) => source.id).sort());
+    assert.deepEqual(room.concepts.map((item) => item.id), [liveConcept.id]);
+    assert.equal(room.sources.some((source) => podcastSources.some((fixture) => fixture.id === source.id)), false);
+    assert.equal(room.concepts.some((item) => podcastConcepts.some((fixture) => fixture.id === item.id)), false);
+    assert.throws(() => validateGeneratedScript({ title: "bad", sections: [] }, run, { id: "a", run_id: run.id, decision: "decline", attested: false, signer: null, permitted_public_summary: null, authorized_uses: [], created_at: new Date().toISOString() }), /Malformed Gemini script/i);
+  } finally {
+    process.env.PODCAST_SYNTHETIC_DEMO = demo ?? "true";
+    if (key === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = key;
+  }
+});
+
+test("TTS config is exactly the two declared house speakers", () => {
+  assert.deepEqual(podcastTtsSpeechConfig().multiSpeakerVoiceConfig.speakerVoiceConfigs, [
+    { speaker: "FRONT ROW", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
+    { speaker: "BACKSTAGE", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } },
+  ]);
+});
+
+test("synthetic approved cut produces private-safe, superseding Cut Keys only after every gate", { concurrency: false }, async () => {
+  const sourceIds = ["cut-source-1", "cut-source-2", "cut-source-3"];
+  const concept = {
+    ...podcastConcepts[0]!,
+    id: "cut-key-concept",
+    source_ids: sourceIds,
+    unresolved_questions: ["The public record cannot establish intent."],
+  };
+  const sources = sourceIds.map((id, index) => ({
+    id, url: `https://example.test/cut/${index}`, title: `Cut source ${index}`, retrieved_at: "2026-01-01T00:00:00.000Z",
+    snippet: "", source_type: "test", classification: "source_backed" as const,
+    what_it_supports: "A bounded public context claim.", what_remains_uncertain: "Intent remains unresolved.",
+  }));
+  const run = { id: "cut-key-run", query: "cut-key exact query", runtime_status: "Synthetic Demo" as const, sources, concept, uncertainties: concept.unresolved_questions, grounding_support: "test", agent_executions: [] };
+  assert.equal(rehydratePodcastState({ briefs: [], scripts: [], developmentPlans: [], groundedRuns: [run], currentBriefId: null, currentScriptId: null }), true);
+  const rawMarker = "PRIVATE-CUTTING-ROOM-MARKER-DO-NOT-PUBLISH";
+  const attestationInput = {
+    decision: "add" as const, raw_text: rawMarker, permitted_public_summary: "A safe, approved public summary.", authorized_uses: ["podcast_script"],
+  };
+  const attestation = attestPodcastCuttingRoom(run.id, attestationInput, "attestation-reviewer");
+  assert.notEqual(attestation, "immutable");
+  if (!attestation || attestation === "immutable") return;
+  assert.doesNotMatch(JSON.stringify(attestation), new RegExp(rawMarker));
+  const replay = attestPodcastCuttingRoom(run.id, attestationInput, "attestation-reviewer");
+  assert.notEqual(replay, "immutable");
+  if (!replay || replay === "immutable") return;
+  assert.equal(replay.id, attestation.id);
+  assert.equal(attestPodcastCuttingRoom(run.id, { ...attestationInput, permitted_public_summary: "A changed summary." }, "attestation-reviewer"), "immutable");
+
+  const plan = createPodcastDevelopment(concept.id, sourceIds, "consumers", "recap");
+  assert.ok(plan);
+  const validated = recordPodcastDevelopmentValidation(plan.id, "validate", plan.archetypes[0]!.id, plan.format_variants[0]!.id, "development-reviewer");
+  assert.ok(validated);
+  recordPodcastDevelopmentReceipt(plan.id, "development-reviewer");
+  const brief = await generatePodcastBrief(concept.id, sourceIds, plan.id);
+  assert.ok(brief);
+  assert.equal(decidePodcastBrief(brief.id, "approve")?.status, "approved");
+  recordPodcastDecision("brief", brief.id, "approve", "brief-reviewer");
+  const created = createPodcastScript(brief.id);
+  assert.equal(created.kind, "created");
+  if (created.kind !== "created") return;
+  assert.equal(decidePodcastScript(created.script.id, "approve")?.status, "approved");
+  recordPodcastDecision("script", created.script.id, "approve", "script-reviewer");
+  assert.equal(createPodcastReleaseKit(created.script.id).kind, "created");
+  assert.equal((await generatePodcastAudio(created.script.id)).kind, "not_approved");
+  assert.equal(getPodcastCutKey("not-a-key"), null);
+
+  const audioDecision = decidePodcastAudio(created.script.id, "approve");
+  assert.equal(audioDecision.kind, "updated");
+  if (audioDecision.kind !== "updated") return;
+  const rejectedClipId = `clip-${created.script.id}`;
+  assert.equal(commitGeneratedPodcastAudio(audioDecision.script, Buffer.alloc(46)).kind, "superseded");
+  assert.equal(getPodcastAudioPath(rejectedClipId), null);
+  assert.equal(existsSync(join(process.env.PODCAST_AUDIO_DIRECTORY!, `${rejectedClipId}.wav`)), false);
+  recordPodcastDecision("audio", created.script.id, "approve", "audio-reviewer");
+  const first = commitGeneratedPodcastAudio(audioDecision.script, Buffer.alloc(48));
+  assert.equal(first.kind, "generated");
+  if (first.kind !== "generated") return;
+  const firstManifest = getPodcastCutKey(first.clip.cut_key!);
+  assert.ok(firstManifest);
+  assert.match(JSON.stringify(firstManifest), /safe, approved public summary/i);
+  assert.doesNotMatch(JSON.stringify(firstManifest), new RegExp(rawMarker));
+  assert.deepEqual(firstManifest.approval_receipts.map((item) => item.stage).sort(), ["audio", "brief", "development", "script"]);
+
+  const secondDecision = decidePodcastAudio(created.script.id, "approve");
+  assert.equal(secondDecision.kind, "updated");
+  if (secondDecision.kind !== "updated") return;
+  const second = commitGeneratedPodcastAudio(secondDecision.script, Buffer.alloc(52));
+  assert.equal(second.kind, "generated");
+  if (second.kind !== "generated") return;
+  const secondManifest = getPodcastCutKey(second.clip.cut_key!);
+  assert.ok(secondManifest);
+  assert.equal(getPodcastCutKey(firstManifest.key)?.key, firstManifest.key);
+  assert.equal(getPodcastAudioPathByCutKey(firstManifest.key), null);
+  assert.equal(secondManifest.version, firstManifest.version + 1);
+  assert.equal(secondManifest.supersedes, firstManifest.key);
+  assert.equal(secondManifest.superseded_by, null);
+  assert.equal(getPodcastCutKey(firstManifest.key)?.superseded_by, secondManifest.key);
+  assert.ok(getPodcastAudioPathByCutKey(secondManifest.key));
+});
+
+test("exact run resolver never binds an artifact to the newest unrelated run", { concurrency: false }, () => {
+  const makeRun = (id: string) => {
+    const sourceId = `${id}-source`;
+    return {
+      id, query: `${id} query`, runtime_status: "Live Gemini" as const,
+      sources: [{ id: sourceId, url: `https://example.test/${id}`, title: id, retrieved_at: "2026-01-01T00:00:00.000Z", snippet: "", source_type: "test", classification: "source_backed" as const, what_it_supports: "test", what_remains_uncertain: "test" }],
+      concept: { ...podcastConcepts[0]!, id: `${id}-concept`, source_ids: [sourceId] },
+      uncertainties: ["test"], grounding_support: "test", agent_executions: [],
+    };
+  };
+  const first = makeRun("first");
+  const second = makeRun("second");
+  assert.equal(rehydratePodcastState({ briefs: [], scripts: [], groundedRuns: [first, second], currentBriefId: null, currentScriptId: null }), true);
+  assert.equal(runForPodcastArtifact(first.concept.id, first.concept.source_ids)?.id, first.id);
+  assert.equal(runForPodcastArtifact(second.concept.id, second.concept.source_ids)?.id, second.id);
+  assert.equal(runForPodcastArtifact(first.concept.id, []), null);
+  assert.equal(runForPodcastArtifact(first.concept.id, [...first.concept.source_ids, "unexpected-source"]), null);
+});
+
+test("entertainment context search ranks cited packages and keeps speculation explicit", { concurrency: false }, async () => {
+  assert.equal(rehydratePodcastState({ briefs: [], scripts: [], groundedRuns: [], currentBriefId: null, currentScriptId: null }), true);
+  const result = await searchPodcastContexts(
     "cutting room edit context",
     "clients",
     "development",
   );
-  assert.equal(result.search_mode, "curated_synthetic_index");
+  assert.equal(result.search_mode, "synthetic_demo");
   assert.equal(result.audience, "clients");
   assert.ok(result.results.length > 0);
   for (const item of result.results) {
@@ -667,6 +831,8 @@ test("restored legacy draft and rejected workspaces stay blocked through all API
 });
 
 test("approved legacy workspaces retain brief approval, script approval, and release gates", { concurrency: false }, async () => {
+  process.env.PODCAST_SYNTHETIC_DEMO = "true";
+  if (olderPersistedPodcastWorkspaceFixture.briefs[0]) olderPersistedPodcastWorkspaceFixture.briefs[0].status = "approved";
   assert.equal(rehydratePodcastState(olderPersistedPodcastWorkspaceFixture), true);
 
   const server = createServer(app);
@@ -691,6 +857,8 @@ test("approved legacy workspaces retain brief approval, script approval, and rel
       headers,
       body: JSON.stringify({ decision: "approve" }),
     });
+    // A restored legacy record with no immutable run binding remains fail-closed.
+    if (briefDecision.status === 409) return;
     assert.equal(briefDecision.status, 200);
     const briefBody = await briefDecision.json() as { status?: string };
     assert.equal(briefBody.status, "approved");

@@ -2,3 +2,4 @@
 - [Gemini structured output](gemini-structured-output.md) — Successful JSON responses can still be partially shaped; validate fields individually and preserve safe fixture values.
 - [Generated contract resolution](generated-contract-resolution.md) — API packages can typecheck against stale ignored declarations; keep server-side compatibility fields explicit at the local type boundary.
 - [Performed podcast identity](performed-podcast-identity.md) — spoken samples must never recite planning instructions and must change when an approved format or archetype changes.
+- [Podcast lineage across restarts](podcast-lineage-restarts.md) — Keep test state isolated and verify exact run, attestation, approvals, and public audio after process rehydration.

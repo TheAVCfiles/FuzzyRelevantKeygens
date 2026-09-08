@@ -10,5 +10,6 @@ export type PodcastContextSearchResponseSearchMode = typeof PodcastContextSearch
 
 
 export const PodcastContextSearchResponseSearchMode = {
-  curated_synthetic_index: 'curated_synthetic_index',
+  google_search_grounded: 'google_search_grounded',
+  synthetic_demo: 'synthetic_demo',
 } as const;

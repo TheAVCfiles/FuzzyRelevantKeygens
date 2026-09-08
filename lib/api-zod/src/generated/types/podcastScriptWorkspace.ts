@@ -15,6 +15,10 @@ import type { PodcastScriptWorkspaceStatus } from './podcastScriptWorkspaceStatu
 export interface PodcastScriptWorkspace {
   id: string;
   brief_id: string;
+  /** @nullable */
+  run_id: string | null;
+  /** @nullable */
+  attestation_id: string | null;
   status: PodcastScriptWorkspaceStatus;
   title: string;
   sections: PodcastScriptSection[];

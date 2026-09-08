@@ -16,6 +16,10 @@ export interface PodcastBrief {
   id: string;
   concept_id: string;
   selected_source_ids: string[];
+  /** @nullable */
+  run_id: string | null;
+  /** @nullable */
+  attestation_id: string | null;
   status: PodcastBriefStatus;
   generated_mode: PodcastBriefGeneratedMode;
   topic_angle: string;

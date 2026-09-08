@@ -61,6 +61,12 @@ import {
   SignPullRequestResponse,
   VerifyDropBody,
   VerifyDropResponse,
+  AttestPodcastCuttingRoomBody,
+  AttestPodcastCuttingRoomParams,
+  AttestPodcastCuttingRoomResponse,
+  GetPodcastCutKeyParams,
+  GetPodcastCutKeyResponse,
+  ResetPodcastDemoResponse,
 } from "@workspace/api-zod";
 
 import {
@@ -87,6 +93,7 @@ import {
   deletePodcastFilterPreset,
   decidePodcastBrief,
   createPodcastScript,
+  createPodcastScriptFromGemini,
   createPodcastReleaseKit,
   decidePodcastAudio,
   decidePodcastScript,
@@ -105,7 +112,12 @@ import {
   recordPodcastDecision,
   renamePodcastFilterPreset,
   recordPodcastDevelopmentValidation,
+  recordPodcastDevelopmentReceipt,
   searchPodcastContexts,
+  attestPodcastCuttingRoom,
+  getPodcastAudioPathByCutKey,
+  getPodcastCutKey,
+  resetPodcastDemo,
 } from "../lib/podcast-fixtures";
 
 const router: IRouter = Router();
@@ -248,6 +260,38 @@ router.post("/verify", (req, res): void => {
   res.json(VerifyDropResponse.parse(verifyDrop(body.data.lookup)));
 });
 
+// Cut Keys are deliberately public, but resolve only an already-approved,
+// current manifest and never expose private attestation raw text.
+router.get("/podcast/cut-keys/:key", (req, res): void => {
+  const params = GetPodcastCutKeyParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const manifest = getPodcastCutKey(params.data.key);
+  if (!manifest) {
+    res.status(404).json({ error: "Cut Key not found" });
+    return;
+  }
+  res.json(GetPodcastCutKeyResponse.parse(manifest));
+});
+
+router.get("/podcast/cut-keys/:key/audio", (req, res): void => {
+  const params = GetPodcastCutKeyParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const path = getPodcastAudioPathByCutKey(params.data.key);
+  if (!path) {
+    res.status(404).json({ error: "Current Cut Key audio not found" });
+    return;
+  }
+  res.type("audio/wav").sendFile(path, { dotfiles: "allow" }, (error) => {
+    if (error && !res.headersSent) res.status(404).json({ error: "Current Cut Key audio not found" });
+  });
+});
+
 // Every production-room read is authenticated; development keeps the existing
 // local preview usable as the producer role.
 router.use(requirePermission("read"));
@@ -306,18 +350,53 @@ router.post("/podcast/sources", requirePermission("stage"), (req, res): void => 
   res.json(AddPodcastSourceResponse.parse(room));
 });
 
-router.post("/podcast/search", requirePermission("stage"), (req, res): void => {
+router.post("/podcast/search", requirePermission("stage"), async (req, res): Promise<void> => {
   const body = SearchPodcastContextsBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  res.json(SearchPodcastContextsResponse.parse(searchPodcastContexts(
-    body.data.query,
-    body.data.audience,
-    body.data.use_case,
-    body.data.source_classes,
-  )));
+  try {
+    res.json(SearchPodcastContextsResponse.parse(await searchPodcastContexts(
+      body.data.query,
+      body.data.audience,
+      body.data.use_case,
+      body.data.source_classes,
+    )));
+  } catch (error) {
+    res.status(502).json({ error: error instanceof Error ? error.message : "Google Search grounded podcast search failed." });
+  }
+});
+
+router.post("/podcast/runs/:id/attestation", requirePermission("sign"), (req, res): void => {
+  const params = AttestPodcastCuttingRoomParams.safeParse(req.params);
+  const body = AttestPodcastCuttingRoomBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Invalid cutting-room attestation." });
+    return;
+  }
+  const attestation = attestPodcastCuttingRoom(
+    params.data.id,
+    body.data,
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
+  );
+  if (attestation === "immutable") {
+    res.status(409).json({ error: "A cutting-room attestation for this run is immutable." });
+    return;
+  }
+  if (attestation === false) {
+    res.status(400).json({ error: "Adding an attestation requires raw text, public summary, signer, and authorized uses." });
+    return;
+  }
+  if (!attestation) {
+    res.status(404).json({ error: "Grounded podcast run not found." });
+    return;
+  }
+  res.json(AttestPodcastCuttingRoomResponse.parse(attestation));
+});
+
+router.post("/podcast/reset", requirePermission("stage"), (_req, res): void => {
+  res.json(ResetPodcastDemoResponse.parse(resetPodcastDemo()));
 });
 
 router.get("/podcast/live-snapshot", (_req, res): void => {
@@ -364,6 +443,9 @@ router.post("/podcast/development/:id/validation", requirePermission("sign"), (r
   if (!plan) {
     res.status(404).json({ error: "Podcast development plan, archetype, or format not found" });
     return;
+  }
+  if (body.data.decision === "validate") {
+    recordPodcastDevelopmentReceipt(params.data.id, (req as AutographyRequest).autographyPrincipal!.reviewerId);
   }
   res.json(RecordPodcastDevelopmentValidationResponse.parse(plan));
 });
@@ -419,11 +501,17 @@ router.post("/podcast/brief", requirePermission("stage"), async (req, res): Prom
     res.status(409).json({ error: "A validated development plan with the same cited source set is required." });
     return;
   }
-  const brief = await generatePodcastBrief(
-    body.data.concept_id,
-    body.data.source_ids,
-    body.data.development_plan_id,
-  );
+  let brief;
+  try {
+    brief = await generatePodcastBrief(
+      body.data.concept_id,
+      body.data.source_ids,
+      body.data.development_plan_id,
+    );
+  } catch (error) {
+    res.status(502).json({ error: error instanceof Error ? error.message : "Gemini brief generation failed." });
+    return;
+  }
   if (!brief) {
     res.status(404).json({ error: "Podcast concept not found" });
     return;
@@ -465,13 +553,19 @@ router.post("/podcast/brief/:id/decision", requirePermission("sign"), (req, res)
   res.json(DecidePodcastBriefResponse.parse(brief));
 });
 
-router.post("/podcast/brief/:id/script", requirePermission("stage"), (req, res): void => {
+router.post("/podcast/brief/:id/script", requirePermission("stage"), async (req, res): Promise<void> => {
   const params = CreatePodcastScriptParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Invalid podcast brief id" });
     return;
   }
-  const result = createPodcastScript(params.data.id);
+  let result;
+  try {
+    result = await createPodcastScriptFromGemini(params.data.id);
+  } catch (error) {
+    res.status(502).json({ error: error instanceof Error ? error.message : "Gemini script generation failed." });
+    return;
+  }
   if (result.kind === "not_found") {
     res.status(404).json({ error: "Podcast brief not found" });
     return;

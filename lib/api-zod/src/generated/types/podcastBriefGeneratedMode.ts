@@ -11,5 +11,5 @@ export type PodcastBriefGeneratedMode = typeof PodcastBriefGeneratedMode[keyof t
 
 export const PodcastBriefGeneratedMode = {
   gemini: 'gemini',
-  fixture_fallback: 'fixture_fallback',
+  synthetic_demo: 'synthetic_demo',
 } as const;
