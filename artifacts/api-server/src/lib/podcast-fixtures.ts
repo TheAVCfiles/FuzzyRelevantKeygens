@@ -576,7 +576,7 @@ export async function initializePodcastPersistence() {
     if (databaseState) {
       if (!rehydratePodcastState(databaseState.state)) {
         podcastStorageHealth = "degraded";
-        return;
+        throw new Error("Stored podcast state is invalid.");
       }
       podcastPersistenceRevision = databaseState.revision;
     } else if (existsSync(podcastStatePath)) {

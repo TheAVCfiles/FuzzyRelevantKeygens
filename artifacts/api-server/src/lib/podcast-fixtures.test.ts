@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import app from "../app";
+import { markPodcastPersistenceReady } from "./podcast-readiness";
 import {
   buildSafePodcastDraft,
   blockedLegacyPodcastWorkspaceFixture,
@@ -53,6 +54,7 @@ import { ingestLiveObservations } from "./autography-fixtures";
 
 // Fixture paths are available only under this explicit test/demo switch.
 process.env.PODCAST_SYNTHETIC_DEMO = "true";
+markPodcastPersistenceReady();
 
 function previewProducerHeaders(userId = "route-regression-test") {
   return {

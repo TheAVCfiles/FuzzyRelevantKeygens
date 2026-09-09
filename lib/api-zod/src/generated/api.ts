@@ -14,7 +14,8 @@ import * as zod from 'zod';
  */
 export const HealthCheckResponse = zod.object({
   "status": zod.string(),
-  "storage": zod.enum(['healthy', 'degraded'])
+  "storage": zod.enum(['healthy', 'degraded']),
+  "readiness": zod.enum(['initializing', 'ready', 'failed'])
 })
 
 

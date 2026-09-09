@@ -4,6 +4,9 @@ import { createServer } from "node:http";
 import { test } from "node:test";
 
 import app from "../app";
+import { markPodcastPersistenceReady } from "../lib/podcast-readiness";
+
+markPodcastPersistenceReady();
 import { principalFromVerifiedClerkUser } from "./autography";
 
 async function withServer(run: (baseUrl: string) => Promise<void>) {

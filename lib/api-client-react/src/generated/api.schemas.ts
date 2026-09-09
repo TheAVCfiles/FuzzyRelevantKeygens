@@ -13,9 +13,19 @@ export const HealthStatusStorage = {
   degraded: 'degraded',
 } as const;
 
+export type HealthStatusReadiness = typeof HealthStatusReadiness[keyof typeof HealthStatusReadiness];
+
+
+export const HealthStatusReadiness = {
+  initializing: 'initializing',
+  ready: 'ready',
+  failed: 'failed',
+} as const;
+
 export interface HealthStatus {
   status: string;
   storage: HealthStatusStorage;
+  readiness: HealthStatusReadiness;
 }
 
 export interface Show {

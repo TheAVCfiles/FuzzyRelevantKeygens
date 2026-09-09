@@ -126,8 +126,11 @@ import {
   runWithPodcastMutationLock,
   resetPodcastDemo,
 } from "../lib/podcast-fixtures";
+import { requirePodcastPersistenceReady } from "../lib/podcast-readiness";
 
 const router: IRouter = Router();
+
+router.use("/podcast", requirePodcastPersistenceReady);
 
 router.use("/podcast", async (req, res, next): Promise<void> => {
   const publicCutKeyRead =

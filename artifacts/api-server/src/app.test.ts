@@ -5,6 +5,9 @@ import { test } from "node:test";
 
 import app from "./app";
 import { acquirePodcastMutationLock } from "./lib/podcast-fixtures";
+import { markPodcastPersistenceReady } from "./lib/podcast-readiness";
+
+markPodcastPersistenceReady();
 
 async function withServer(run: (baseUrl: string) => Promise<void>) {
   const server = createServer(app);
