@@ -7,6 +7,10 @@ import {
 import { randomUUID } from "node:crypto";
 
 import {
+  resolveGeminiTransport,
+  type GeminiTransportEvidence,
+} from "./gemini-transport";
+import {
   clusters,
   contextItems,
   events,
@@ -34,6 +38,7 @@ export type AgentFlowRuntimeEvidence = {
   latency_ms: number;
   status: "completed" | "failed";
   activity: string;
+  transport?: GeminiTransportEvidence;
 };
 
 export type AgentFlowAdkRuntime = {
@@ -72,15 +77,15 @@ const googleAdkRuntime: AgentFlowAdkRuntime = {
   async runStage({ id, role, model: stageModel, prompt }) {
     const started = Date.now();
     let executionId = `adk-attempt-${randomUUID()}`;
+    let transportEvidence: GeminiTransportEvidence | undefined;
 
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is not configured.");
-      }
+      const transport = resolveGeminiTransport();
+      transportEvidence = transport.evidence;
       const agent = new LlmAgent({
         name: `autography_${id.toLowerCase()}_${role}`,
         description: `Executes the bounded AUTOGRAPHY ${role} stage without decision or publishing authority.`,
-        model: stageModel,
+        model: transport.adkModel(stageModel),
         instruction:
           "Follow the supplied stage instructions exactly. Return valid JSON only. Never choose, approve, publish, sign, seal, or change policy.",
         generateContentConfig: {
@@ -127,6 +132,7 @@ const googleAdkRuntime: AgentFlowAdkRuntime = {
           latency_ms: Date.now() - started,
           status: "completed",
           activity: `Executed the ${role} stage through Google ADK.`,
+          transport: transport.evidence,
         },
       };
     } catch (error) {
@@ -140,6 +146,7 @@ const googleAdkRuntime: AgentFlowAdkRuntime = {
         latency_ms: Date.now() - started,
         status: "failed",
         activity: `Google ADK ${role} stage failed closed.`,
+        ...(transportEvidence ? { transport: transportEvidence } : {}),
       }, error);
     }
   },

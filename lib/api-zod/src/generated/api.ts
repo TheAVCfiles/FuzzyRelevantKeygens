@@ -266,8 +266,6 @@ export const IngestLiveObservationsResponse = zod.object({
  * @summary Get podcast intelligence sources and ranked concepts
  */
 
-export const getPodcastRoomResponseDecisionHistoryItemReviewerReferenceRegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastRoomResponseDecisionHistoryItemScriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
 export const GetPodcastRoomResponse = zod.object({
@@ -277,8 +275,6 @@ export const GetPodcastRoomResponse = zod.object({
   "platform": zod.string(),
   "community": zod.string(),
   "post_title": zod.string(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
   "timestamp": zod.string(),
   "retrieved_at": zod.string(),
   "engagement": zod.object({
@@ -323,19 +319,13 @@ export const GetPodcastRoomResponse = zod.object({
   "rendering_status": zod.enum(['blocked_until_approval']),
   "selected_brief_id": zod.string().nullable(),
   "decision_history": zod.array(zod.object({
-  "artifact_type": zod.enum(['brief', 'script', 'audio']),
+  "record_type": zod.enum(['DEVELOPMENT_VALIDATED', 'BRIEF_APPROVED', 'BRIEF_REJECTED', 'SCRIPT_APPROVED', 'SCRIPT_REJECTED', 'AUDIO_RENDER_AUTHORIZED', 'AUDIO_RENDER_REJECTED']),
+  "artifact_type": zod.enum(['development', 'brief', 'script', 'audio']),
   "artifact_id": zod.string(),
   "reviewer": zod.string(),
-  "decision": zod.enum(['approve', 'reject']),
+  "decision": zod.enum(['validate', 'approve', 'reject']),
   "decided_at": zod.string(),
-  "artifact_creation": zod.enum(['none']),
-  "authority_record_type": zod.enum(['SCRIPT_APPROVED', 'AUDIO_RENDER_AUTHORIZED']).optional(),
-  "receipt_id": zod.string().optional(),
-  "reviewer_reference": zod.string().regex(getPodcastRoomResponseDecisionHistoryItemReviewerReferenceRegExp).optional(),
-  "script_sha256": zod.string().regex(getPodcastRoomResponseDecisionHistoryItemScriptSha256RegExp).optional(),
-  "source_run_id": zod.string().optional(),
-  "policy_version": zod.string().optional(),
-  "publication_status": zod.enum(['blocked_until_final_approval']).optional()
+  "artifact_creation": zod.enum(['none'])
 }))
 })
 
@@ -348,8 +338,6 @@ export const AddPodcastSourceBody = zod.object({
 })
 
 
-export const addPodcastSourceResponseDecisionHistoryItemReviewerReferenceRegExp = new RegExp('^[a-f0-9]{64}$');
-export const addPodcastSourceResponseDecisionHistoryItemScriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
 export const AddPodcastSourceResponse = zod.object({
@@ -359,8 +347,6 @@ export const AddPodcastSourceResponse = zod.object({
   "platform": zod.string(),
   "community": zod.string(),
   "post_title": zod.string(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
   "timestamp": zod.string(),
   "retrieved_at": zod.string(),
   "engagement": zod.object({
@@ -405,19 +391,13 @@ export const AddPodcastSourceResponse = zod.object({
   "rendering_status": zod.enum(['blocked_until_approval']),
   "selected_brief_id": zod.string().nullable(),
   "decision_history": zod.array(zod.object({
-  "artifact_type": zod.enum(['brief', 'script', 'audio']),
+  "record_type": zod.enum(['DEVELOPMENT_VALIDATED', 'BRIEF_APPROVED', 'BRIEF_REJECTED', 'SCRIPT_APPROVED', 'SCRIPT_REJECTED', 'AUDIO_RENDER_AUTHORIZED', 'AUDIO_RENDER_REJECTED']),
+  "artifact_type": zod.enum(['development', 'brief', 'script', 'audio']),
   "artifact_id": zod.string(),
   "reviewer": zod.string(),
-  "decision": zod.enum(['approve', 'reject']),
+  "decision": zod.enum(['validate', 'approve', 'reject']),
   "decided_at": zod.string(),
-  "artifact_creation": zod.enum(['none']),
-  "authority_record_type": zod.enum(['SCRIPT_APPROVED', 'AUDIO_RENDER_AUTHORIZED']).optional(),
-  "receipt_id": zod.string().optional(),
-  "reviewer_reference": zod.string().regex(addPodcastSourceResponseDecisionHistoryItemReviewerReferenceRegExp).optional(),
-  "script_sha256": zod.string().regex(addPodcastSourceResponseDecisionHistoryItemScriptSha256RegExp).optional(),
-  "source_run_id": zod.string().optional(),
-  "policy_version": zod.string().optional(),
-  "publication_status": zod.enum(['blocked_until_final_approval']).optional()
+  "artifact_creation": zod.enum(['none'])
 }))
 })
 
@@ -472,8 +452,6 @@ export const SearchPodcastContextsResponse = zod.object({
   "url": zod.string(),
   "source_identifier": zod.string(),
   "title": zod.string(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
   "retrieved_at": zod.string(),
   "snippet": zod.string().optional(),
   "source_type": zod.string(),
@@ -507,16 +485,21 @@ export const SearchPodcastContextsResponse = zod.object({
   "uncertainties": zod.array(zod.string()).min(1),
   "grounding_support": zod.string(),
   "agent_executions": zod.array(zod.object({
-  "agent": zod.enum(['source_scout', 'evidence_editor', 'evidence_verifier', 'script_performer', 'audio_performer', 'authority_check']),
+  "agent": zod.enum(['source_scout', 'evidence_editor', 'script_performer', 'audio_performer', 'authority_check']),
   "provider": zod.string(),
   "framework": zod.string().optional().describe('Runtime framework used for this execution. Optional for backward compatibility with retained runs.'),
   "model": zod.string(),
   "execution_id": zod.string(),
-  "parent_execution_id": zod.string().optional().describe('Parent Google ADK execution for this Podcast Room transaction. Optional for retained runs created before traceable envelopes.'),
   "tools": zod.array(zod.string()),
   "latency_ms": zod.number(),
   "status": zod.enum(['completed', 'held', 'failed']),
-  "activity": zod.string().optional()
+  "activity": zod.string().optional(),
+  "transport": zod.object({
+  "api": zod.enum(['gemini_developer_api', 'vertex_ai']),
+  "auth": zod.enum(['api_key', 'application_default_credentials']),
+  "project_configured": zod.boolean().optional(),
+  "location_configured": zod.boolean().optional()
+}).optional()
 })).min(searchPodcastContextsResponseGroundedRunAgentExecutionsMin)
 }),
   "results": zod.array(zod.object({
@@ -545,8 +528,6 @@ export const SearchPodcastContextsResponse = zod.object({
   "platform": zod.string(),
   "community": zod.string(),
   "post_title": zod.string(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
   "timestamp": zod.string(),
   "retrieved_at": zod.string(),
   "engagement": zod.object({
@@ -915,7 +896,7 @@ export const GeneratePodcastBriefResponse = zod.object({
   "selected_source_ids": zod.array(zod.string()),
   "run_id": zod.string().nullable(),
   "attestation_id": zod.string().nullable(),
-  "status": zod.enum(['draft', 'approved', 'rejected']).describe('Live Gemini briefs are internally source-bound and approved for script drafting; the single human approval remains on the exact script before audio.'),
+  "status": zod.enum(['draft', 'approved', 'rejected']),
   "generated_mode": zod.enum(['gemini', 'synthetic_demo']),
   "topic_angle": zod.string(),
   "audience_pain": zod.string(),
@@ -925,11 +906,7 @@ export const GeneratePodcastBriefResponse = zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
   "label": zod.string(),
-  "retrieved_at": zod.string(),
-  "title": zod.string().optional(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
-  "source_class": zod.string().optional()
+  "retrieved_at": zod.string()
 })),
   "risk_notes": zod.array(zod.string()),
   "episode_outline": zod.array(zod.object({
@@ -1005,7 +982,7 @@ export const DecidePodcastBriefResponse = zod.object({
   "selected_source_ids": zod.array(zod.string()),
   "run_id": zod.string().nullable(),
   "attestation_id": zod.string().nullable(),
-  "status": zod.enum(['draft', 'approved', 'rejected']).describe('Live Gemini briefs are internally source-bound and approved for script drafting; the single human approval remains on the exact script before audio.'),
+  "status": zod.enum(['draft', 'approved', 'rejected']),
   "generated_mode": zod.enum(['gemini', 'synthetic_demo']),
   "topic_angle": zod.string(),
   "audience_pain": zod.string(),
@@ -1015,11 +992,7 @@ export const DecidePodcastBriefResponse = zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
   "label": zod.string(),
-  "retrieved_at": zod.string(),
-  "title": zod.string().optional(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
-  "source_class": zod.string().optional()
+  "retrieved_at": zod.string()
 })),
   "risk_notes": zod.array(zod.string()),
   "episode_outline": zod.array(zod.object({
@@ -1095,15 +1068,11 @@ export const CreatePodcastScriptResponse = zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
   "label": zod.string(),
-  "retrieved_at": zod.string(),
-  "title": zod.string().optional(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
-  "source_class": zod.string().optional()
+  "retrieved_at": zod.string()
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),
-  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']).describe('New live work moves directly from human script approval to ready_to_generate. Legacy saved workspaces may retain awaiting_audio_approval.'),
+  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
@@ -1172,15 +1141,11 @@ export const GetPodcastScriptByBriefResponse = zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
   "label": zod.string(),
-  "retrieved_at": zod.string(),
-  "title": zod.string().optional(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
-  "source_class": zod.string().optional()
+  "retrieved_at": zod.string()
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),
-  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']).describe('New live work moves directly from human script approval to ready_to_generate. Legacy saved workspaces may retain awaiting_audio_approval.'),
+  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
@@ -1249,15 +1214,11 @@ export const GetPodcastScriptResponse = zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
   "label": zod.string(),
-  "retrieved_at": zod.string(),
-  "title": zod.string().optional(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
-  "source_class": zod.string().optional()
+  "retrieved_at": zod.string()
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),
-  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']).describe('New live work moves directly from human script approval to ready_to_generate. Legacy saved workspaces may retain awaiting_audio_approval.'),
+  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
@@ -1330,15 +1291,11 @@ export const DecidePodcastScriptResponse = zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
   "label": zod.string(),
-  "retrieved_at": zod.string(),
-  "title": zod.string().optional(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
-  "source_class": zod.string().optional()
+  "retrieved_at": zod.string()
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),
-  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']).describe('New live work moves directly from human script approval to ready_to_generate. Legacy saved workspaces may retain awaiting_audio_approval.'),
+  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
@@ -1443,15 +1400,11 @@ export const DecidePodcastAudioResponse = zod.object({
   "source_id": zod.string(),
   "url": zod.string(),
   "label": zod.string(),
-  "retrieved_at": zod.string(),
-  "title": zod.string().optional(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
-  "source_class": zod.string().optional()
+  "retrieved_at": zod.string()
 })),
   "safety_note": zod.string(),
   "review_note": zod.string(),
-  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']).describe('New live work moves directly from human script approval to ready_to_generate. Legacy saved workspaces may retain awaiting_audio_approval.'),
+  "audio_status": zod.enum(['blocked_until_script_approval', 'awaiting_audio_approval', 'ready_to_generate', 'generated', 'rejected']),
   "compatibility_normalized": zod.boolean().describe('Whether restoring this workspace required compatibility normalization from an older saved format.'),
   "release_kit": zod.union([zod.object({
   "id": zod.string(),
@@ -1496,7 +1449,7 @@ export const DecidePodcastAudioResponse = zod.object({
 
 
 /**
- * @summary Generate a short spoken clip from the single human-approved live script
+ * @summary Generate a short spoken clip from an audio-approved script
  */
 export const GeneratePodcastAudioParams = zod.object({
   "id": zod.coerce.string()
@@ -1561,8 +1514,6 @@ export const StreamPodcastAudioResponse = zod.unknown()
  * @summary Reset authenticated podcast demo state and return a pre-staged input
  */
 
-export const resetPodcastDemoResponseRoomDecisionHistoryItemReviewerReferenceRegExp = new RegExp('^[a-f0-9]{64}$');
-export const resetPodcastDemoResponseRoomDecisionHistoryItemScriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 export const resetPodcastDemoResponsePreStagedInputQueryMin = 2;
 export const resetPodcastDemoResponsePreStagedInputQueryMax = 240;
 
@@ -1576,8 +1527,6 @@ export const ResetPodcastDemoResponse = zod.object({
   "platform": zod.string(),
   "community": zod.string(),
   "post_title": zod.string(),
-  "publisher": zod.string().optional(),
-  "published_at": zod.string().nullish(),
   "timestamp": zod.string(),
   "retrieved_at": zod.string(),
   "engagement": zod.object({
@@ -1622,19 +1571,13 @@ export const ResetPodcastDemoResponse = zod.object({
   "rendering_status": zod.enum(['blocked_until_approval']),
   "selected_brief_id": zod.string().nullable(),
   "decision_history": zod.array(zod.object({
-  "artifact_type": zod.enum(['brief', 'script', 'audio']),
+  "record_type": zod.enum(['DEVELOPMENT_VALIDATED', 'BRIEF_APPROVED', 'BRIEF_REJECTED', 'SCRIPT_APPROVED', 'SCRIPT_REJECTED', 'AUDIO_RENDER_AUTHORIZED', 'AUDIO_RENDER_REJECTED']),
+  "artifact_type": zod.enum(['development', 'brief', 'script', 'audio']),
   "artifact_id": zod.string(),
   "reviewer": zod.string(),
-  "decision": zod.enum(['approve', 'reject']),
+  "decision": zod.enum(['validate', 'approve', 'reject']),
   "decided_at": zod.string(),
-  "artifact_creation": zod.enum(['none']),
-  "authority_record_type": zod.enum(['SCRIPT_APPROVED', 'AUDIO_RENDER_AUTHORIZED']).optional(),
-  "receipt_id": zod.string().optional(),
-  "reviewer_reference": zod.string().regex(resetPodcastDemoResponseRoomDecisionHistoryItemReviewerReferenceRegExp).optional(),
-  "script_sha256": zod.string().regex(resetPodcastDemoResponseRoomDecisionHistoryItemScriptSha256RegExp).optional(),
-  "source_run_id": zod.string().optional(),
-  "policy_version": zod.string().optional(),
-  "publication_status": zod.enum(['blocked_until_final_approval']).optional()
+  "artifact_creation": zod.enum(['none'])
 }))
 }),
   "pre_staged_input": zod.object({
@@ -1659,22 +1602,24 @@ export const getPodcastCutKeyResponseManifestSha256RegExp = new RegExp('^[a-f0-9
 export const getPodcastCutKeyResponseTranscriptMax = 20000;
 
 export const getPodcastCutKeyResponseTranscriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastCutKeyResponseScriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastCutKeyResponseSourceManifestSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastCutKeyResponseExecutionEnvelopeStagesMin = 5;
-export const getPodcastCutKeyResponseExecutionEnvelopeStagesMax = 5;
-
-export const getPodcastCutKeyResponseExecutionEnvelopeAuthorityBoundaryScriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastCutKeyResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsItemReviewerReferenceRegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastCutKeyResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsItemScriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastCutKeyResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsMin = 2;
-export const getPodcastCutKeyResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsMax = 2;
-
 export const getPodcastCutKeyResponseSourceIdsMax = 20;
 
-export const getPodcastCutKeyResponseSourceEvidenceMax = 20;
-
 export const getPodcastCutKeyResponseAudioSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+export const getPodcastCutKeyResponseSourceMetadataMax = 20;
+
+export const getPodcastCutKeyResponseClaimSupportItemClaimTextMax = 4000;
+
+export const getPodcastCutKeyResponseClaimSupportItemSourceIdsMax = 20;
+
+export const getPodcastCutKeyResponseClaimSupportMax = 20;
+
+export const getPodcastCutKeyResponseApprovalRecordsItemSubjectSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getPodcastCutKeyResponseApprovalRecordsItemRecordSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getPodcastCutKeyResponseApprovalRecordsMax = 8;
+
+export const getPodcastCutKeyResponseExecutionEnvelopeMax = 12;
+
 
 
 export const GetPodcastCutKeyResponse = zod.object({
@@ -1684,56 +1629,7 @@ export const GetPodcastCutKeyResponse = zod.object({
   "audio_url": zod.string(),
   "transcript": zod.string().max(getPodcastCutKeyResponseTranscriptMax),
   "transcript_sha256": zod.string().regex(getPodcastCutKeyResponseTranscriptSha256RegExp),
-  "adk_execution_id": zod.string().optional().describe('Google ADK parent execution for this Podcast Room transaction. Optional only for retained manifests.'),
-  "run_id": zod.string().optional(),
-  "script_id": zod.string().optional(),
-  "script_sha256": zod.string().regex(getPodcastCutKeyResponseScriptSha256RegExp).optional(),
-  "source_manifest_sha256": zod.string().regex(getPodcastCutKeyResponseSourceManifestSha256RegExp).optional(),
-  "execution_envelope": zod.object({
-  "parent_execution_id": zod.string(),
-  "run_id": zod.string(),
-  "script_id": zod.string(),
-  "stages": zod.array(zod.object({
-  "stage": zod.enum(['grounded_research', 'editorial_synthesis', 'script_generation', 'media_render']),
-  "agent": zod.enum(['source_scout', 'evidence_editor', 'evidence_verifier', 'script_performer', 'audio_performer']),
-  "provider": zod.string(),
-  "framework": zod.string(),
-  "model": zod.string(),
-  "execution_id": zod.string(),
-  "parent_execution_id": zod.string(),
-  "tools": zod.array(zod.string()),
-  "status": zod.enum(['completed']),
-  "activity": zod.string()
-})).min(getPodcastCutKeyResponseExecutionEnvelopeStagesMin).max(getPodcastCutKeyResponseExecutionEnvelopeStagesMax),
-  "authority_boundary": zod.object({
-  "type": zod.enum(['human_script_approval']),
-  "script_approved_at": zod.string(),
-  "media_render_authorized_at": zod.string(),
-  "script_sha256": zod.string().regex(getPodcastCutKeyResponseExecutionEnvelopeAuthorityBoundaryScriptSha256RegExp),
-  "authority_records": zod.array(zod.object({
-  "receipt_id": zod.string(),
-  "authority_record_type": zod.enum(['SCRIPT_APPROVED', 'AUDIO_RENDER_AUTHORIZED']),
-  "reviewer_reference": zod.string().regex(getPodcastCutKeyResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsItemReviewerReferenceRegExp),
-  "decided_at": zod.string(),
-  "script_sha256": zod.string().regex(getPodcastCutKeyResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsItemScriptSha256RegExp),
-  "source_run_id": zod.string(),
-  "policy_version": zod.string()
-})).min(getPodcastCutKeyResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsMin).max(getPodcastCutKeyResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsMax).optional(),
-  "publication_status": zod.enum(['blocked_until_final_approval']).optional()
-})
-}).optional(),
   "source_ids": zod.array(zod.string()).max(getPodcastCutKeyResponseSourceIdsMax),
-  "source_evidence": zod.array(zod.object({
-  "id": zod.string(),
-  "url": zod.string(),
-  "title": zod.string(),
-  "publisher": zod.string(),
-  "published_at": zod.string().nullable(),
-  "retrieved_at": zod.string(),
-  "source_class": zod.string(),
-  "aggregate_summary": zod.string(),
-  "what_it_supports": zod.string()
-})).max(getPodcastCutKeyResponseSourceEvidenceMax).optional(),
   "generated_at": zod.string(),
   "production": zod.object({
   "synthetic": zod.boolean(),
@@ -1743,7 +1639,55 @@ export const GetPodcastCutKeyResponse = zod.object({
   "voice_disclosure": zod.string(),
   "format_disclosure": zod.string(),
   "audio_sha256": zod.string().regex(getPodcastCutKeyResponseAudioSha256RegExp),
-  "integrity_disclaimer": zod.string()
+  "integrity_disclaimer": zod.string(),
+  "manifest_version": zod.literal(2).optional().describe('Version 2 binds public source metadata, claim support, execution evidence, and approval records into the manifest hash. Omitted only on retained legacy manifests.'),
+  "source_metadata": zod.array(zod.object({
+  "id": zod.string(),
+  "url": zod.string(),
+  "title": zod.string(),
+  "retrieved_at": zod.string(),
+  "source_type": zod.string(),
+  "classification": zod.enum(['source_backed', 'first_party_attested', 'disputed', 'unresolved']),
+  "policy_reference": zod.string(),
+  "aggregate_summary": zod.string(),
+  "evidence_gaps": zod.array(zod.string()).min(1),
+  "what_it_supports": zod.string(),
+  "what_remains_uncertain": zod.string()
+})).max(getPodcastCutKeyResponseSourceMetadataMax).optional(),
+  "claim_support": zod.array(zod.object({
+  "claim_id": zod.string(),
+  "segment": zod.string(),
+  "speaker": zod.enum(['FRONT ROW', 'BACKSTAGE']),
+  "claim_text": zod.string().max(getPodcastCutKeyResponseClaimSupportItemClaimTextMax),
+  "source_ids": zod.array(zod.string()).max(getPodcastCutKeyResponseClaimSupportItemSourceIdsMax),
+  "classification": zod.enum(['source_backed', 'first_party_attested', 'disputed', 'unresolved'])
+})).max(getPodcastCutKeyResponseClaimSupportMax).optional(),
+  "approval_records": zod.array(zod.object({
+  "record_type": zod.enum(['DEVELOPMENT_VALIDATED', 'BRIEF_APPROVED', 'SCRIPT_APPROVED', 'AUDIO_RENDER_AUTHORIZED']),
+  "artifact_type": zod.enum(['development', 'brief', 'script', 'audio']),
+  "artifact_id": zod.string(),
+  "reviewer_reference": zod.string().describe('Stable one-way reviewer reference; no Clerk identifier, email, or display name is public.'),
+  "decided_at": zod.string(),
+  "subject_sha256": zod.string().regex(getPodcastCutKeyResponseApprovalRecordsItemSubjectSha256RegExp),
+  "record_sha256": zod.string().regex(getPodcastCutKeyResponseApprovalRecordsItemRecordSha256RegExp)
+})).max(getPodcastCutKeyResponseApprovalRecordsMax).optional(),
+  "execution_envelope": zod.array(zod.object({
+  "agent": zod.enum(['source_scout', 'evidence_editor', 'script_performer', 'audio_performer', 'authority_check']),
+  "provider": zod.string(),
+  "framework": zod.string().optional().describe('Runtime framework used for this execution. Optional for backward compatibility with retained runs.'),
+  "model": zod.string(),
+  "execution_id": zod.string(),
+  "tools": zod.array(zod.string()),
+  "latency_ms": zod.number(),
+  "status": zod.enum(['completed', 'held', 'failed']),
+  "activity": zod.string().optional(),
+  "transport": zod.object({
+  "api": zod.enum(['gemini_developer_api', 'vertex_ai']),
+  "auth": zod.enum(['api_key', 'application_default_credentials']),
+  "project_configured": zod.boolean().optional(),
+  "location_configured": zod.boolean().optional()
+}).optional()
+})).max(getPodcastCutKeyResponseExecutionEnvelopeMax).optional()
 })
 
 
@@ -1764,22 +1708,24 @@ export const getPodcastJudgeManifestResponseManifestSha256RegExp = new RegExp('^
 export const getPodcastJudgeManifestResponseTranscriptMax = 20000;
 
 export const getPodcastJudgeManifestResponseTranscriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastJudgeManifestResponseScriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastJudgeManifestResponseSourceManifestSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastJudgeManifestResponseExecutionEnvelopeStagesMin = 5;
-export const getPodcastJudgeManifestResponseExecutionEnvelopeStagesMax = 5;
-
-export const getPodcastJudgeManifestResponseExecutionEnvelopeAuthorityBoundaryScriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastJudgeManifestResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsItemReviewerReferenceRegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastJudgeManifestResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsItemScriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
-export const getPodcastJudgeManifestResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsMin = 2;
-export const getPodcastJudgeManifestResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsMax = 2;
-
 export const getPodcastJudgeManifestResponseSourceIdsMax = 20;
 
-export const getPodcastJudgeManifestResponseSourceEvidenceMax = 20;
-
 export const getPodcastJudgeManifestResponseAudioSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+export const getPodcastJudgeManifestResponseSourceMetadataMax = 20;
+
+export const getPodcastJudgeManifestResponseClaimSupportItemClaimTextMax = 4000;
+
+export const getPodcastJudgeManifestResponseClaimSupportItemSourceIdsMax = 20;
+
+export const getPodcastJudgeManifestResponseClaimSupportMax = 20;
+
+export const getPodcastJudgeManifestResponseApprovalRecordsItemSubjectSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getPodcastJudgeManifestResponseApprovalRecordsItemRecordSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getPodcastJudgeManifestResponseApprovalRecordsMax = 8;
+
+export const getPodcastJudgeManifestResponseExecutionEnvelopeMax = 12;
+
 
 
 export const GetPodcastJudgeManifestResponse = zod.object({
@@ -1789,56 +1735,7 @@ export const GetPodcastJudgeManifestResponse = zod.object({
   "audio_url": zod.string(),
   "transcript": zod.string().max(getPodcastJudgeManifestResponseTranscriptMax),
   "transcript_sha256": zod.string().regex(getPodcastJudgeManifestResponseTranscriptSha256RegExp),
-  "adk_execution_id": zod.string().optional().describe('Google ADK parent execution for this Podcast Room transaction. Optional only for retained manifests.'),
-  "run_id": zod.string().optional(),
-  "script_id": zod.string().optional(),
-  "script_sha256": zod.string().regex(getPodcastJudgeManifestResponseScriptSha256RegExp).optional(),
-  "source_manifest_sha256": zod.string().regex(getPodcastJudgeManifestResponseSourceManifestSha256RegExp).optional(),
-  "execution_envelope": zod.object({
-  "parent_execution_id": zod.string(),
-  "run_id": zod.string(),
-  "script_id": zod.string(),
-  "stages": zod.array(zod.object({
-  "stage": zod.enum(['grounded_research', 'editorial_synthesis', 'script_generation', 'media_render']),
-  "agent": zod.enum(['source_scout', 'evidence_editor', 'evidence_verifier', 'script_performer', 'audio_performer']),
-  "provider": zod.string(),
-  "framework": zod.string(),
-  "model": zod.string(),
-  "execution_id": zod.string(),
-  "parent_execution_id": zod.string(),
-  "tools": zod.array(zod.string()),
-  "status": zod.enum(['completed']),
-  "activity": zod.string()
-})).min(getPodcastJudgeManifestResponseExecutionEnvelopeStagesMin).max(getPodcastJudgeManifestResponseExecutionEnvelopeStagesMax),
-  "authority_boundary": zod.object({
-  "type": zod.enum(['human_script_approval']),
-  "script_approved_at": zod.string(),
-  "media_render_authorized_at": zod.string(),
-  "script_sha256": zod.string().regex(getPodcastJudgeManifestResponseExecutionEnvelopeAuthorityBoundaryScriptSha256RegExp),
-  "authority_records": zod.array(zod.object({
-  "receipt_id": zod.string(),
-  "authority_record_type": zod.enum(['SCRIPT_APPROVED', 'AUDIO_RENDER_AUTHORIZED']),
-  "reviewer_reference": zod.string().regex(getPodcastJudgeManifestResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsItemReviewerReferenceRegExp),
-  "decided_at": zod.string(),
-  "script_sha256": zod.string().regex(getPodcastJudgeManifestResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsItemScriptSha256RegExp),
-  "source_run_id": zod.string(),
-  "policy_version": zod.string()
-})).min(getPodcastJudgeManifestResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsMin).max(getPodcastJudgeManifestResponseExecutionEnvelopeAuthorityBoundaryAuthorityRecordsMax).optional(),
-  "publication_status": zod.enum(['blocked_until_final_approval']).optional()
-})
-}).optional(),
   "source_ids": zod.array(zod.string()).max(getPodcastJudgeManifestResponseSourceIdsMax),
-  "source_evidence": zod.array(zod.object({
-  "id": zod.string(),
-  "url": zod.string(),
-  "title": zod.string(),
-  "publisher": zod.string(),
-  "published_at": zod.string().nullable(),
-  "retrieved_at": zod.string(),
-  "source_class": zod.string(),
-  "aggregate_summary": zod.string(),
-  "what_it_supports": zod.string()
-})).max(getPodcastJudgeManifestResponseSourceEvidenceMax).optional(),
   "generated_at": zod.string(),
   "production": zod.object({
   "synthetic": zod.boolean(),
@@ -1848,7 +1745,55 @@ export const GetPodcastJudgeManifestResponse = zod.object({
   "voice_disclosure": zod.string(),
   "format_disclosure": zod.string(),
   "audio_sha256": zod.string().regex(getPodcastJudgeManifestResponseAudioSha256RegExp),
-  "integrity_disclaimer": zod.string()
+  "integrity_disclaimer": zod.string(),
+  "manifest_version": zod.literal(2).optional().describe('Version 2 binds public source metadata, claim support, execution evidence, and approval records into the manifest hash. Omitted only on retained legacy manifests.'),
+  "source_metadata": zod.array(zod.object({
+  "id": zod.string(),
+  "url": zod.string(),
+  "title": zod.string(),
+  "retrieved_at": zod.string(),
+  "source_type": zod.string(),
+  "classification": zod.enum(['source_backed', 'first_party_attested', 'disputed', 'unresolved']),
+  "policy_reference": zod.string(),
+  "aggregate_summary": zod.string(),
+  "evidence_gaps": zod.array(zod.string()).min(1),
+  "what_it_supports": zod.string(),
+  "what_remains_uncertain": zod.string()
+})).max(getPodcastJudgeManifestResponseSourceMetadataMax).optional(),
+  "claim_support": zod.array(zod.object({
+  "claim_id": zod.string(),
+  "segment": zod.string(),
+  "speaker": zod.enum(['FRONT ROW', 'BACKSTAGE']),
+  "claim_text": zod.string().max(getPodcastJudgeManifestResponseClaimSupportItemClaimTextMax),
+  "source_ids": zod.array(zod.string()).max(getPodcastJudgeManifestResponseClaimSupportItemSourceIdsMax),
+  "classification": zod.enum(['source_backed', 'first_party_attested', 'disputed', 'unresolved'])
+})).max(getPodcastJudgeManifestResponseClaimSupportMax).optional(),
+  "approval_records": zod.array(zod.object({
+  "record_type": zod.enum(['DEVELOPMENT_VALIDATED', 'BRIEF_APPROVED', 'SCRIPT_APPROVED', 'AUDIO_RENDER_AUTHORIZED']),
+  "artifact_type": zod.enum(['development', 'brief', 'script', 'audio']),
+  "artifact_id": zod.string(),
+  "reviewer_reference": zod.string().describe('Stable one-way reviewer reference; no Clerk identifier, email, or display name is public.'),
+  "decided_at": zod.string(),
+  "subject_sha256": zod.string().regex(getPodcastJudgeManifestResponseApprovalRecordsItemSubjectSha256RegExp),
+  "record_sha256": zod.string().regex(getPodcastJudgeManifestResponseApprovalRecordsItemRecordSha256RegExp)
+})).max(getPodcastJudgeManifestResponseApprovalRecordsMax).optional(),
+  "execution_envelope": zod.array(zod.object({
+  "agent": zod.enum(['source_scout', 'evidence_editor', 'script_performer', 'audio_performer', 'authority_check']),
+  "provider": zod.string(),
+  "framework": zod.string().optional().describe('Runtime framework used for this execution. Optional for backward compatibility with retained runs.'),
+  "model": zod.string(),
+  "execution_id": zod.string(),
+  "tools": zod.array(zod.string()),
+  "latency_ms": zod.number(),
+  "status": zod.enum(['completed', 'held', 'failed']),
+  "activity": zod.string().optional(),
+  "transport": zod.object({
+  "api": zod.enum(['gemini_developer_api', 'vertex_ai']),
+  "auth": zod.enum(['api_key', 'application_default_credentials']),
+  "project_configured": zod.boolean().optional(),
+  "location_configured": zod.boolean().optional()
+}).optional()
+})).max(getPodcastJudgeManifestResponseExecutionEnvelopeMax).optional()
 })
 
 
@@ -2068,7 +2013,13 @@ export const RunAgentFlowResponse = zod.object({
   "tools": zod.array(zod.string()),
   "latency_ms": zod.number(),
   "status": zod.enum(['completed', 'failed']),
-  "activity": zod.string()
+  "activity": zod.string(),
+  "transport": zod.object({
+  "api": zod.enum(['gemini_developer_api', 'vertex_ai']),
+  "auth": zod.enum(['api_key', 'application_default_credentials']),
+  "project_configured": zod.boolean().optional(),
+  "location_configured": zod.boolean().optional()
+}).optional()
 })).min(1),
   "message": zod.string()
 })

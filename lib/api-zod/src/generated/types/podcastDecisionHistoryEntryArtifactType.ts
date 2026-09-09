@@ -10,6 +10,7 @@ export type PodcastDecisionHistoryEntryArtifactType = typeof PodcastDecisionHist
 
 
 export const PodcastDecisionHistoryEntryArtifactType = {
+  development: 'development',
   brief: 'brief',
   script: 'script',
   audio: 'audio',

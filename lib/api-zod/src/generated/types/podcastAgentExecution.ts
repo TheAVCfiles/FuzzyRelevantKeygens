@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GeminiTransportEvidence } from './geminiTransportEvidence';
 import type { PodcastAgentExecutionAgent } from './podcastAgentExecutionAgent';
 import type { PodcastAgentExecutionStatus } from './podcastAgentExecutionStatus';
 
@@ -15,10 +16,9 @@ export interface PodcastAgentExecution {
   framework?: string;
   model: string;
   execution_id: string;
-  /** Parent Google ADK execution for this Podcast Room transaction. Optional for retained runs created before traceable envelopes. */
-  parent_execution_id?: string;
   tools: string[];
   latency_ms: number;
   status: PodcastAgentExecutionStatus;
   activity?: string;
+  transport?: GeminiTransportEvidence;
 }

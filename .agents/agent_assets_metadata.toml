@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "AUpkEWoXmhgFa7TMs9XoY"
+uri = "file://artifacts/autography-submission-video/public/audio/bg_music.mp3"
+type = "audio"
+title = "cinematic submission background music"
+description = "Generated music: Cinematic editorial ambient-orchestral instrumental background music scoring a three-minute AI product and trust-systems hackathon film. Warm analog synth pulse, restrained piano, lo…"

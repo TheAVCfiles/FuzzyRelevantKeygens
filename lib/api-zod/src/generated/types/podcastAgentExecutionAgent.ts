@@ -12,7 +12,6 @@ export type PodcastAgentExecutionAgent = typeof PodcastAgentExecutionAgent[keyof
 export const PodcastAgentExecutionAgent = {
   source_scout: 'source_scout',
   evidence_editor: 'evidence_editor',
-  evidence_verifier: 'evidence_verifier',
   script_performer: 'script_performer',
   audio_performer: 'audio_performer',
   authority_check: 'authority_check',

@@ -1730,7 +1730,7 @@ export const getGeneratePodcastAudioUrl = (id: string,) => {
 }
 
 /**
- * @summary Generate a short spoken clip from the single human-approved live script
+ * @summary Generate a short spoken clip from an audio-approved script
  */
 export const generatePodcastAudio = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PodcastAudioClip> => {
 
@@ -1779,7 +1779,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type GeneratePodcastAudioMutationError = ErrorType<void>
 
     /**
- * @summary Generate a short spoken clip from the single human-approved live script
+ * @summary Generate a short spoken clip from an audio-approved script
  */
 export const useGeneratePodcastAudio = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generatePodcastAudio>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}

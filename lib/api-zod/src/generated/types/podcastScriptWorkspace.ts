@@ -25,7 +25,6 @@ export interface PodcastScriptWorkspace {
   provenance: PodcastScriptWorkspaceProvenanceItem[];
   safety_note: string;
   review_note: string;
-  /** New live work moves directly from human script approval to ready_to_generate. Legacy saved workspaces may retain awaiting_audio_approval. */
   audio_status: PodcastScriptWorkspaceAudioStatus;
   /** Whether restoring this workspace required compatibility normalization from an older saved format. */
   compatibility_normalized: boolean;

@@ -12,9 +12,6 @@ export interface PodcastGroundingSource {
   url: string;
   source_identifier: string;
   title: string;
-  publisher?: string;
-  /** @nullable */
-  published_at?: string | null;
   retrieved_at: string;
   snippet?: string;
   source_type: string;

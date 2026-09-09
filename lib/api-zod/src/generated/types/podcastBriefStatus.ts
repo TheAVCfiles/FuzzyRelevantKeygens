@@ -6,9 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-/**
- * Live Gemini briefs are internally source-bound and approved for script drafting; the single human approval remains on the exact script before audio.
- */
 export type PodcastBriefStatus = typeof PodcastBriefStatus[keyof typeof PodcastBriefStatus];
 
 

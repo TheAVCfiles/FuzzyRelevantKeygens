@@ -1,0 +1,29 @@
+kind = "video"
+videoAspectRatio = "16:9"
+previewPath = "/autography-submission-video/"
+title = "Autography Hackathon Submission"
+description = "A cinematic three-minute 16:9 hackathon submission film showing Autography's Google ADK analysis orchestration, Gemini grounding and generation, human approval gates, synthetic audio, and public Cut Key verification."
+version = "1.0.0"
+id = "artifacts/autography-submission-video"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/autography-submission-video/" ]
+localPort = 21096
+
+[services.development]
+run = "pnpm --filter @workspace/autography-submission-video run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/autography-submission-video", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/autography-submission-video/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21096"
+BASE_PATH = "/autography-submission-video/"

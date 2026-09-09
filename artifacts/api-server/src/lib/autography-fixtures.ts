@@ -746,14 +746,24 @@ export function getPodcastDecisionHistory(
     [workspace.briefId, workspace.scriptId].filter((id): id is string => Boolean(id)),
   );
   return receipts.flatMap((receipt) => {
-    const action = /^Podcast (brief|script) (approve|reject) decision$/.exec(receipt.action);
+    const action = /^Podcast (development|brief|script|audio) (validate|approve|reject) decision$/.exec(receipt.action);
     const artifactId = /(?:^| · )id: ([^·]+?)(?: · |$)/.exec(receipt.result)?.[1]?.trim();
     if (!action || !artifactId || !workspaceIds.has(artifactId)) return [];
+    const artifactType = action[1] as "development" | "brief" | "script" | "audio";
+    const decision = action[2] as "validate" | "approve" | "reject";
+    const recordType = artifactType === "development"
+      ? "DEVELOPMENT_VALIDATED"
+      : artifactType === "audio"
+        ? decision === "approve" ? "AUDIO_RENDER_AUTHORIZED" : "AUDIO_RENDER_REJECTED"
+        : artifactType === "brief"
+          ? decision === "approve" ? "BRIEF_APPROVED" : "BRIEF_REJECTED"
+          : decision === "approve" ? "SCRIPT_APPROVED" : "SCRIPT_REJECTED";
     return [{
-      artifact_type: action[1] as "brief" | "script",
+      record_type: recordType,
+      artifact_type: artifactType,
       artifact_id: artifactId,
       reviewer: receipt.actor,
-      decision: action[2] as "approve" | "reject",
+      decision,
       decided_at: receipt.ts,
       artifact_creation: "none" as const,
     }];

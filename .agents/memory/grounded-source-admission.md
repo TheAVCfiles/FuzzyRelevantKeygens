@@ -5,6 +5,8 @@ description: Privacy and factual-support rules that must pass before a live grou
 
 Treat a canonical source URL as retained data, not merely a locator. Exclude a social result when its public path embeds an account identifier, copied post title, or other identity-bearing text. Treat each editorial source summary as a concrete claim and independently verify it against only that source's grounding evidence before persisting the run.
 
-**Why:** A live search can resolve real publishers and still leak a handle or copied post slug through the canonical URL. A privacy-safe paraphrase can also introduce plausible but unsupported implications that later script verification cannot detect if it trusts the paraphrase as source evidence.
+Do not copy a raw search query into a public concept title. A query may contain a canonical URL or community path that correctly fails public-text validation after persistence rehydration.
 
-**How to apply:** Perform URL privacy checks and source-finding support verification before a grounded run becomes current or durable. Keep failed attempts out of script, audio, and Cut Key flows, and never relax date or domain-diversity gates to force a proof.
+**Why:** A live search can resolve real publishers and still leak identity-bearing text or resolve to an unrelated mutable social post. Query text can also silently downgrade an otherwise valid run during rehydration.
+
+**How to apply:** Perform URL privacy, topic relevance, and source-finding support checks before a grounded run becomes current or durable. Keep failed attempts out of script, audio, and judge-selected Cut Key flows.

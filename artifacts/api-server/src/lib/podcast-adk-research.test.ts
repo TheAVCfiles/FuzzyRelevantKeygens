@@ -29,6 +29,10 @@ test("podcast research invokes the ADK runtime and emits safe completed evidence
         invocationId: "adk-invocation-test",
         groundingMetadata: groundingMetadata as never,
         final: true,
+        transport: {
+          api: "gemini_developer_api",
+          auth: "api_key",
+        },
       };
     },
   };
@@ -47,9 +51,14 @@ test("podcast research invokes the ADK runtime and emits safe completed evidence
   assert.equal(result.execution.execution_id, "adk-invocation-test");
   assert.deepEqual(result.execution.tools, ["googleSearch"]);
   assert.equal(result.execution.status, "completed");
+  assert.deepEqual(result.execution.transport, {
+    api: "gemini_developer_api",
+    auth: "api_key",
+  });
   assert.deepEqual(result.groundingMetadata, groundingMetadata);
   assert.equal("prompt" in result.execution, false);
   assert.equal("credentials" in result.execution, false);
+  assert.equal(JSON.stringify(result.execution).includes("API_KEY"), false);
 });
 
 test("podcast research fails closed with safe ADK failure evidence", async () => {

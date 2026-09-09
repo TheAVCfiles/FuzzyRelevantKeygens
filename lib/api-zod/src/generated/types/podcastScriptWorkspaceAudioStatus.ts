@@ -6,9 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-/**
- * New live work moves directly from human script approval to ready_to_generate. Legacy saved workspaces may retain awaiting_audio_approval.
- */
 export type PodcastScriptWorkspaceAudioStatus = typeof PodcastScriptWorkspaceAudioStatus[keyof typeof PodcastScriptWorkspaceAudioStatus];
 
 

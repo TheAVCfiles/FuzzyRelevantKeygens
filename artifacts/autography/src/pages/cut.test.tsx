@@ -26,51 +26,50 @@ describe('CutKeyView', () => {
         manifest_sha256: 'sha-manifest',
         transcript: 'Exact transcript.',
         transcript_sha256: 'sha-script',
-        adk_execution_id: 'adk-parent-1',
-        run_id: 'run-1',
-        script_id: 'script-1',
-        script_sha256: 'sha-script',
-        source_manifest_sha256: 'sha-sources',
-        execution_envelope: {
-          parent_execution_id: 'adk-parent-1',
-          run_id: 'run-1',
-          script_id: 'script-1',
-          stages: [
-            { stage: 'grounded_research', agent: 'source_scout', provider: 'Google Gemini API', framework: 'Google ADK (@google/adk)', model: 'gemini-test', execution_id: 'adk-parent-1', parent_execution_id: 'adk-parent-1', tools: ['googleSearch'], status: 'completed', activity: 'Grounded research.' },
-            { stage: 'editorial_synthesis', agent: 'evidence_editor', provider: 'Google Gemini', framework: 'Direct @google/genai', model: 'gemini-test', execution_id: 'editor-1', parent_execution_id: 'adk-parent-1', tools: [], status: 'completed', activity: 'Editorial synthesis.' },
-            { stage: 'editorial_synthesis', agent: 'evidence_verifier', provider: 'Google Gemini', framework: 'Direct @google/genai', model: 'gemini-test', execution_id: 'verifier-1', parent_execution_id: 'adk-parent-1', tools: [], status: 'completed', activity: 'Evidence verification.' },
-            { stage: 'script_generation', agent: 'script_performer', provider: 'Google Gemini', framework: 'Direct @google/genai', model: 'gemini-test', execution_id: 'script-generation-1', parent_execution_id: 'adk-parent-1', tools: [], status: 'completed', activity: 'Script generation.' },
-            { stage: 'media_render', agent: 'audio_performer', provider: 'Google Gemini', framework: 'Direct @google/genai', model: 'gemini-tts-test', execution_id: 'media-1', parent_execution_id: 'adk-parent-1', tools: [], status: 'completed', activity: 'Authorized media rendering.' },
-          ],
-          authority_boundary: {
-            type: 'human_script_approval',
-            script_approved_at: '2026-01-01T00:01:00.000Z',
-            media_render_authorized_at: '2026-01-01T00:01:00.000Z',
-            script_sha256: 'sha-script',
-            authority_records: [
-              {
-                receipt_id: 'authority-script-1',
-                authority_record_type: 'SCRIPT_APPROVED',
-                reviewer_reference: 'd'.repeat(64),
-                decided_at: '2026-01-01T00:01:00.000Z',
-                script_sha256: 'sha-script',
-                source_run_id: 'run-1',
-                policy_version: 'podcast-policy-v1',
-              },
-              {
-                receipt_id: 'authority-audio-1',
-                authority_record_type: 'AUDIO_RENDER_AUTHORIZED',
-                reviewer_reference: 'd'.repeat(64),
-                decided_at: '2026-01-01T00:01:00.000Z',
-                script_sha256: 'sha-script',
-                source_run_id: 'run-1',
-                policy_version: 'podcast-policy-v1',
-              },
-            ],
-            publication_status: 'blocked_until_final_approval',
-          },
-        },
         source_ids: ['source-1'],
+        manifest_version: 2,
+        source_metadata: [{
+          id: 'source-1',
+          url: 'https://example.test/source-1',
+          title: 'Public source one',
+          retrieved_at: '2026-01-01T00:00:00.000Z',
+          source_type: 'public_web',
+          classification: 'source_backed',
+          policy_reference: 'policy-v1',
+          aggregate_summary: 'Aggregate summary.',
+          evidence_gaps: ['Intent is unknown.'],
+          what_it_supports: 'A bounded public claim.',
+          what_remains_uncertain: 'Intent is unknown.',
+        }],
+        claim_support: [{
+          claim_id: 'claim-01',
+          segment: 'evidence',
+          speaker: 'FRONT ROW',
+          claim_text: 'Exact transcript.',
+          source_ids: ['source-1'],
+          classification: 'source_backed',
+        }],
+        approval_records: [{
+          record_type: 'SCRIPT_APPROVED',
+          artifact_type: 'script',
+          artifact_id: 'script-1',
+          reviewer_reference: 'a'.repeat(64),
+          decided_at: '2026-01-01T00:00:00.000Z',
+          subject_sha256: 'b'.repeat(64),
+          record_sha256: 'c'.repeat(64),
+        }],
+        execution_envelope: [{
+          agent: 'source_scout',
+          provider: 'Google Gemini API',
+          framework: 'Google ADK (@google/adk)',
+          model: 'gemini-3.6-flash',
+          execution_id: 'execution-1',
+          tools: ['googleSearch'],
+          latency_ms: 40,
+          status: 'completed',
+          activity: 'Grounded search.',
+          transport: { api: 'gemini_developer_api', auth: 'api_key' },
+        }],
         generated_at: '2026-01-01T00:00:00.000Z',
         production: { synthetic: true, provider: 'Google Gemini', model: 'Gemini TTS' },
         voice_disclosure: 'Synthetic house voices.',
@@ -86,17 +85,13 @@ describe('CutKeyView', () => {
     expect(screen.getByText('Cut Key: test-key')).toBeInTheDocument();
     expect(screen.getByText('Exact transcript.')).toBeInTheDocument();
     expect(screen.getByText('Integrity over truth.')).toBeInTheDocument();
-    expect(screen.getAllByText('sha-script')).toHaveLength(2);
+    expect(screen.getByText('sha-script')).toBeInTheDocument();
     expect(screen.getByText('sha-audio')).toBeInTheDocument();
     expect(screen.getByText('sha-manifest')).toBeInTheDocument();
-    expect(screen.getByText('adk-parent-1')).toBeInTheDocument();
-    expect(screen.getByText('sha-sources')).toBeInTheDocument();
-    expect(screen.getByTestId('cut-execution-envelope')).toHaveTextContent('Google ADK (@google/adk)');
-    expect(screen.getByTestId('cut-execution-envelope')).toHaveTextContent('gemini-tts-test');
-    expect(screen.getByTestId('cut-authority-records')).toHaveTextContent('SCRIPT APPROVED');
-    expect(screen.getByTestId('cut-authority-records')).toHaveTextContent('AUDIO RENDER AUTHORIZED');
-    expect(screen.getByTestId('cut-execution-envelope')).toHaveTextContent('Publication blocked until final approval');
-    expect(screen.getByTestId('cut-execution-envelope')).not.toHaveTextContent('private-reviewer');
+    expect(screen.getByText('Public source one')).toBeInTheDocument();
+    expect(screen.getByTestId('cut-claim-support')).toHaveTextContent('source-1');
+    expect(screen.getByTestId('cut-approval-records')).toHaveTextContent('SCRIPT APPROVED');
+    expect(screen.getByTestId('cut-execution-envelope')).toHaveTextContent('Google ADK');
     expect(screen.getByTestId('audio-player')).toHaveAttribute('preload', 'metadata');
   });
 });

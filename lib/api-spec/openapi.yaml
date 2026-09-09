@@ -404,7 +404,7 @@ paths:
     post:
       operationId: generatePodcastAudio
       tags: [autography]
-      summary: Generate a short spoken clip from the single human-approved live script
+      summary: Generate a short spoken clip from an audio-approved script
       parameters:
         - $ref: "#/components/parameters/Id"
       responses:
@@ -989,8 +989,6 @@ components:
         platform: { type: string }
         community: { type: string }
         post_title: { type: string }
-        publisher: { type: string }
-        published_at: { type: ["string", "null"] }
         timestamp: { type: string }
         retrieved_at: { type: string }
         engagement:
@@ -1063,31 +1061,23 @@ components:
           items: { $ref: "#/components/schemas/PodcastDecisionHistoryEntry" }
     PodcastDecisionHistoryEntry:
       type: object
-      required: [artifact_type, artifact_id, reviewer, decision, decided_at, artifact_creation]
+      required: [record_type, artifact_type, artifact_id, reviewer, decision, decided_at, artifact_creation]
       properties:
+        record_type:
+          type: string
+          enum: [DEVELOPMENT_VALIDATED, BRIEF_APPROVED, BRIEF_REJECTED, SCRIPT_APPROVED, SCRIPT_REJECTED, AUDIO_RENDER_AUTHORIZED, AUDIO_RENDER_REJECTED]
         artifact_type:
           type: string
-          enum: [brief, script, audio]
+          enum: [development, brief, script, audio]
         artifact_id: { type: string }
         reviewer: { type: string }
         decision:
           type: string
-          enum: [approve, reject]
+          enum: [validate, approve, reject]
         decided_at: { type: string }
         artifact_creation:
           type: string
           enum: [none]
-        authority_record_type:
-          type: string
-          enum: [SCRIPT_APPROVED, AUDIO_RENDER_AUTHORIZED]
-        receipt_id: { type: string }
-        reviewer_reference: { type: string, pattern: "^[a-f0-9]{64}$" }
-        script_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
-        source_run_id: { type: string }
-        policy_version: { type: string }
-        publication_status:
-          type: string
-          enum: [blocked_until_final_approval]
     PodcastLiveSnapshot:
       type: object
       required: [source_mode, source_status, source_id, source_class, consent_reference, policy_review_reference, freshness, refreshed_at, observation_window, aggregate_observations, signal_label, data_notice]
@@ -1368,7 +1358,6 @@ components:
         status:
           type: string
           enum: [draft, approved, rejected]
-          description: Live Gemini briefs are internally source-bound and approved for script drafting; the single human approval remains on the exact script before audio.
         generated_mode:
           type: string
           enum: [gemini, synthetic_demo]
@@ -1388,10 +1377,6 @@ components:
               url: { type: string }
               label: { type: string }
               retrieved_at: { type: string }
-              title: { type: string }
-              publisher: { type: string }
-              published_at: { type: ["string", "null"] }
-              source_class: { type: string }
         risk_notes:
           type: array
           items: { type: string }
@@ -1456,16 +1441,11 @@ components:
               url: { type: string }
               label: { type: string }
               retrieved_at: { type: string }
-              title: { type: string }
-              publisher: { type: string }
-              published_at: { type: ["string", "null"] }
-              source_class: { type: string }
         safety_note: { type: string }
         review_note: { type: string }
         audio_status:
           type: string
           enum: [blocked_until_script_approval, awaiting_audio_approval, ready_to_generate, generated, rejected]
-          description: New live work moves directly from human script approval to ready_to_generate. Legacy saved workspaces may retain awaiting_audio_approval.
         compatibility_normalized:
           type: boolean
           description: Whether restoring this workspace required compatibility normalization from an older saved format.
@@ -1559,16 +1539,13 @@ components:
       properties:
         agent:
           type: string
-          enum: [source_scout, evidence_editor, evidence_verifier, script_performer, audio_performer, authority_check]
+          enum: [source_scout, evidence_editor, script_performer, audio_performer, authority_check]
         provider: { type: string }
         framework:
           type: string
           description: Runtime framework used for this execution. Optional for backward compatibility with retained runs.
         model: { type: string }
         execution_id: { type: string }
-        parent_execution_id:
-          type: string
-          description: Parent Google ADK execution for this Podcast Room transaction. Optional for retained runs created before traceable envelopes.
         tools:
           type: array
           items: { type: string }
@@ -1577,76 +1554,23 @@ components:
           type: string
           enum: [completed, held, failed]
         activity: { type: string }
-    PodcastCutKeyExecutionStage:
+        transport:
+          $ref: "#/components/schemas/GeminiTransportEvidence"
+    GeminiTransportEvidence:
       type: object
       additionalProperties: false
-      required: [stage, agent, provider, framework, model, execution_id, parent_execution_id, tools, status, activity]
+      required: [api, auth]
       properties:
-        stage:
+        api:
           type: string
-          enum: [grounded_research, editorial_synthesis, script_generation, media_render]
-        agent:
+          enum: [gemini_developer_api, vertex_ai]
+        auth:
           type: string
-          enum: [source_scout, evidence_editor, evidence_verifier, script_performer, audio_performer]
-        provider: { type: string }
-        framework: { type: string }
-        model: { type: string }
-        execution_id: { type: string }
-        parent_execution_id: { type: string }
-        tools:
-          type: array
-          items: { type: string }
-        status:
-          type: string
-          enum: [completed]
-        activity: { type: string }
-    PodcastCutKeyAuthorityBoundary:
-      type: object
-      additionalProperties: false
-      required: [type, script_approved_at, media_render_authorized_at, script_sha256]
-      properties:
-        type:
-          type: string
-          enum: [human_script_approval]
-        script_approved_at: { type: string }
-        media_render_authorized_at: { type: string }
-        script_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
-        authority_records:
-          type: array
-          minItems: 2
-          maxItems: 2
-          items: { $ref: "#/components/schemas/PodcastCutKeyAuthorityRecord" }
-        publication_status:
-          type: string
-          enum: [blocked_until_final_approval]
-    PodcastCutKeyAuthorityRecord:
-      type: object
-      additionalProperties: false
-      required: [receipt_id, authority_record_type, reviewer_reference, decided_at, script_sha256, source_run_id, policy_version]
-      properties:
-        receipt_id: { type: string }
-        authority_record_type:
-          type: string
-          enum: [SCRIPT_APPROVED, AUDIO_RENDER_AUTHORIZED]
-        reviewer_reference: { type: string, pattern: "^[a-f0-9]{64}$" }
-        decided_at: { type: string }
-        script_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
-        source_run_id: { type: string }
-        policy_version: { type: string }
-    PodcastCutKeyExecutionEnvelope:
-      type: object
-      additionalProperties: false
-      required: [parent_execution_id, run_id, script_id, stages, authority_boundary]
-      properties:
-        parent_execution_id: { type: string }
-        run_id: { type: string }
-        script_id: { type: string }
-        stages:
-          type: array
-          minItems: 5
-          maxItems: 5
-          items: { $ref: "#/components/schemas/PodcastCutKeyExecutionStage" }
-        authority_boundary: { $ref: "#/components/schemas/PodcastCutKeyAuthorityBoundary" }
+          enum: [api_key, application_default_credentials]
+        project_configured:
+          type: boolean
+        location_configured:
+          type: boolean
     PodcastGroundingSource:
       type: object
       required: [id, url, source_identifier, title, retrieved_at, source_type, classification, consent_reference, policy_reference, aggregate_summary, evidence_gaps, what_it_supports, what_remains_uncertain]
@@ -1655,8 +1579,6 @@ components:
         url: { type: string }
         source_identifier: { type: string }
         title: { type: string }
-        publisher: { type: string }
-        published_at: { type: ["string", "null"] }
         retrieved_at: { type: string }
         snippet: { type: string }
         source_type: { type: string }
@@ -1743,35 +1665,10 @@ components:
         audio_url: { type: string }
         transcript: { type: string, maxLength: 20000 }
         transcript_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
-        adk_execution_id:
-          type: string
-          description: Google ADK parent execution for this Podcast Room transaction. Optional only for retained manifests.
-        run_id: { type: string }
-        script_id: { type: string }
-        script_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
-        source_manifest_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
-        execution_envelope: { $ref: "#/components/schemas/PodcastCutKeyExecutionEnvelope" }
         source_ids:
           type: array
           maxItems: 20
           items: { type: string }
-        source_evidence:
-          type: array
-          maxItems: 20
-          items:
-            type: object
-            additionalProperties: false
-            required: [id, url, title, publisher, published_at, retrieved_at, source_class, aggregate_summary, what_it_supports]
-            properties:
-              id: { type: string }
-              url: { type: string }
-              title: { type: string }
-              publisher: { type: string }
-              published_at: { type: ["string", "null"] }
-              retrieved_at: { type: string }
-              source_class: { type: string }
-              aggregate_summary: { type: string }
-              what_it_supports: { type: string }
         generated_at: { type: string }
         production:
           type: object
@@ -1785,6 +1682,87 @@ components:
         format_disclosure: { type: string }
         audio_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
         integrity_disclaimer: { type: string }
+        manifest_version:
+          type: integer
+          enum: [2]
+          description: Version 2 binds public source metadata, claim support, execution evidence, and approval records into the manifest hash. Omitted only on retained legacy manifests.
+        source_metadata:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/PodcastPublicSourceMetadata" }
+        claim_support:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/PodcastClaimSupport" }
+        approval_records:
+          type: array
+          maxItems: 8
+          items: { $ref: "#/components/schemas/PodcastApprovalRecord" }
+        execution_envelope:
+          type: array
+          maxItems: 12
+          items: { $ref: "#/components/schemas/PodcastAgentExecution" }
+    PodcastPublicSourceMetadata:
+      type: object
+      additionalProperties: false
+      required: [id, url, title, retrieved_at, source_type, classification, policy_reference, aggregate_summary, evidence_gaps, what_it_supports, what_remains_uncertain]
+      properties:
+        id: { type: string }
+        url: { type: string }
+        title: { type: string }
+        retrieved_at: { type: string }
+        source_type: { type: string }
+        classification:
+          type: string
+          enum: [source_backed, first_party_attested, disputed, unresolved]
+        policy_reference: { type: string }
+        aggregate_summary: { type: string }
+        evidence_gaps:
+          type: array
+          minItems: 1
+          items: { type: string }
+        what_it_supports: { type: string }
+        what_remains_uncertain: { type: string }
+    PodcastClaimSupport:
+      type: object
+      additionalProperties: false
+      required: [claim_id, segment, speaker, claim_text, source_ids, classification]
+      properties:
+        claim_id: { type: string }
+        segment: { type: string }
+        speaker:
+          type: string
+          enum: [FRONT ROW, BACKSTAGE]
+        claim_text: { type: string, maxLength: 4000 }
+        source_ids:
+          type: array
+          maxItems: 20
+          items: { type: string }
+        classification:
+          type: string
+          enum: [source_backed, first_party_attested, disputed, unresolved]
+    PodcastApprovalRecord:
+      type: object
+      additionalProperties: false
+      required: [record_type, artifact_type, artifact_id, reviewer_reference, decided_at, subject_sha256, record_sha256]
+      properties:
+        record_type:
+          type: string
+          enum: [DEVELOPMENT_VALIDATED, BRIEF_APPROVED, SCRIPT_APPROVED, AUDIO_RENDER_AUTHORIZED]
+        artifact_type:
+          type: string
+          enum: [development, brief, script, audio]
+        artifact_id: { type: string }
+        reviewer_reference:
+          type: string
+          description: Stable one-way reviewer reference; no Clerk identifier, email, or display name is public.
+        decided_at: { type: string }
+        subject_sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        record_sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
     PodcastResetResponse:
       type: object
       required: [room, pre_staged_input]
@@ -1906,6 +1884,8 @@ components:
           type: string
           enum: [completed, failed]
         activity: { type: string }
+        transport:
+          $ref: "#/components/schemas/GeminiTransportEvidence"
     AgentRunResult:
       type: object
       required: [mode, stages, runtime_evidence, message]

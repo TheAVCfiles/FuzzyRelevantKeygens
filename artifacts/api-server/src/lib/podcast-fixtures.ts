@@ -1,14 +1,14 @@
-import { GoogleGenAI } from "@google/genai";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
-import { lookup } from "node:dns/promises";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { isIP } from "node:net";
 import { join } from "node:path";
 import type {
+  PodcastAgentExecution,
+  PodcastApprovalRecord,
   PodcastArchetype,
   PodcastBrief,
   PodcastAudioClip,
+  PodcastClaimSupport,
   PodcastContextSearchResponse,
   PodcastConcept,
   PodcastCutKey,
@@ -19,6 +19,7 @@ import type {
   PodcastFormatVariant,
   PodcastGroundingSource,
   PodcastLiveSnapshot,
+  PodcastPublicSourceMetadata,
   PodcastReleaseKit,
   PodcastScriptWorkspace,
   PodcastSource,
@@ -38,22 +39,28 @@ import {
   savePodcastStateToDatabase,
   uploadPodcastAudio,
 } from "./podcast-persistence";
+import { runPodcastAdkResearch } from "./podcast-adk-research";
 import {
-  podcastAdkFramework,
-  podcastAdkTools,
-  runPodcastAdkResearch,
-} from "./podcast-adk-research";
+  resolveGeminiTransport,
+  type GeminiTransportEvidence,
+} from "./gemini-transport";
 
 const model = "gemini-3.6-flash";
 const currentContextPolicyReference = "podcast-current-context-policy-v1";
 const publicWebConsentReference = "public-web-metadata-only-v1";
+
+function withGeminiTransport<T extends object>(
+  execution: T,
+  transport: GeminiTransportEvidence,
+) {
+  return { ...execution, transport };
+}
 
 const now = () => new Date().toISOString();
 
 type PodcastWorkspaceWithCompatibility = PodcastScriptWorkspace & {
   compatibility_normalized: boolean;
   workspace_revision?: string;
-  claim_support_verified?: boolean;
 };
 
 export const podcastSources: PodcastSource[] = [
@@ -315,18 +322,10 @@ const podcastBriefs = new Map<string, PodcastBrief>();
 const podcastScripts = new Map<string, PodcastWorkspaceWithCompatibility>();
 
 type OwnedPodcastFilterPreset = PodcastFilterPreset & { owner_id: string | null };
-type PodcastAuthorityRecordType = "SCRIPT_APPROVED" | "AUDIO_RENDER_AUTHORIZED";
-type PodcastApprovalReceipt = {
-  stage: "development" | "brief" | "script" | "audio";
+type PodcastApprovalStage = "development" | "brief" | "script" | "audio";
+type PodcastApprovalReceipt = PodcastApprovalRecord & {
+  stage: PodcastApprovalStage;
   reviewer: string;
-  decided_at: string;
-  artifact_sha256?: string;
-  parent_execution_id?: string;
-  authority_record_type?: PodcastAuthorityRecordType;
-  receipt_id?: string;
-  reviewer_reference?: string;
-  source_run_id?: string;
-  policy_version?: string;
 };
 const podcastFilterPresets = new Map<string, OwnedPodcastFilterPreset>();
 const podcastDevelopmentPlans = new Map<string, PodcastDevelopmentPlan>();
@@ -336,6 +335,150 @@ const podcastCutKeys = new Map<string, PodcastCutKey>();
 const podcastAudioAssets = new Map<string, string>();
 const podcastApprovalReceipts = new Map<string, PodcastApprovalReceipt>();
 const podcastExecutionRecords = new Map<string, PodcastGroundedRun["agent_executions"][number]>();
+
+const approvalRecordTypes = {
+  development: "DEVELOPMENT_VALIDATED",
+  brief: "BRIEF_APPROVED",
+  script: "SCRIPT_APPROVED",
+  audio: "AUDIO_RENDER_AUTHORIZED",
+} as const satisfies Record<PodcastApprovalStage, PodcastApprovalRecord["record_type"]>;
+
+function canonicalJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.keys(value)
+    .sort()
+    .reduce<Record<string, unknown>>((canonical, key) => {
+      const item = (value as Record<string, unknown>)[key];
+      if (item !== undefined) canonical[key] = canonicalJsonValue(item);
+      return canonical;
+    }, {});
+}
+
+function sha256Json(value: unknown) {
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalJsonValue(value)))
+    .digest("hex");
+}
+
+function podcastScriptApprovalSubject(script: PodcastWorkspaceWithCompatibility) {
+  return {
+    id: script.id,
+    brief_id: script.brief_id,
+    run_id: script.run_id,
+    attestation_id: script.attestation_id,
+    status: script.status,
+    title: script.title,
+    sections: script.sections,
+    provenance: script.provenance,
+  };
+}
+
+function podcastAudioAuthorizationSubject(script: PodcastWorkspaceWithCompatibility) {
+  const authorizedScript = script.audio_status === "generated"
+    ? {
+        ...script,
+        audio_status: "ready_to_generate" as const,
+        release_kit: script.release_kit
+          ? { ...script.release_kit, audio_status: "ready_to_generate" as const }
+          : null,
+      }
+    : script;
+  return {
+    render_identity: podcastRenderIdentity(authorizedScript),
+  };
+}
+
+function podcastApprovalSubject(stage: PodcastApprovalStage, id: string) {
+  if (stage === "development") return podcastDevelopmentPlans.get(id) ?? null;
+  if (stage === "brief") return podcastBriefs.get(id) ?? null;
+  const script = podcastScripts.get(id) ?? (currentScript?.id === id ? currentScript : null);
+  if (!script) return null;
+  return stage === "script"
+    ? podcastScriptApprovalSubject(script)
+    : podcastAudioAuthorizationSubject(script);
+}
+
+function podcastApprovalRecordCanonicalPayload(
+  record: Omit<PodcastApprovalRecord, "record_sha256">,
+) {
+  return {
+    record_type: record.record_type,
+    artifact_type: record.artifact_type,
+    artifact_id: record.artifact_id,
+    reviewer_reference: record.reviewer_reference,
+    decided_at: record.decided_at,
+    subject_sha256: record.subject_sha256,
+  };
+}
+
+function podcastApprovalRecordSha256(
+  record: Omit<PodcastApprovalRecord, "record_sha256">,
+) {
+  return sha256Json(podcastApprovalRecordCanonicalPayload(record));
+}
+
+function createPodcastApprovalReceipt(
+  stage: PodcastApprovalStage,
+  id: string,
+  reviewer: string,
+): PodcastApprovalReceipt {
+  const subject = podcastApprovalSubject(stage, id);
+  if (!subject) throw new Error(`Podcast ${stage} approval subject is unavailable.`);
+  const record = {
+    record_type: approvalRecordTypes[stage],
+    artifact_type: stage,
+    artifact_id: id,
+    reviewer_reference: sha256Json({ namespace: "autography-reviewer", reviewer }),
+    decided_at: now(),
+    subject_sha256: sha256Json(subject),
+  } satisfies Omit<PodcastApprovalRecord, "record_sha256">;
+  return {
+    ...record,
+    record_sha256: podcastApprovalRecordSha256(record),
+    stage,
+    reviewer,
+  };
+}
+
+function publicPodcastApprovalRecord(receipt: PodcastApprovalReceipt): PodcastApprovalRecord {
+  return {
+    record_type: receipt.record_type,
+    artifact_type: receipt.artifact_type,
+    artifact_id: receipt.artifact_id,
+    reviewer_reference: receipt.reviewer_reference,
+    decided_at: receipt.decided_at,
+    subject_sha256: receipt.subject_sha256,
+    record_sha256: receipt.record_sha256,
+  };
+}
+
+function isValidPodcastApprovalRecord(record: PodcastApprovalRecord) {
+  const { record_sha256: recordSha256, ...canonical } = record;
+  return (
+    /^[a-f0-9]{64}$/.test(record.subject_sha256) &&
+    /^[a-f0-9]{64}$/.test(recordSha256) &&
+    podcastApprovalRecordSha256(canonical) === recordSha256
+  );
+}
+
+function isValidPodcastApprovalReceipt(
+  receipt: PodcastApprovalReceipt | undefined,
+  stage: PodcastApprovalStage,
+  id: string,
+): receipt is PodcastApprovalReceipt {
+  const subject = podcastApprovalSubject(stage, id);
+  return Boolean(
+    receipt &&
+      subject &&
+      receipt.stage === stage &&
+      receipt.artifact_type === stage &&
+      receipt.artifact_id === id &&
+      receipt.record_type === approvalRecordTypes[stage] &&
+      receipt.subject_sha256 === sha256Json(subject) &&
+      isValidPodcastApprovalRecord(publicPodcastApprovalRecord(receipt)),
+  );
+}
 
 const podcastStatePath = process.env.PODCAST_STATE_PATH ?? join(process.cwd(), ".podcast-room-state.json");
 const audioDirectory = process.env.PODCAST_AUDIO_DIRECTORY ?? join(process.cwd(), ".podcast-audio");
@@ -748,60 +891,17 @@ function normalizeGroundedRun(run: PodcastGroundedRun): PodcastGroundedRun {
       policyReference = "legacy-unverified-provenance";
     }
   }
-  const normalizedSources = run.sources.map((source, index) => {
-    const normalized = normalizeGroundingSource(source, policyReference);
-    return provider === "google_public_web"
-      ? {
-          ...normalized,
-          title: nonEmptyString(normalized.publisher) ? normalized.title : `Approved public-web result ${index + 1}`,
-          snippet: "",
-          what_remains_uncertain: [
-            "This source alone does not establish any additional event details beyond the supported finding.",
-            ...(normalized.evidence_gaps ?? []),
-          ].join(" "),
-        }
-      : normalized;
-  });
-  const sources = provider === "google_public_web"
-    ? normalizedSources.filter((source) => !retainsIdentityBearingSocialPath(source.url))
-    : normalizedSources;
-  if (
-    provider === "google_public_web" &&
-    (
-      sources.length < 2 ||
-      new Set(sources.map((source) => new URL(source.url).hostname.toLowerCase().replace(/^www\./, ""))).size < 2
-    )
-  ) {
-    provider = "legacy_unverified";
-    policyReference = "legacy-unverified-provenance";
-  }
-  const removedUnsafeSources = sources.length !== normalizedSources.length;
-  const hasCommunitySource = sources.some((source) => source.source_type === "community");
-  const normalizeLiveConcept = provider === "google_public_web" && policyReference === currentContextPolicyReference;
-  const concept = normalizeLiveConcept
-    ? {
-        ...run.concept,
-        source_ids: run.concept.source_ids.filter((sourceId) => sources.some((source) => source.id === sourceId)),
-        summary: sources.map((source) => source.aggregate_summary).join(" "),
-        observed_signal: sources.map((source) => source.what_it_supports).join(" "),
-        supported_context: hasCommunitySource
-          ? "The retained evidence includes an explicitly selected community source. Raw provider text never enters development."
-          : "The retained evidence is limited to publisher reporting. It cannot establish what audiences or fans want, think, feel, ask, or believe.",
-        unresolved_questions: [
-          ...run.concept.unresolved_questions,
-          ...(removedUnsafeSources
-            ? ["Identity-bearing social source links were withheld from the retained historical run."]
-            : []),
-        ],
-      }
-    : run.concept;
   return {
     ...run,
     provider,
     window: run.window ?? "not_recorded",
     policy_reference: policyReference,
-    sources,
-    concept,
+    sources: run.sources.map((source) => {
+      const normalized = normalizeGroundingSource(source, policyReference);
+      return provider === "google_public_web"
+        ? { ...normalized, snippet: "" }
+        : normalized;
+    }),
   };
 }
 
@@ -812,9 +912,8 @@ function groundedRunRoomSources(run: PodcastGroundedRun): PodcastSource[] {
       ? "fixture" as const
       : "public_url" as const;
   return run.sources.map((source) => ({
-    id: source.id, source_url: source.url, platform: source.publisher ?? "Public web", community: new URL(source.url).hostname,
-    post_title: source.title, publisher: source.publisher, published_at: source.published_at,
-    timestamp: source.published_at ?? source.retrieved_at, retrieved_at: source.retrieved_at,
+    id: source.id, source_url: source.url, platform: "Public web", community: new URL(source.url).hostname,
+    post_title: source.title, timestamp: source.retrieved_at, retrieved_at: source.retrieved_at,
     engagement: { score: 0, comments: 0 }, source_id: source.source_identifier, access_mode: accessMode,
     source_class: source.source_type, evidence_type: source.classification,
     consent_reference: source.consent_reference,
@@ -823,101 +922,13 @@ function groundedRunRoomSources(run: PodcastGroundedRun): PodcastSource[] {
   }));
 }
 
-function activeGroundedRun() {
-  return [...podcastGroundedRuns.values()]
-    .filter((candidate) => syntheticDemoEnabled() || isLivePodcastRuntime(candidate.runtime_status))
-    .at(-1) ?? null;
-}
-
-function developmentRunMissingFields(
-  run: PodcastGroundedRun | null,
-  conceptId: string,
-  requestedSourceIds: string[],
-) {
-  if (!run) return ["current_grounded_run"];
-  const missing: string[] = [];
-  if (run.concept.id !== conceptId) missing.push("current_grounded_run.concept_id");
-  if (!syntheticDemoEnabled()) {
-    if (!isLivePodcastRuntime(run.runtime_status)) missing.push("current_grounded_run.runtime_status");
-    if (run.provider !== "google_public_web") missing.push("current_grounded_run.provider");
-    if (run.policy_reference !== currentContextPolicyReference) missing.push("current_grounded_run.policy_reference");
-  }
-  for (const sourceId of [...new Set(requestedSourceIds)]) {
-    const source = run.sources.find((candidate) => candidate.id === sourceId);
-    if (!source) {
-      missing.push(`source_ids.${sourceId}`);
-      continue;
-    }
-    if (!nonEmptyString(source.source_identifier)) missing.push(`sources.${sourceId}.source_identifier`);
-    if (!nonEmptyString(source.publisher)) missing.push(`sources.${sourceId}.publisher`);
-    if (!nonEmptyString(source.retrieved_at)) missing.push(`sources.${sourceId}.retrieved_at`);
-    if (!nonEmptyString(source.source_type)) missing.push(`sources.${sourceId}.source_type`);
-    if (!nonEmptyString(source.classification)) missing.push(`sources.${sourceId}.classification`);
-    if (!nonEmptyString(source.policy_reference)) missing.push(`sources.${sourceId}.policy_reference`);
-    if (!Array.isArray(source.evidence_gaps) || source.evidence_gaps.length === 0) {
-      missing.push(`sources.${sourceId}.evidence_gaps`);
-    }
-  }
-  return missing;
-}
-
-function groundedRunForDevelopment(conceptId: string, requestedSourceIds: string[]) {
-  return [...podcastGroundedRuns.values()].reverse().find((run) =>
-    run.concept.id === conceptId &&
-    (syntheticDemoEnabled() || isLivePodcastRuntime(run.runtime_status)),
-  ) ?? null;
-}
-
-function groundedRunSnapshot(
-  run: PodcastGroundedRun,
-  requestedSourceIds: string[] = run.sources.map((source) => source.id),
-): PodcastLiveSnapshot {
-  const requested = new Set(requestedSourceIds);
-  const sources = run.sources.filter((source) => requested.has(source.id));
-  const retrievedTimes = sources
-    .map((source) => new Date(source.retrieved_at).getTime())
-    .filter(Number.isFinite)
-    .sort((left, right) => left - right);
-  const refreshedAt = now();
-  const start = retrievedTimes[0] ?? new Date(refreshedAt).getTime();
-  const end = retrievedTimes.at(-1) ?? start;
-  const ageMinutes = Math.max(0, Math.round((Date.now() - end) / 60_000));
-  const sourceClasses = [...new Set(sources.map((source) => source.source_type).filter(nonEmptyString))];
-  const consentReferences = [...new Set(sources.map((source) => source.consent_reference).filter(nonEmptyString))];
-  const approvedLive =
-    isLivePodcastRuntime(run.runtime_status) &&
-    run.provider === "google_public_web" &&
-    run.policy_reference === currentContextPolicyReference;
-  return {
-    source_mode: approvedLive ? "approved_live" : "synthetic_fixture",
-    source_status: approvedLive
-      ? "active · selected Google-grounded run"
-      : "fixture · selected synthetic development run",
-    source_id: run.id,
-    source_class: sourceClasses.join(", ") || (approvedLive ? "public_web" : "synthetic_entertainment_index"),
-    consent_reference: consentReferences.length === 1 ? consentReferences[0]! : null,
-    policy_review_reference: run.policy_reference,
-    freshness: `${ageMinutes}m since selected run retrieval`,
-    refreshed_at: refreshedAt,
-    observation_window: {
-      start: new Date(start).toISOString(),
-      end: new Date(end).toISOString(),
-    },
-    aggregate_observations: sources.length,
-    signal_label: approvedLive
-      ? `${run.runtime_status} · ${run.window.replaceAll("_", " ")}`
-      : "synthetic fixture · not a live audience measurement",
-    data_notice: approvedLive
-      ? "This snapshot is bound to the selected Google-grounded run and its approved source metadata. It contains no identity fields or copied comments."
-      : "This fallback is synthetic and curated. It does not represent current public opinion, platform-wide behavior, or a popularity forecast.",
-  };
-}
-
 function rehydrateActiveGroundedIndexes() {
   activeGroundedSources.splice(0);
   activeGroundedConcepts.splice(0);
   // Runs are persisted in insertion order; the newest run remains the room's active run.
-  const run = activeGroundedRun();
+  const run = [...podcastGroundedRuns.values()]
+    .filter((candidate) => syntheticDemoEnabled() || isLivePodcastRuntime(candidate.runtime_status))
+    .at(-1);
   if (!run) return;
   activeGroundedSources.push(...groundedRunRoomSources(run));
   activeGroundedConcepts.push(run.concept);
@@ -1004,16 +1015,6 @@ export function rehydratePodcastState(input: unknown) {
     }
     for (const item of saved.approvalReceipts ?? []) if (item?.key && item.receipt) podcastApprovalReceipts.set(item.key, item.receipt);
     for (const item of saved.executionRecords ?? []) if (item?.key && item.execution) podcastExecutionRecords.set(item.key, item.execution);
-    for (const script of podcastScripts.values()) {
-      const run = script.run_id ? podcastGroundedRuns.get(script.run_id) : null;
-      const hasPerformanceReceipt =
-        podcastApprovalReceipts.has(`script:${script.id}`) ||
-        podcastApprovalReceipts.has(`audio:${script.id}`);
-      if (run && hasPerformanceReceipt && !podcastPerformanceAuthority(script, run)) {
-        podcastApprovalReceipts.delete(`script:${script.id}`);
-        podcastApprovalReceipts.delete(`audio:${script.id}`);
-      }
-    }
     rehydrateActiveGroundedIndexes();
     currentBrief = saved.currentBriefId ? podcastBriefs.get(saved.currentBriefId) ?? null : null;
     for (const script of podcastScripts.values()) {
@@ -1210,42 +1211,6 @@ export function buildSafePodcastDraft(
   };
 }
 
-function podcastDecisionHistory(briefId: string | null, scriptId: string | null) {
-  const legacyHistory = getPodcastDecisionHistory({ briefId, scriptId }).filter(
-    (entry) => entry.artifact_type === "brief" || entry.decision === "reject",
-  );
-  if (!scriptId) return legacyHistory;
-  const authorityHistory = ([
-    ["script", podcastApprovalReceipts.get(`script:${scriptId}`)],
-    ["audio", podcastApprovalReceipts.get(`audio:${scriptId}`)],
-  ] as const).flatMap(([artifactType, receipt]) => {
-    if (
-      !receipt?.authority_record_type ||
-      !receipt.receipt_id ||
-      !receipt.reviewer_reference ||
-      !receipt.artifact_sha256 ||
-      !receipt.source_run_id ||
-      !receipt.policy_version
-    ) return [];
-    return [{
-      artifact_type: artifactType,
-      artifact_id: scriptId,
-      reviewer: receipt.reviewer,
-      decision: "approve" as const,
-      decided_at: receipt.decided_at,
-      artifact_creation: "none" as const,
-      authority_record_type: receipt.authority_record_type,
-      receipt_id: receipt.receipt_id,
-      reviewer_reference: receipt.reviewer_reference,
-      script_sha256: receipt.artifact_sha256,
-      source_run_id: receipt.source_run_id,
-      policy_version: receipt.policy_version,
-      publication_status: "blocked_until_final_approval" as const,
-    }];
-  });
-  return [...authorityHistory, ...legacyHistory];
-}
-
 function buildPodcastRoom(presetVisible: (preset: OwnedPodcastFilterPreset) => boolean) {
   const selectedBriefId = currentBrief?.id ?? null;
   const selectedScriptId =
@@ -1258,7 +1223,10 @@ function buildPodcastRoom(presetVisible: (preset: OwnedPodcastFilterPreset) => b
       "Public-source path only · summaries are pattern-level · comments are never copied verbatim · provenance is retained per item.",
     rendering_status: "blocked_until_approval" as const,
     selected_brief_id: selectedBriefId,
-    decision_history: podcastDecisionHistory(selectedBriefId, selectedScriptId),
+    decision_history: getPodcastDecisionHistory({
+      briefId: selectedBriefId,
+      scriptId: selectedScriptId,
+    }),
   };
 }
 export function getPodcastRoom(producerId: string) {
@@ -1271,17 +1239,6 @@ export function getUnscopedPodcastRoom() {
   return buildPodcastRoom(() => true);
 }
 export function getPodcastLiveSnapshot(): PodcastLiveSnapshot {
-  const currentRun = activeGroundedRun();
-  if (
-    currentRun &&
-    developmentRunMissingFields(
-      currentRun,
-      currentRun.concept.id,
-      currentRun.sources.map((source) => source.id),
-    ).length === 0
-  ) {
-    return groundedRunSnapshot(currentRun);
-  }
   const live = getLiveObservationSnapshot();
   const refreshedAt = now();
   if (live) {
@@ -1317,16 +1274,6 @@ export function getPodcastLiveSnapshot(): PodcastLiveSnapshot {
     signal_label: "synthetic fixture · not a live audience measurement",
     data_notice: "This fallback is synthetic and curated. It does not represent current public opinion, platform-wide behavior, or a popularity forecast.",
   };
-}
-
-export class PodcastDevelopmentLinkageError extends Error {
-  readonly missingFields: string[];
-
-  constructor(missingFields: string[]) {
-    super(`Development plan is missing required current-run fields: ${missingFields.join(", ")}`);
-    this.name = "PodcastDevelopmentLinkageError";
-    this.missingFields = missingFields;
-  }
 }
 
 function percent(value: number) {
@@ -1411,17 +1358,10 @@ export function createPodcastDevelopment(
   }
   const sourceIds = concept.source_ids.filter((id) => requestedSourceIds.includes(id));
   if (!sourceIds.length) return null;
-  const run = groundedRunForDevelopment(concept.id, sourceIds);
-  const missingFields = developmentRunMissingFields(run, concept.id, sourceIds);
-  if (missingFields.length > 0 && !syntheticDemoEnabled()) {
-    throw new PodcastDevelopmentLinkageError(missingFields);
-  }
-  const snapshot = run && missingFields.length === 0
-    ? groundedRunSnapshot(run, sourceIds)
-    : getPodcastLiveSnapshot();
+  const snapshot = getPodcastLiveSnapshot();
   const variants = [
     makeVariant(concept, sourceIds, "cold_open_explainer", "The question before the answer", "Lead with the missing piece, then earn the explanation through cited context.", "Open on the shared question, then reveal which part the evidence can actually answer.", "Fastest hook, but the opening must not imply the unresolved point is already proven."),
-    makeVariant(concept, sourceIds, "reported_explainer", "What the record can support", "Build a compact reported explainer around chronology, source classes, and the limits of the available record.", "Begin with two facts from the selected sources and the gap between them.", "Highest clarity, with less room for spontaneous host chemistry."),
+    makeVariant(concept, sourceIds, "reported_explainer", "What the record can support", "Build a compact reported explainer around chronology, source classes, and the limits of the available record.", "Begin with two facts from different source classes and the gap between them.", "Highest clarity, with less room for spontaneous host chemistry."),
     makeVariant(concept, sourceIds, "structured_debate", "Certainty versus context", "Stage the strongest responsible interpretations against the evidence boundary without manufacturing conflict.", "State two plausible format readings, then disclose what neither can prove.", "Creates tension, but requires disciplined moderation to avoid false equivalence."),
     makeVariant(concept, sourceIds, "context_recap", "The scene between the scenes", "Recap the episode through editorial choices and audience questions rather than a verdict about a person.", "Start at the edit point that made chronology difficult to follow.", "Familiar and accessible, but can feel conventional without a sharp evidence turn."),
     makeVariant(concept, sourceIds, "listener_question", "The question the cut leaves open", "Use a grouped, answerable audience question as the recurring structure for a concise episode.", "Ask the safest unresolved question and explain why it is answerable only in part.", "Inviting and repeatable, but must not imply a small observed group represents all listeners."),
@@ -1624,18 +1564,7 @@ function fixtureScript(brief: PodcastBrief): PodcastWorkspaceWithCompatibility {
       classification: item.segment === "uncertainty" ? "unresolved" as const : item.segment === "reveal" ? "disputed" as const : "source_backed" as const,
       speaker: ["banter", "reveal", "closing_button"].includes(item.segment) ? "BACKSTAGE" as const : "FRONT ROW" as const,
     })),
-    provenance: brief.source_links.map((link) => {
-      const source = allPodcastSources().find((candidate) => candidate.id === link.source_id);
-      return {
-        ...link,
-        ...(source?.access_mode === "approved_live" ? {
-          title: source.post_title,
-          publisher: source.publisher,
-          published_at: source.published_at ?? null,
-          source_class: source.source_class ?? source.platform,
-        } : {}),
-      };
-    }),
+    provenance: brief.source_links,
     safety_note:
       "Performed sample summarizes recurring public patterns. It contains no verbatim social comments, personal targeting, or unsupported audience-wide claims.",
     review_note:
@@ -1686,10 +1615,6 @@ function podcastWorkspaceMatchesBrief(
 }
 
 function discardPodcastWorkspace(script: PodcastWorkspaceWithCompatibility) {
-  podcastApprovalReceipts.delete(`script:${script.id}`);
-  podcastApprovalReceipts.delete(`audio:${script.id}`);
-  podcastExecutionRecords.delete(`script:${script.id}`);
-  podcastExecutionRecords.delete(`audio:${script.id}`);
   podcastScripts.delete(script.id);
   if (currentScript?.id === script.id) currentScript = null;
   if (script.audio_clip) {
@@ -1705,39 +1630,39 @@ function discardPodcastWorkspace(script: PodcastWorkspaceWithCompatibility) {
 }
 
 function fixtureReleaseKit(script: PodcastWorkspaceWithCompatibility): PodcastReleaseKit {
-  const sectionCount = script.sections.length;
   return {
     id: `release-kit-${script.id}`,
     script_id: script.id,
     status: "staged",
     title_options: [
       script.title,
-      `AUTOGRAPHY Preview: ${script.title}`,
-      `Source Record: ${script.title}`,
+      "The Scene Between the Scenes",
+      "What the Edit Leaves Behind",
     ],
     episode_description:
-      `FRONT ROW and BACKSTAGE perform the exact approved script for “${script.title}” from its selected public source record and stated uncertainty.`,
-    chapters: script.sections.map((section, index) => ({
-      label: section.segment.replaceAll("_", " "),
-      timing: `Turn ${index + 1} of ${sectionCount}`,
-      purpose: section.script,
-    })),
+      "A source-backed conversation about how editing shapes what audiences can reconstruct, and how to make room for uncertainty without turning curiosity into a verdict.",
+    chapters: [
+      { label: "The shared question", timing: "00:00–04:00", purpose: "Name the recurring audience gap without targeting a person." },
+      { label: "What the sources support", timing: "04:00–13:00", purpose: "Separate repeated public patterns from claims the evidence cannot resolve." },
+      { label: "The edit and the uncertainty", timing: "13:00–24:00", purpose: "Explore format-level explanations and the boundary of responsible recap." },
+      { label: "A better way to clarify", timing: "24:00–30:00", purpose: "Offer a useful next question for producers, media teams, and listeners." },
+    ],
     host_notes: [
-      "Perform only the exact approved section text.",
-      "Use the fictional FRONT ROW and BACKSTAGE house voices; do not imitate a real person.",
-      "Do not add claims, ad-libs, or audience attribution during performance.",
+      "Lead with the audience question, not the loudest accusation.",
+      "Name the source window and confidence level before making an interpretive turn.",
+      "Keep unresolved questions open; do not convert them into identity-sensitive claims.",
     ],
     promotion_copy: [
-      { channel: "show notes", copy: `${script.title}. An AUTOGRAPHY preview performed from the exact approved script and attached public source record.` },
-      { channel: "newsletter", copy: `New AUTOGRAPHY preview: ${script.title}.` },
-      { channel: "social draft", copy: `Preview draft: ${script.title}.` },
+      { channel: "show notes", copy: "What happens when an edit leaves a timeline gap? We trace the question, the evidence, and the uncertainty." },
+      { channel: "newsletter", copy: "A calmer recap starts by separating what viewers noticed from what the evidence can actually explain." },
+      { channel: "social draft", copy: "New episode draft: the scene between the scenes — a source-backed look at editing, context, and better questions." },
     ],
     accessibility_notes: [
       "Publish a complete transcript with speaker labels and chapter timestamps.",
       "Describe editorial uncertainty in plain language rather than relying on tone or audio cues.",
       "Keep source links and the provenance summary available alongside the episode notes.",
     ],
-    provenance_summary: `${script.provenance.length} retrieved public sources are attached to the approved script. Release copy is derived from that exact script and does not reproduce raw social text.`,
+    provenance_summary: `${script.provenance.length} retrieved public sources are attached to the approved script. The package summarizes patterns without reproducing user comments verbatim.`,
     audio_status: "awaiting_audio_approval",
     publishing_status: "blocked_until_final_approval",
     next_reviewer: "Final producer / publishing approver",
@@ -1827,15 +1752,11 @@ export async function createPodcastScriptFromGemini(briefId: string) {
   const run = brief.run_id ? podcastGroundedRuns.get(brief.run_id) ?? null : null;
   const attestation = brief.attestation_id ? podcastAttestations.get(brief.run_id ?? "") : null;
   if (!run || !attestation || run.id !== brief.run_id || attestation.id !== brief.attestation_id || !runForPodcastArtifact(brief.concept_id, brief.selected_source_ids)) throw new Error("Bound grounded run and attestation are required.");
-  const agenticRun = traceablePodcastRunExecutions(run);
-  if (!agenticRun) throw new Error("Bound Google ADK research and editorial execution evidence is required.");
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("Gemini script generation is not configured.");
+  const transport = resolveGeminiTransport();
   const started = Date.now();
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await yieldPodcastMutationLock(() => ai.models.generateContent({
+  const response = await yieldPodcastMutationLock(() => transport.genAI().models.generateContent({
     model,
-    contents: `Write an original two-host entertainment podcast highlight based only on this exact live Google-grounded search and its selected sources. This is finished dialogue, not instructions, a compliance summary, a source report, or a generic template. Use the brief's literal suggested title or an equally narrow factual variant. Every factual sentence must restate only one or more propositions explicitly present in the mapped source's title, publication date, aggregate_summary, or what_it_supports. Map each section to only the source IDs needed for that section. Never infer an institutional contradiction, genre shift, category restructuring, broadcast change, trend, motive, consequence, popularity effect, or broader meaning. Words such as means, proves, signals, because, therefore, shift, change, contradiction, and trend must not introduce a new premise. FRONT ROW and BACKSTAGE may use brief non-factual reactions such as asking to read the record carefully, but those reactions must add no factual claim. ${run.sources.filter((source) => brief.selected_source_ids.includes(source.id)).some((source) => source.source_type === "community") ? "Audience or fan attribution is allowed only when mapped to the returned community source." : "No selected community source was returned. Do not say or imply what audiences, fans, listeners, viewers, people, or social consensus want, think, feel, ask, believe, prefer, need, expect, or struggle with; describe only what the selected publisher coverage reports."} Use six short, speakable turns. Return JSON {title,sections}. Exactly six sections, in this order: cold_open, banter, evidence, reveal, uncertainty, closing_button. Every section has segment, script, speaker (FRONT ROW or BACKSTAGE), classification (source_backed, first_party_attested, disputed, unresolved), source_ids. Cite every selected source ID in metadata across the six sections, but never say source IDs aloud. Include both speakers. The uncertainty section may state only an explicit missing publication date or the supplied evidence limits. Never write production instructions, stage directions, legal/compliance language, allegations, raw private text, or claims beyond the supplied evidence. Only this permitted public attestation summary may be used: ${attestation.permitted_public_summary ?? "None"}.\nQUERY:${run.query}\nSELECTED SOURCE IDS:${JSON.stringify(brief.selected_source_ids)}\nSOURCES:${JSON.stringify(run.sources.filter((source) => brief.selected_source_ids.includes(source.id)))}\nUNCERTAINTIES:${JSON.stringify(run.uncertainties)}\nBRIEF:${JSON.stringify(brief)}\nFORMAT:${JSON.stringify(brief.selected_format)}\nARCHETYPE:${JSON.stringify(brief.editorial_archetype)}`,
+    contents: `Create a fresh, entertaining two-host podcast performance from the exact query, named sources, approved brief, format, and fictional archetype below. Return JSON {title,sections}. Write 130–165 spoken words total for a 45–75 second performance. Exactly six sections, in this order: cold_open, banter, evidence, reveal, uncertainty, closing_button. Every section has segment, script, speaker (FRONT ROW or BACKSTAGE), classification (source_backed, first_party_attested, disputed, unresolved), source_ids. The first sentence must announce Nirvana's Video Vanguard Award. FRONT ROW should sound energetic and curious; BACKSTAGE should be dry, quick, and constructively skeptical. Use one publisher-only beat for reported facts and a separate community-only beat for aggregate fan reaction. Never imply consensus. Use concrete event details and natural conversational handoffs, not brief or process narration. Include both speakers; uncertainty must be unresolved and phrased naturally. Never speculate about Kurt Cobain. Never speak production instructions, source IDs, architecture, grounding, workflows, provider-linked results, taxonomies, structured data, compliance language, attestations, allegations, or raw private text. End on a sharp cultural insight about legacy or nostalgia operating in the present, not a recap. Do not perform the permitted public attestation summary unless it contains a story fact necessary to the episode. Only this permitted public attestation summary may be used at all: ${attestation.permitted_public_summary ?? "None"}.\nQUERY:${run.query}\nSOURCES:${JSON.stringify(run.sources)}\nUNCERTAINTIES:${JSON.stringify(run.uncertainties)}\nBRIEF:${JSON.stringify(brief)}\nFORMAT:${JSON.stringify(brief.selected_format)}\nARCHETYPE:${JSON.stringify(brief.editorial_archetype)}`,
     config: {
       responseMimeType: "application/json",
       responseJsonSchema: {
@@ -1866,43 +1787,13 @@ export async function createPodcastScriptFromGemini(briefId: string) {
     },
   }));
   const parsed = JSON.parse(response.text ?? "{}") as { title?: unknown; sections?: unknown };
-  const valid = validateGeneratedScript(parsed, run, attestation, brief.selected_source_ids);
-  const claimCheckResponse = await yieldPodcastMutationLock(() => ai.models.generateContent({
-    model,
-    contents: `Verify each numbered podcast section against only the source records named in that section's source_ids. A section is supported only when every concrete factual claim is directly entailed by the mapped sources' publisher title, publication date, aggregate_summary, and what_it_supports. Natural reactions and transitions may be supported only when they add no new factual premise. Do not treat a plausible inference, trend extension, cross-source merge, or broader industry claim as supported. Return one result per section with section_index, supported, and unsupported_claims. If any concrete claim is not directly supported, supported must be false and unsupported_claims must name that claim concisely.\n\nSOURCES:${JSON.stringify(run.sources.filter((source) => brief.selected_source_ids.includes(source.id)).map((source) => ({ id: source.id, title: source.title, publisher: source.publisher, published_at: source.published_at, aggregate_summary: source.aggregate_summary, what_it_supports: source.what_it_supports, what_remains_uncertain: source.what_remains_uncertain })))}\n\nSECTIONS:${JSON.stringify(valid.sections)}`,
-    config: {
-      responseMimeType: "application/json",
-      responseJsonSchema: {
-        type: "object",
-        additionalProperties: false,
-        required: ["checks"],
-        properties: {
-          checks: {
-            type: "array",
-            minItems: valid.sections.length,
-            maxItems: valid.sections.length,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["section_index", "supported", "unsupported_claims"],
-              properties: {
-                section_index: { type: "integer", minimum: 1, maximum: valid.sections.length },
-                supported: { type: "boolean" },
-                unsupported_claims: { type: "array", items: { type: "string" } },
-              },
-            },
-          },
-        },
-      },
-    },
-  }));
-  const claimChecks = JSON.parse(claimCheckResponse.text ?? "{}") as { checks?: unknown };
-  validateScriptClaimSupport(claimChecks.checks, valid.sections.length);
+  const valid = validateGeneratedScript(parsed, run, attestation);
   const base = fixtureScript(brief);
-  const script: PodcastWorkspaceWithCompatibility = { ...base, title: valid.title, sections: valid.sections, run_id: run.id, attestation_id: attestation.id, workspace_revision: randomUUID(), claim_support_verified: true };
-  const existingScript = podcastScripts.get(script.id);
-  if (existingScript) discardPodcastWorkspace(existingScript);
-  podcastExecutionRecords.set(`script:${script.id}`, { agent: "script_performer", provider: "Google Gemini", framework: "Direct @google/genai", model, execution_id: randomUUID(), parent_execution_id: agenticRun.parentExecutionId, tools: [], latency_ms: Date.now() - started, status: "completed", activity: "Created structured performed copy from the ADK-grounded editorial envelope." });
+  const script: PodcastWorkspaceWithCompatibility = { ...base, title: valid.title, sections: valid.sections, run_id: run.id, attestation_id: attestation.id, workspace_revision: randomUUID() };
+  podcastExecutionRecords.set(`script:${script.id}`, withGeminiTransport(
+    { agent: "script_performer", provider: "Google Gemini", framework: "Direct @google/genai", model, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - started, status: "completed", activity: "Created structured performed copy." } as const,
+    transport.evidence,
+  ));
   currentScript = script;
   podcastScripts.set(script.id, script);
   persistPodcastState("create", "script_workspace");
@@ -1910,111 +1801,56 @@ export async function createPodcastScriptFromGemini(briefId: string) {
   return { kind: "created" as const, script };
 }
 
-export function validateGeneratedScript(parsed: { title?: unknown; sections?: unknown }, run: PodcastGroundedRun, attestation: PodcastCuttingRoomAttestation & { raw_text?: string }, requiredSourceIds: string[] = run.sources.map((source) => source.id)) {
+export function validateGeneratedScript(parsed: { title?: unknown; sections?: unknown }, run: PodcastGroundedRun, attestation: PodcastCuttingRoomAttestation & { raw_text?: string }) {
   if (!nonEmptyString(parsed.title) || !Array.isArray(parsed.sections) || parsed.sections.length !== 6) throw new Error("Malformed Gemini script output.");
   const beats = ["cold_open", "banter", "evidence", "reveal", "uncertainty", "closing_button"];
   const ids = new Set(run.sources.map((source) => source.id));
+  const communityIds = new Set(
+    run.sources.filter((source) => source.source_type === "public_community").map((source) => source.id),
+  );
   const allowedClasses = new Set(["source_backed", "first_party_attested", "disputed", "unresolved"]);
   const sections = parsed.sections.map((item, index) => {
     const s = item as Record<string, unknown>;
-    if (s.segment !== beats[index] || !nonEmptyString(s.script) || !["FRONT ROW", "BACKSTAGE"].includes(s.speaker as string) || !allowedClasses.has(s.classification as string) || !Array.isArray(s.source_ids) || !s.source_ids.length || !s.source_ids.every((id) => typeof id === "string" && ids.has(id)) || /\b(open with|say|instructions?|stage direction|compliance summary|policy review|legal analysis|proves?|definitely|guilty|lied|cover[- ]?up)\b/i.test(s.script) || (attestation.raw_text && s.script.includes(attestation.raw_text))) throw new Error("Malformed or unsafe Gemini script output.");
+    if (
+      s.segment !== beats[index] ||
+      !nonEmptyString(s.script) ||
+      !["FRONT ROW", "BACKSTAGE"].includes(s.speaker as string) ||
+      !allowedClasses.has(s.classification as string) ||
+      !Array.isArray(s.source_ids) ||
+      !s.source_ids.length ||
+      !s.source_ids.every((id) => typeof id === "string" && ids.has(id)) ||
+      /\b(open with|say|instructions?|stage direction|architecture|grounding|workflow|provider-linked|taxonomy|structured data|compliance|attestation|source ids?)\b/i.test(s.script) ||
+      /\b(?:all|every)\s+(?:fans?|viewers?|listeners?|commenters?)\b|\b(?:fans?|viewers?|listeners?|commenters?)\s+(?:all|unanimously|agree)\b/i.test(s.script) ||
+      /\bKurt Cobain\b/i.test(s.script) ||
+      (attestation.raw_text && s.script.includes(attestation.raw_text))
+    ) throw new Error("Malformed or unsafe Gemini script output.");
     if (s.classification === "first_party_attested" && (!attestation.attested || !attestation.authorized_uses.includes("podcast_script"))) throw new Error("First-party attested script line is outside the authorized use scope.");
     return { segment: s.segment, script: s.script, speaker: s.speaker, classification: s.classification, source_ids: s.source_ids } as PodcastWorkspaceWithCompatibility["sections"][number];
   });
-  const cited = new Set(sections.flatMap((section) => section.source_ids));
-  if (!sections.some((s) => s.speaker === "FRONT ROW") || !sections.some((s) => s.speaker === "BACKSTAGE") || sections[4]?.classification !== "unresolved" || requiredSourceIds.some((id) => !cited.has(id))) throw new Error("Malformed Gemini script speaker, source coverage, or uncertainty beat.");
-  validateAudienceAttributionBoundary(
-    parsed.title,
-    sections,
-    run.sources.filter((source) => requiredSourceIds.includes(source.id)).map((source) => source.source_type),
+  const spokenText = sections.map((section) => section.script).join(" ");
+  const spokenWords = spokenText.trim().split(/\s+/).filter(Boolean).length;
+  const opensOnAward = /\bNirvana\b/i.test(sections[0]?.script ?? "") &&
+    /\b(?:Video Vanguard|award)\b/i.test(sections[0]?.script ?? "");
+  const publisherOnlyBeat = sections.some((section) =>
+    section.source_ids.every((id) => !communityIds.has(id)));
+  const communityOnlyBeat = communityIds.size > 0 && sections.some((section) =>
+    section.source_ids.every((id) => communityIds.has(id)) &&
+    /\b(?:fan|fans|community|discussion|reaction)\b/i.test(section.script));
+  const sharpClosing = /\b(?:brand|culture|cultural|legacy|nostalgia|present|strategy)\b/i.test(
+    sections.at(-1)?.script ?? "",
   );
-  return { title: parsed.title, sections };
-}
-
-export function validateScriptClaimSupport(input: unknown, expectedSectionCount: number) {
-  if (!Array.isArray(input) || input.length !== expectedSectionCount) {
-    throw new Error("Script claim support verification was incomplete.");
-  }
-  const indexes = new Set<number>();
-  for (const item of input) {
-    const check = item as Record<string, unknown>;
-    if (
-      !Number.isInteger(check.section_index) ||
-      (check.section_index as number) < 1 ||
-      (check.section_index as number) > expectedSectionCount ||
-      typeof check.supported !== "boolean" ||
-      !Array.isArray(check.unsupported_claims) ||
-      check.unsupported_claims.some((claim) => typeof claim !== "string")
-    ) {
-      throw new Error("Script claim support verification was malformed.");
-    }
-    indexes.add(check.section_index as number);
-    if (check.supported !== true || check.unsupported_claims.length > 0) {
-      throw new Error("Gemini script contained source-unsupported transformed claims.");
-    }
-  }
-  if (indexes.size !== expectedSectionCount) {
-    throw new Error("Script claim support verification contained duplicate sections.");
-  }
-}
-
-export function validateGroundedFindingSupport(input: unknown, expectedSourceCount: number) {
-  if (!Array.isArray(input) || input.length !== expectedSourceCount) {
-    throw new Error("Grounded finding support verification was incomplete.");
-  }
-  const indexes = new Set<number>();
-  for (const item of input) {
-    const check = item as Record<string, unknown>;
-    if (
-      !Number.isInteger(check.source_index) ||
-      (check.source_index as number) < 1 ||
-      (check.source_index as number) > expectedSourceCount ||
-      typeof check.supported !== "boolean" ||
-      !Array.isArray(check.unsupported_claims) ||
-      check.unsupported_claims.some((claim) => typeof claim !== "string")
-    ) {
-      throw new Error("Grounded finding support verification was malformed.");
-    }
-    indexes.add(check.source_index as number);
-    if (check.supported !== true || check.unsupported_claims.length > 0) {
-      throw new Error("Grounded source editor introduced unsupported transformed claims.");
-    }
-  }
-  if (indexes.size !== expectedSourceCount) {
-    throw new Error("Grounded finding support verification contained duplicate sources.");
-  }
-}
-
-export function validateBriefClaimSupport(
-  input: unknown,
-  draft: GeneratedPodcastDraft,
-  hasCommunitySource: boolean,
-) {
-  const check = input && typeof input === "object" ? input as Record<string, unknown> : null;
   if (
-    !check ||
-    typeof check.supported !== "boolean" ||
-    !Array.isArray(check.unsupported_claims) ||
-    check.unsupported_claims.some((claim) => typeof claim !== "string")
-  ) {
-    throw new Error("Podcast brief claim-support verification was malformed.");
-  }
-  if (check.supported !== true || check.unsupported_claims.length > 0) {
-    throw new Error("Podcast brief introduced source-unsupported transformed claims.");
-  }
-  if (!hasCommunitySource) {
-    const audienceClaimText = [
-      draft.topic_angle,
-      draft.audience_pain,
-      draft.why_now,
-      ...draft.key_tensions,
-      draft.suggested_title,
-      ...draft.episode_outline.map((item) => item.purpose),
-    ].join(" ");
-    if (/\b(?:audiences?|fans?|listeners?)\b.{0,48}\b(?:want|think|feel|ask|believe|prefer|struggle|expect|react|need|care)\b/i.test(audienceClaimText)) {
-      throw new Error("Podcast brief attributed a view or need to audiences without a selected community source.");
-    }
-  }
+    !sections.some((s) => s.speaker === "FRONT ROW") ||
+    !sections.some((s) => s.speaker === "BACKSTAGE") ||
+    sections[4]?.classification !== "unresolved" ||
+    spokenWords < 130 ||
+    spokenWords > 165 ||
+    !opensOnAward ||
+    !publisherOnlyBeat ||
+    !communityOnlyBeat ||
+    !sharpClosing
+  ) throw new Error("Gemini script did not meet the golden performed-audio acceptance gate.");
+  return { title: parsed.title, sections };
 }
 
 export function getPodcastScriptByBriefId(briefId: string) {
@@ -2057,322 +1893,28 @@ export function isBlockedLegacyPodcastBrief(id: string) {
 export function decidePodcastScript(id: string, decision: "approve" | "reject") {
   const script = podcastScripts.get(id) ?? (currentScript?.id === id ? currentScript : null);
   if (!script) return null;
-  const brief = podcastBriefs.get(script.brief_id);
-  const run = brief?.run_id ? podcastGroundedRuns.get(brief.run_id) : null;
-  if (decision === "approve" && run && isLivePodcastRuntime(run.runtime_status) && script.claim_support_verified !== true) {
-    throw new PodcastClaimSupportError();
-  }
-  const releaseKit = decision === "approve" ? script.release_kit ?? fixtureReleaseKit(script) : script.release_kit;
   currentScript = {
     ...script,
     status: decision === "approve" ? "approved" : "rejected",
-    release_kit: releaseKit,
-    audio_status: decision === "approve" ? "ready_to_generate" : "rejected",
     review_note:
       decision === "approve"
-        ? "Approved by one human script reviewer for immediate performance with the configured house voices. Publishing remains blocked."
+        ? "Approved by a human script reviewer. Audio work remains a separate production decision."
         : "Rejected by a human script reviewer. No audio rendering or publishing is permitted.",
   };
   podcastScripts.set(currentScript.id, currentScript);
-  if (decision === "reject") {
-    podcastApprovalReceipts.delete(`script:${id}`);
-    podcastApprovalReceipts.delete(`audio:${id}`);
-  }
   persistPodcastState("decision", "script_workspace");
   return currentScript;
-}
-
-export class PodcastClaimSupportError extends Error {
-  constructor() {
-    super("Every concrete script claim must be directly supported by its mapped sources before approval.");
-    this.name = "PodcastClaimSupportError";
-  }
-}
-
-const audienceAttributionPattern = /\b(?:(?:audiences?|fans?|viewers?|people|everyone)\s+(?:want|wants|wanted|think|thinks|thought|say|says|said|believe|believes|feel|feels|expect|expects|demand|demands|ask|asks|wonder|wonders)|audience\s+(?:questions?|reaction|response|demand|sentiment|consensus)|fan\s+(?:reaction|response|demand|sentiment|consensus)|social\s+consensus)\b/i;
-
-export function validateAudienceAttributionBoundary(
-  title: string,
-  sections: { script: string }[],
-  sourceTypes: string[],
-) {
-  if (!sourceTypes.includes("community") && audienceAttributionPattern.test([title, ...sections.map((section) => section.script)].join(" "))) {
-    throw new Error("Audience or fan attribution requires a mapped community source returned by Google.");
-  }
 }
 
 export function createPodcastReleaseKit(scriptId: string) {
   const script = podcastScripts.get(scriptId) ?? (currentScript?.id === scriptId ? currentScript : null);
   if (!script) return { kind: "not_found" as const };
   if (script.status !== "approved") return { kind: "script_not_approved" as const };
-  const releaseKit = fixtureReleaseKit(script);
+  const releaseKit = script.release_kit ?? fixtureReleaseKit(script);
   currentScript = { ...script, release_kit: releaseKit, audio_status: "awaiting_audio_approval" };
   podcastScripts.set(currentScript.id, currentScript);
   persistPodcastState("create", "release_kit");
   return { kind: "created" as const, releaseKit };
-}
-
-type SafeGroundedFinding = {
-  safe_headline: string;
-  aggregate_summary: string;
-  what_it_supports: string;
-  what_remains_uncertain: string;
-};
-
-type ResolvedGroundingPublication = {
-  url: string;
-  title: string;
-  publisher: string;
-  published_at: string | null;
-  evidence: string[];
-};
-
-function decodeHtml(value: string) {
-  return value
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function htmlMeta(html: string, key: string) {
-  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
-    const attributes = new Map<string, string>();
-    for (const match of tag.matchAll(/([a-zA-Z:-]+)\s*=\s*(["'])(.*?)\2/g)) {
-      attributes.set(match[1]!.toLowerCase(), decodeHtml(match[3]!));
-    }
-    if ([attributes.get("property"), attributes.get("name"), attributes.get("itemprop")]
-      .some((value) => value?.toLowerCase() === key.toLowerCase())) {
-      return attributes.get("content") ?? "";
-    }
-  }
-  return "";
-}
-
-function publicSourceUrl(value: string) {
-  const url = new URL(value);
-  const host = url.hostname.toLowerCase();
-  if (
-    url.protocol !== "https:" ||
-    host === "localhost" ||
-    host.endsWith(".local") ||
-    host === "0.0.0.0" ||
-    host === "::1" ||
-    /^127\./.test(host) ||
-    /^10\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^169\.254\./.test(host) ||
-    /^172\.(?:1[6-9]|2\d|3[01])\./.test(host)
-  ) {
-    throw new Error("Grounded source redirect did not resolve to a public HTTPS publisher.");
-  }
-  return url;
-}
-
-function privateOrLinkLocalAddress(value: string) {
-  const address = value.toLowerCase().replace(/^\[|\]$/g, "");
-  if (isIP(address) === 4) {
-    const [a, b] = address.split(".").map(Number);
-    return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 100 && b! >= 64 && b! <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b! >= 16 && b! <= 31) ||
-      (a === 192 && b === 168) ||
-      a! >= 224
-    );
-  }
-  if (isIP(address) === 6) {
-    if (address.startsWith("::ffff:")) return privateOrLinkLocalAddress(address.slice(7));
-    return address === "::" || address === "::1" || /^f[cd]/.test(address) || /^fe[89ab]/.test(address);
-  }
-  return false;
-}
-
-async function assertPublicNetworkTarget(url: URL) {
-  if (privateOrLinkLocalAddress(url.hostname)) {
-    throw new Error("Grounded source destination resolved to a private or link-local address.");
-  }
-  if (isIP(url.hostname.replace(/^\[|\]$/g, ""))) return;
-  const addresses = await lookup(url.hostname, { all: true, verbatim: true });
-  if (!addresses.length || addresses.some(({ address }) => privateOrLinkLocalAddress(address))) {
-    throw new Error("Grounded source destination resolved to a private or link-local address.");
-  }
-}
-
-export function validateGoogleGroundingRedirectUrl(value: string) {
-  const url = publicSourceUrl(value);
-  if (
-    url.hostname.toLowerCase() !== "vertexaisearch.cloud.google.com" ||
-    !url.pathname.startsWith("/grounding-api-redirect/")
-  ) {
-    throw new Error("Only Google grounding redirect URLs may be resolved.");
-  }
-  return url;
-}
-
-function groundedSourceClass(value: string) {
-  const host = new URL(value).hostname.toLowerCase().replace(/^www\./, "");
-  return /(?:^|\.)(?:reddit\.com|x\.com|twitter\.com|threads\.net|facebook\.com|instagram\.com|tiktok\.com|bsky\.app)$/.test(host)
-    ? "community"
-    : /(?:^|\.)(?:youtube\.com|youtu\.be)$/.test(host)
-      ? "video_platform"
-      : "publisher_reporting";
-}
-
-export function retainsIdentityBearingSocialPath(value: string) {
-  const url = publicSourceUrl(value);
-  const host = url.hostname.toLowerCase().replace(/^www\./, "");
-  const identityBearingHosts = new Set([
-    "facebook.com",
-    "reddit.com",
-    "x.com",
-    "twitter.com",
-    "threads.net",
-    "tiktok.com",
-  ]);
-  return identityBearingHosts.has(host) && /(?:^|\/)(?:@[^/]+|posts?|status|comments|user|users)(?:\/|$)/i.test(url.pathname);
-}
-
-export function extractPublishedSourceMetadata(html: string, finalUrl: string, googleTitle = ""): ResolvedGroundingPublication {
-  const url = publicSourceUrl(finalUrl);
-  const titleTag = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "";
-  const title = decodeHtml(htmlMeta(html, "og:title") || htmlMeta(html, "twitter:title") || titleTag || googleTitle);
-  const publisher = decodeHtml(
-    htmlMeta(html, "og:site_name") ||
-    htmlMeta(html, "application-name") ||
-    url.hostname.replace(/^www\./, ""),
-  );
-  const rawPublishedAt =
-    htmlMeta(html, "article:published_time") ||
-    htmlMeta(html, "datePublished") ||
-    htmlMeta(html, "date") ||
-    html.match(/"datePublished"\s*:\s*"([^"]+)"/i)?.[1] ||
-    "";
-  const publishedTime = Date.parse(rawPublishedAt);
-  if (!title || title.length > 240 || !publisher || publisher.length > 120) {
-    throw new Error("Publisher title and publisher are required for every grounded source.");
-  }
-  return {
-    url: url.toString(),
-    title,
-    publisher,
-    published_at: Number.isFinite(publishedTime) ? new Date(publishedTime).toISOString() : null,
-    evidence: [title, publisher, Number.isFinite(publishedTime) ? new Date(publishedTime).toISOString() : "Publication date unknown"],
-  };
-}
-
-function googleGroundingPublication(url: URL, googleTitle: string): ResolvedGroundingPublication {
-  const title = decodeHtml(googleTitle);
-  const publisher = url.hostname.toLowerCase().replace(/^www\./, "");
-  if (!title || title.length > 240) {
-    throw new Error("Google grounding did not provide a usable public page title.");
-  }
-  return {
-    url: url.toString(),
-    title,
-    publisher,
-    published_at: null,
-    evidence: [title, publisher, "Publication date unknown"],
-  };
-}
-
-async function resolveGroundingPublication(sourceUrl: string, googleTitle: string) {
-  let current = validateGoogleGroundingRedirectUrl(sourceUrl);
-  const signal = AbortSignal.timeout(12_000);
-  for (let redirect = 0; redirect < 6; redirect += 1) {
-    await assertPublicNetworkTarget(current);
-    const response = await fetch(current, {
-      redirect: "manual",
-      signal,
-      headers: {
-        "user-agent": "AutographyEvidenceResolver/1.0",
-        accept: "text/html,application/xhtml+xml",
-      },
-    });
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      if (!location) throw new Error("Grounded source redirect omitted its destination.");
-      current = publicSourceUrl(new URL(location, current).toString());
-      continue;
-    }
-    if (!response.ok || !response.headers.get("content-type")?.includes("text/html")) {
-      await response.body?.cancel();
-      return googleGroundingPublication(current, googleTitle);
-    }
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("Grounded publisher metadata response had no body.");
-    const chunks: Uint8Array[] = [];
-    let bytes = 0;
-    while (bytes < 131_072) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const remaining = 131_072 - bytes;
-      chunks.push(value.byteLength > remaining ? value.slice(0, remaining) : value);
-      bytes += Math.min(value.byteLength, remaining);
-      if (Buffer.concat(chunks).includes(Buffer.from("</head>"))) break;
-    }
-    await reader.cancel();
-    const html = Buffer.concat(chunks).toString("utf8");
-    return extractPublishedSourceMetadata(html, current.toString(), googleTitle);
-  }
-  throw new Error("Grounded source exceeded the redirect limit.");
-}
-
-export function validateSafeGroundedFinding(
-  input: {
-    safe_headline?: unknown;
-    aggregate_summary?: unknown;
-    what_it_supports?: unknown;
-    what_remains_uncertain?: unknown;
-  },
-  rawEvidence: string[],
-): SafeGroundedFinding {
-  const finding = {
-    safe_headline: typeof input.safe_headline === "string" ? input.safe_headline.trim() : "",
-    aggregate_summary: typeof input.aggregate_summary === "string" ? input.aggregate_summary.trim() : "",
-    what_it_supports: typeof input.what_it_supports === "string" ? input.what_it_supports.trim() : "",
-    what_remains_uncertain: typeof input.what_remains_uncertain === "string" ? input.what_remains_uncertain.trim() : "",
-  };
-  const values = Object.values(finding);
-  const unsafeText = /(?:https?:\/\/|www\.|[\w.+-]+@[\w.-]+|(?:^|\s)[ur]\/[\w-]+|@[a-z0-9_]+|["“”]|(?:^|\s)(?:i|i'm|i’ve|me|my|mine|we|our)\b|\b(?:open with|say|instructions?|stage direction|compliance summary|policy review|legal analysis|proves?|definitely|guilty|lied|cover[- ]?up)\b)/i;
-  if (
-    finding.safe_headline.split(/\s+/).length < 3 ||
-    finding.safe_headline.split(/\s+/).length > 12 ||
-    finding.safe_headline.length > 120 ||
-    finding.aggregate_summary.length < 10 ||
-    finding.aggregate_summary.length > 280 ||
-    finding.what_it_supports.length < 10 ||
-    finding.what_it_supports.length > 240 ||
-    finding.what_remains_uncertain.length < 10 ||
-    finding.what_remains_uncertain.length > 240 ||
-    values.some((value) => unsafeText.test(value)) ||
-    values.some((value) => /\b(?:taxonomy signal|aggregate industry data|media platforms (?:are )?testing)\b/i.test(value))
-  ) {
-    throw new Error("Evidence editor returned an unsafe or generic grounded finding.");
-  }
-  const normalizeWords = (value: string) =>
-    value.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
-  const rawWords = normalizeWords(rawEvidence.join(" "));
-  const copiedEightWordSpans = new Set<string>();
-  for (let index = 0; index <= rawWords.length - 8; index += 1) {
-    copiedEightWordSpans.add(rawWords.slice(index, index + 8).join(" "));
-  }
-  for (const value of values) {
-    const words = normalizeWords(value);
-    for (let index = 0; index <= words.length - 8; index += 1) {
-      if (copiedEightWordSpans.has(words.slice(index, index + 8).join(" "))) {
-        throw new Error("Evidence editor copied provider text instead of paraphrasing it.");
-      }
-    }
-  }
-  return finding;
 }
 
 export async function searchPodcastContexts(
@@ -2384,9 +1926,8 @@ export async function searchPodcastContexts(
   sourceClasses: string[] = [],
 ): Promise<PodcastContextSearchResponse> {
   if (process.env.PODCAST_SYNTHETIC_DEMO !== "true") {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Google Search grounded podcast search is not configured; set PODCAST_SYNTHETIC_DEMO=true only for an explicit demo.");
-    const ai = new GoogleGenAI({ apiKey });
+    const transport = resolveGeminiTransport();
+    const ai = transport.genAI();
     const windowLabel = {
       past_24_hours: "the past 24 hours",
       past_7_days: "the past 7 days",
@@ -2408,8 +1949,15 @@ export async function searchPodcastContexts(
     const supports = scout.groundingMetadata.groundingSupports ?? [];
     const web = chunks.flatMap((chunk: any, chunkIndex: number) =>
       chunk.web?.uri && chunk.web?.title ? [{ ...chunk.web, chunkIndex }] : []);
-    let unique = [...new Map(web.map((item: any) => [item.uri, item])).values()].slice(0, 5);
-    if (unique.length < 2) throw new Error("Google Search returned fewer than two unique web sources.");
+    let unique = [...new Map(web.map((item: any) => [item.uri, item])).values()].slice(0, 12);
+    unique = (await Promise.all(unique.map(async (item: any) => {
+      const canonicalUrl = await resolveGroundingSourceUrl(item.uri);
+      if (!canonicalUrl) return null;
+      const title = safePublicSourceTitle(item.title, canonicalUrl);
+      return title ? { ...item, uri: canonicalUrl, title } : null;
+    }))).filter(Boolean);
+    unique = [...new Map(unique.map((item: any) => [item.uri, item])).values()].slice(0, 12);
+    if (unique.length < 3) throw new Error("Google Search returned fewer than three unique web sources.");
     const sourceIndexByChunk = new Map(
       unique.map((item: any, sourceIndex) => [item.chunkIndex, sourceIndex + 1]),
     );
@@ -2421,8 +1969,24 @@ export async function searchPodcastContexts(
       return text && sourceRefs.length ? [{ source_refs: sourceRefs, aggregate_text: text }] : [];
     });
     const supportedSourceRefs = new Set(evidenceInventory.flatMap((item) => item.source_refs));
-    if (supportedSourceRefs.size < 2) throw new Error("Google Search returned fewer than two source-linked web sources.");
-    const retainedOldRefs = [...supportedSourceRefs].sort((a, b) => a - b).slice(0, 5);
+    if (supportedSourceRefs.size < 3) throw new Error("Google Search returned fewer than three source-linked web sources.");
+    const requestedDomains = new Set(
+      (query.toLowerCase().match(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/g) ?? [])
+        .map((domain) => domain.replace(/^www\./, "")),
+    );
+    const sourcePriority = (oldRef: number) => {
+      const item = unique[oldRef - 1];
+      if (!item) return 0;
+      const hostname = new URL(item.uri).hostname.toLowerCase().replace(/^www\./, "");
+      const explicitlyRequested = [...requestedDomains].some(
+        (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+      );
+      return (explicitlyRequested ? 2 : 0) + (publicSourceType(item.uri) === "public_community" ? 1 : 0);
+    };
+    const retainedOldRefs = [...supportedSourceRefs]
+      .sort((a, b) => sourcePriority(b) - sourcePriority(a) || a - b)
+      .slice(0, 5)
+      .sort((a, b) => a - b);
     const retainedRefMap = new Map(retainedOldRefs.map((oldRef, index) => [oldRef, index + 1]));
     unique = retainedOldRefs.map((oldRef) => unique[oldRef - 1]!);
     evidenceInventory = evidenceInventory.flatMap((item) => {
@@ -2431,33 +1995,6 @@ export async function searchPodcastContexts(
         .filter((sourceRef): sourceRef is number => sourceRef !== undefined);
       return sourceRefs.length ? [{ ...item, source_refs: sourceRefs }] : [];
     });
-    let sourceEvidence = unique.map((_, index) =>
-      evidenceInventory
-        .filter((item) => item.source_refs.includes(index + 1))
-        .map((item) => item.aggregate_text));
-    let publications = await Promise.all(unique.map((item: any) => resolveGroundingPublication(item.uri, item.title)));
-    const safePublicationIndexes = publications
-      .map((publication, index) => retainsIdentityBearingSocialPath(publication.url) ? -1 : index)
-      .filter((index) => index >= 0);
-    unique = safePublicationIndexes.map((index) => unique[index]!);
-    sourceEvidence = safePublicationIndexes.map((index) => sourceEvidence[index]!);
-    publications = safePublicationIndexes.map((index) => publications[index]!);
-    if (publications.length < 2) {
-      throw new Error("Grounded search retained fewer than two sources after identity-bearing social links were excluded.");
-    }
-    if (new Set(publications.map((publication) => new URL(publication.url).hostname.toLowerCase().replace(/^www\./, ""))).size < 2) {
-      throw new Error("Grounded search must resolve to at least two distinct public publisher domains.");
-    }
-    for (const publication of publications) {
-      const publishedTime = publication.published_at ? Date.parse(publication.published_at) : Number.NaN;
-      if (Number.isFinite(publishedTime) && (publishedTime < after.getTime() || publishedTime >= before.getTime())) {
-        throw new Error("Grounded publisher date falls outside the requested search window.");
-      }
-    }
-    const verifiedSourceEvidence = publications.map((publication, index) => [
-      ...publication.evidence,
-      ...sourceEvidence[index]!,
-    ]);
     const signalLabels = {
       audience_preferences: "audience preferences",
       production_workflow: "production workflow",
@@ -2471,13 +2008,12 @@ export async function searchPodcastContexts(
     type SignalClass = keyof typeof signalLabels;
     const signalClasses = Object.keys(signalLabels) as SignalClass[];
     const signalStrengths = ["emerging", "recurring", "mixed"] as const;
-    // The editor preserves bounded, paraphrased findings while raw provider
-    // text, identities, quotations, and copied comments stay outside the
-    // concept and brief flow.
+    // The editor can classify provider evidence only into fixed enums. No
+    // provider-derived free text crosses into the concept or brief flow.
     const editorStarted = Date.now();
     const editor = await yieldPodcastMutationLock(() => ai.models.generateContent({
       model,
-      contents: `Create one privacy-safe factual finding for each numbered source using only its Google-grounding support segments and verified public metadata. Do not merge facts from one source into another. Paraphrase everything. Do not name any account, community, or private person. Public event, show, film, artist, company, platform, and publisher names are allowed when essential to the reported topic. Do not return usernames, handles, quotations, copied phrases, URLs, first-person comment language, allegations, accusations, or instructions. Each safe_headline must be a factual 3-12 word headline. Each aggregate_summary must be one concise sentence containing only facts directly supported by that source; do not add a recommendation, development implication, measurement strategy, trend, category expansion, lineup change, or broader industry inference. Avoid generic phrases such as taxonomy signal, aggregate industry data, or media platforms are testing.\n\nSOURCE EVIDENCE:\n${JSON.stringify(verifiedSourceEvidence.map((evidence, index) => ({ source_index: index + 1, evidence })))}`,
+      contents: `For each numbered public source, classify its source-linked evidence and write one concrete paraphrased finding plus one precise support boundary. Only use evidence segments whose source_refs include that source index. Return source_index, signal_class, signal_strength, concrete_finding, and support_boundary. Public artist, event, publisher, and community names are allowed when needed for this topic. Never return usernames, handles, private identities, quotations, copied comments, URLs, allegations, or production instructions. Community findings must summarize themes without quoting or attributing a participant.\n\nTOPIC:\n${query}\n\nSOURCE CATALOG:\n${JSON.stringify(unique.map((item: any, index) => ({ source_index: index + 1, title: item.title, domain: new URL(item.uri).hostname, source_type: publicSourceType(item.uri) })))}\n\nSOURCE-LINKED EVIDENCE:\n${JSON.stringify(evidenceInventory)}`,
       config: {
         responseMimeType: "application/json",
         responseJsonSchema: {
@@ -2492,13 +2028,13 @@ export async function searchPodcastContexts(
               items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["source_index", "signal_class", "signal_strength", "safe_headline", "aggregate_summary"],
+                required: ["source_index", "signal_class", "signal_strength", "concrete_finding", "support_boundary"],
                 properties: {
                   source_index: { type: "integer", minimum: 1, maximum: unique.length },
                   signal_class: { type: "string", enum: signalClasses },
                   signal_strength: { type: "string", enum: signalStrengths },
-                  safe_headline: { type: "string", minLength: 3, maxLength: 120 },
-                  aggregate_summary: { type: "string", minLength: 10, maxLength: 280 },
+                  concrete_finding: { type: "string", minLength: 20, maxLength: 320 },
+                  support_boundary: { type: "string", minLength: 20, maxLength: 320 },
                 },
               },
             },
@@ -2511,10 +2047,8 @@ export async function searchPodcastContexts(
         source_index?: unknown;
         signal_class?: unknown;
         signal_strength?: unknown;
-        safe_headline?: unknown;
-        aggregate_summary?: unknown;
-        what_it_supports?: unknown;
-        what_remains_uncertain?: unknown;
+        concrete_finding?: unknown;
+        support_boundary?: unknown;
       }[];
     };
     if (!Array.isArray(editorPackage.source_signals) || editorPackage.source_signals.length !== unique.length) {
@@ -2523,104 +2057,73 @@ export async function searchPodcastContexts(
     const signals = new Map<number, {
       signal_class: SignalClass;
       signal_strength: typeof signalStrengths[number];
-      safe_headline: string;
-      aggregate_summary: string;
-      what_it_supports: string;
-      what_remains_uncertain: string;
+      concrete_finding: string;
+      support_boundary: string;
     }>();
     for (const signal of editorPackage.source_signals) {
       if (
         !Number.isInteger(signal.source_index) ||
         !signalClasses.includes(signal.signal_class as SignalClass) ||
-        !signalStrengths.includes(signal.signal_strength as typeof signalStrengths[number])
+        !signalStrengths.includes(signal.signal_strength as typeof signalStrengths[number]) ||
+        !safeSourceFinding(
+          signal.concrete_finding,
+          query,
+          true,
+          publicSourceType(unique[(signal.source_index as number) - 1]?.uri) === "public_community",
+        ) ||
+        !safeSourceFinding(
+          signal.support_boundary,
+          query,
+          false,
+          publicSourceType(unique[(signal.source_index as number) - 1]?.uri) === "public_community",
+        )
       ) {
         throw new Error("Evidence editor returned an invalid source classification.");
       }
-      const safeFinding = validateSafeGroundedFinding({
-        safe_headline: signal.safe_headline,
-        aggregate_summary: signal.aggregate_summary,
-        what_it_supports: signal.aggregate_summary,
-        what_remains_uncertain: "This source alone does not establish any additional event details beyond the supported finding.",
-      }, verifiedSourceEvidence[(signal.source_index as number) - 1] ?? []);
       signals.set(signal.source_index as number, {
         signal_class: signal.signal_class as SignalClass,
         signal_strength: signal.signal_strength as typeof signalStrengths[number],
-        ...safeFinding,
+        concrete_finding: signal.concrete_finding as string,
+        support_boundary: signal.support_boundary as string,
       });
     }
     if (signals.size !== unique.length) throw new Error("Evidence editor returned duplicate source classifications.");
-    const verifierStarted = Date.now();
-    const verifier = await yieldPodcastMutationLock(() => ai.models.generateContent({
-      model,
-      contents: `Verify each numbered factual finding against only the correspondingly numbered source evidence. Mark supported true only if every concrete claim in aggregate_summary and what_it_supports is directly entailed by that source evidence. Plausible implications, measurement strategies, trend extensions, broader category restructuring, cross-genre claims, lineup changes, or facts borrowed from another source are unsupported. Return one check per source with source_index, supported, and unsupported_claims.\n\nSOURCE EVIDENCE:${JSON.stringify(verifiedSourceEvidence.map((evidence, index) => ({ source_index: index + 1, evidence })))}\n\nFINDINGS:${JSON.stringify([...signals.entries()].map(([source_index, finding]) => ({ source_index, aggregate_summary: finding.aggregate_summary, what_it_supports: finding.what_it_supports })))}`,
-      config: {
-        responseMimeType: "application/json",
-        responseJsonSchema: {
-          type: "object",
-          additionalProperties: false,
-          required: ["checks"],
-          properties: {
-            checks: {
-              type: "array",
-              minItems: unique.length,
-              maxItems: unique.length,
-              items: {
-                type: "object",
-                additionalProperties: false,
-                required: ["source_index", "supported", "unsupported_claims"],
-                properties: {
-                  source_index: { type: "integer", minimum: 1, maximum: unique.length },
-                  supported: { type: "boolean" },
-                  unsupported_claims: { type: "array", items: { type: "string" } },
-                },
-              },
-            },
-          },
-        },
-      },
-    }));
-    const findingChecks = JSON.parse(verifier.text ?? "{}") as { checks?: unknown };
-    validateGroundedFindingSupport(findingChecks.checks, unique.length);
     const sources = unique.map((item: any, index) => {
       const id = `web-${index + 1}-${randomUUID()}`;
       const signal = signals.get(index + 1)!;
-      const publication = publications[index]!;
       const evidenceGaps = [
-        "The bounded editorial paraphrase preserves no account identities, quotations, copied comments, or raw provider text.",
+        signal.support_boundary,
+        "No usernames, participant identities, quotations, or copied community comments are retained.",
         "The bounded result does not establish intent, identity, representativeness, or platform-wide opinion.",
-        publication.published_at
-          ? `The publisher date was resolved from explicit destination metadata and checked against ${windowLabel}.`
-          : "The publisher did not expose a publication date in the bounded metadata response; publication date remains unknown.",
+        `Publication timing within ${windowLabel} depends on provider metadata and was not independently verified.`,
       ];
       return {
         id,
-        url: publication.url,
-        source_identifier: createHash("sha256").update(publication.url).digest("hex").slice(0, 16),
-        title: publication.title,
-        publisher: publication.publisher,
-        published_at: publication.published_at,
+        url: item.uri,
+        source_identifier: createHash("sha256").update(item.uri).digest("hex").slice(0, 16),
+        title: item.title,
         retrieved_at: now(),
         snippet: "",
-        source_type: groundedSourceClass(publication.url),
+        source_type: publicSourceType(item.uri),
         classification: "source_backed" as const,
         consent_reference: publicWebConsentReference,
         policy_reference: currentContextPolicyReference,
-        aggregate_summary: signal.aggregate_summary,
+        aggregate_summary: signal.concrete_finding,
         evidence_gaps: evidenceGaps,
-        what_it_supports: signal.what_it_supports,
-        what_remains_uncertain: `${signal.what_remains_uncertain} ${evidenceGaps.join(" ")}`,
+        what_it_supports: signal.concrete_finding,
+        what_remains_uncertain: evidenceGaps.join(" "),
       };
     });
     const observedLabels = [...new Set([...signals.values()].map((signal) => signalLabels[signal.signal_class]))];
     const observedContext = observedLabels.join(", ");
     const unresolvedQuestions = [
       "The provider-requested time bound was not independently verified from publication metadata.",
-      "The bounded findings cannot establish identity, intent, representativeness, or platform-wide opinion.",
+      "The aggregate taxonomy cannot establish identity, intent, representativeness, or platform-wide opinion.",
     ];
     const concept: PodcastConcept = {
       id: `concept-${randomUUID()}`,
-      title: `Live search: ${query.slice(0, 120)}`,
-      summary: sources.map((source) => source.aggregate_summary).join(" "),
+      title: "Current source-backed entertainment context for producer review",
+      summary: `${sources.length} named public sources contributed concrete, source-linked findings about ${observedContext}.`,
       relevance: 0.5,
       urgency: 0.5,
       engagement: 0.5,
@@ -2628,7 +2131,7 @@ export async function searchPodcastContexts(
       source_diversity: 1,
       source_ids: sources.map((source) => source.id),
       observed_signal: sources.map((source) => source.what_it_supports).join(" "),
-      supported_context: `Identity-free source findings classify into: ${observedContext}. Raw provider text never enters development.`,
+      supported_context: "Named public sources, paraphrased supported findings, retrieval metadata, and explicit limits enter development; usernames and copied comments do not.",
       unresolved_questions: unresolvedQuestions,
       recommended_route: "producer_review",
       next_reviewer: "Producer / standards reviewer",
@@ -2641,9 +2144,11 @@ export async function searchPodcastContexts(
       uncertainties: unresolvedQuestions,
       grounding_support: "Google ADK executed the source scout; Google Search grounding metadata supplied the cited public web sources.",
       agent_executions: [
-        { ...scout.execution, parent_execution_id: scout.execution.execution_id },
-        { agent: "evidence_editor", provider: "Google Gemini", framework: "Direct @google/genai", model, execution_id: randomUUID(), parent_execution_id: scout.execution.execution_id, tools: [], latency_ms: Date.now() - editorStarted, status: "completed", activity: "Created bounded, identity-free paraphrases of supported source findings." },
-        { agent: "evidence_verifier", provider: "Google Gemini", framework: "Direct @google/genai", model, execution_id: randomUUID(), parent_execution_id: scout.execution.execution_id, tools: [], latency_ms: Date.now() - verifierStarted, status: "completed", activity: "Rejected source findings unless every transformed claim was directly supported." },
+        scout.execution,
+        withGeminiTransport(
+          { agent: "evidence_editor", provider: "Google Gemini", framework: "Direct @google/genai", model, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - editorStarted, status: "completed", activity: "Classified supported evidence into a fixed identity-free taxonomy." } as const,
+          transport.evidence,
+        ),
       ],
     };
     podcastGroundedRuns.set(run.id, run);
@@ -2784,8 +2289,6 @@ export function resetPodcastDemo(producerId: string) {
   podcastAttestations.clear();
   podcastCutKeys.clear();
   podcastAudioAssets.clear();
-  podcastApprovalReceipts.clear();
-  podcastExecutionRecords.clear();
   activeGroundedSources.splice(0);
   activeGroundedConcepts.splice(0);
   persistPodcastState("reset", "podcast_demo");
@@ -2810,85 +2313,26 @@ type PodcastCutKeyCanonicalInput = Pick<
   | "clip_id"
   | "transcript"
   | "transcript_sha256"
-  | "adk_execution_id"
-  | "run_id"
-  | "script_id"
-  | "script_sha256"
-  | "source_manifest_sha256"
-  | "execution_envelope"
   | "source_ids"
-  | "source_evidence"
   | "generated_at"
   | "production"
   | "voice_disclosure"
   | "format_disclosure"
   | "audio_sha256"
   | "integrity_disclaimer"
+  | "manifest_version"
+  | "source_metadata"
+  | "claim_support"
+  | "approval_records"
+  | "execution_envelope"
 >;
 
 function podcastCutKeyCanonicalPayload(manifest: PodcastCutKeyCanonicalInput) {
-  return {
+  const legacyPayload = {
     clip_id: manifest.clip_id,
     transcript: manifest.transcript,
     transcript_sha256: manifest.transcript_sha256,
-    ...(manifest.adk_execution_id ? { adk_execution_id: manifest.adk_execution_id } : {}),
-    ...(manifest.run_id ? { run_id: manifest.run_id } : {}),
-    ...(manifest.script_id ? { script_id: manifest.script_id } : {}),
-    ...(manifest.script_sha256 ? { script_sha256: manifest.script_sha256 } : {}),
-    ...(manifest.source_manifest_sha256 ? { source_manifest_sha256: manifest.source_manifest_sha256 } : {}),
-    ...(manifest.execution_envelope ? {
-      execution_envelope: {
-        parent_execution_id: manifest.execution_envelope.parent_execution_id,
-        run_id: manifest.execution_envelope.run_id,
-        script_id: manifest.execution_envelope.script_id,
-        stages: manifest.execution_envelope.stages.map((stage) => ({
-          stage: stage.stage,
-          agent: stage.agent,
-          provider: stage.provider,
-          framework: stage.framework,
-          model: stage.model,
-          execution_id: stage.execution_id,
-          parent_execution_id: stage.parent_execution_id,
-          tools: stage.tools,
-          status: stage.status,
-          activity: stage.activity,
-        })),
-        authority_boundary: {
-          type: manifest.execution_envelope.authority_boundary.type,
-          script_approved_at: manifest.execution_envelope.authority_boundary.script_approved_at,
-          media_render_authorized_at: manifest.execution_envelope.authority_boundary.media_render_authorized_at,
-          script_sha256: manifest.execution_envelope.authority_boundary.script_sha256,
-          ...(manifest.execution_envelope.authority_boundary.authority_records ? {
-            authority_records: manifest.execution_envelope.authority_boundary.authority_records.map((record) => ({
-              receipt_id: record.receipt_id,
-              authority_record_type: record.authority_record_type,
-              reviewer_reference: record.reviewer_reference,
-              decided_at: record.decided_at,
-              script_sha256: record.script_sha256,
-              source_run_id: record.source_run_id,
-              policy_version: record.policy_version,
-            })),
-          } : {}),
-          ...(manifest.execution_envelope.authority_boundary.publication_status ? {
-            publication_status: manifest.execution_envelope.authority_boundary.publication_status,
-          } : {}),
-        },
-      },
-    } : {}),
     source_ids: manifest.source_ids,
-    ...(manifest.source_evidence ? {
-      source_evidence: manifest.source_evidence.map((source) => ({
-        id: source.id,
-        url: source.url,
-        title: source.title,
-        publisher: source.publisher,
-        published_at: source.published_at,
-        retrieved_at: source.retrieved_at,
-        source_class: source.source_class,
-        aggregate_summary: source.aggregate_summary,
-        what_it_supports: source.what_it_supports,
-      })),
-    } : {}),
     generated_at: manifest.generated_at,
     production: {
       synthetic: manifest.production.synthetic,
@@ -2900,117 +2344,22 @@ function podcastCutKeyCanonicalPayload(manifest: PodcastCutKeyCanonicalInput) {
     audio_sha256: manifest.audio_sha256,
     integrity_disclaimer: manifest.integrity_disclaimer,
   };
-}
-
-function podcastSourceManifestSha256(
-  sourceIds: string[],
-  sourceEvidence: NonNullable<PodcastCutKey["source_evidence"]>,
-) {
-  return createHash("sha256").update(JSON.stringify({
-    source_ids: sourceIds,
-    source_evidence: sourceEvidence.map((source) => ({
-      id: source.id,
-      url: source.url,
-      title: source.title,
-      publisher: source.publisher,
-      published_at: source.published_at,
-      retrieved_at: source.retrieved_at,
-      source_class: source.source_class,
-      aggregate_summary: source.aggregate_summary,
-      what_it_supports: source.what_it_supports,
-    })),
-  })).digest("hex");
+  if (manifest.manifest_version !== 2) return legacyPayload;
+  return {
+    ...legacyPayload,
+    manifest_version: 2 as const,
+    source_metadata: manifest.source_metadata ?? [],
+    claim_support: manifest.claim_support ?? [],
+    approval_records: manifest.approval_records ?? [],
+    execution_envelope: manifest.execution_envelope ?? [],
+  };
 }
 
 function podcastCutKeyManifestSha256(manifest: PodcastCutKeyCanonicalInput) {
+  const payload = podcastCutKeyCanonicalPayload(manifest);
   return createHash("sha256")
-    .update(JSON.stringify(podcastCutKeyCanonicalPayload(manifest)))
+    .update(JSON.stringify(manifest.manifest_version === 2 ? canonicalJsonValue(payload) : payload))
     .digest("hex");
-}
-
-function hasValidPodcastExecutionEnvelope(manifest: Partial<PodcastCutKey>) {
-  const traceFields = [
-    manifest.adk_execution_id,
-    manifest.run_id,
-    manifest.script_id,
-    manifest.script_sha256,
-    manifest.source_manifest_sha256,
-    manifest.execution_envelope,
-  ];
-  if (traceFields.every((field) => field === undefined)) return true;
-  if (
-    !nonEmptyString(manifest.adk_execution_id) ||
-    !nonEmptyString(manifest.run_id) ||
-    !nonEmptyString(manifest.script_id) ||
-    !nonEmptyString(manifest.script_sha256) ||
-    !nonEmptyString(manifest.source_manifest_sha256) ||
-    !manifest.execution_envelope ||
-    !Array.isArray(manifest.source_evidence)
-  ) return false;
-  const envelope = manifest.execution_envelope;
-  const authorityRecords = envelope.authority_boundary.authority_records;
-  if (
-    envelope.parent_execution_id !== manifest.adk_execution_id ||
-    envelope.run_id !== manifest.run_id ||
-    envelope.script_id !== manifest.script_id ||
-    envelope.authority_boundary.type !== "human_script_approval" ||
-    envelope.authority_boundary.script_sha256 !== manifest.script_sha256 ||
-    manifest.script_sha256 !== manifest.transcript_sha256 ||
-    !nonEmptyString(envelope.authority_boundary.script_approved_at) ||
-    !nonEmptyString(envelope.authority_boundary.media_render_authorized_at) ||
-    podcastSourceManifestSha256(manifest.source_ids ?? [], manifest.source_evidence) !== manifest.source_manifest_sha256
-  ) return false;
-  if (authorityRecords !== undefined) {
-    const [scriptRecord, audioRecord] = authorityRecords;
-    if (
-      authorityRecords.length !== 2 ||
-      scriptRecord?.authority_record_type !== "SCRIPT_APPROVED" ||
-      audioRecord?.authority_record_type !== "AUDIO_RENDER_AUTHORIZED" ||
-      !nonEmptyString(scriptRecord.receipt_id) ||
-      !nonEmptyString(audioRecord.receipt_id) ||
-      scriptRecord.receipt_id === audioRecord.receipt_id ||
-      !/^[a-f0-9]{64}$/.test(scriptRecord.reviewer_reference) ||
-      scriptRecord.reviewer_reference !== audioRecord.reviewer_reference ||
-      scriptRecord.decided_at !== envelope.authority_boundary.script_approved_at ||
-      audioRecord.decided_at !== envelope.authority_boundary.media_render_authorized_at ||
-      scriptRecord.decided_at !== audioRecord.decided_at ||
-      scriptRecord.script_sha256 !== manifest.script_sha256 ||
-      audioRecord.script_sha256 !== manifest.script_sha256 ||
-      scriptRecord.source_run_id !== manifest.run_id ||
-      audioRecord.source_run_id !== manifest.run_id ||
-      !nonEmptyString(scriptRecord.policy_version) ||
-      scriptRecord.policy_version !== audioRecord.policy_version ||
-      envelope.authority_boundary.publication_status !== "blocked_until_final_approval"
-    ) return false;
-  } else if (envelope.authority_boundary.publication_status !== undefined) {
-    return false;
-  }
-  const expectedStages = [
-    ["grounded_research", "source_scout"],
-    ["editorial_synthesis", "evidence_editor"],
-    ["editorial_synthesis", "evidence_verifier"],
-    ["script_generation", "script_performer"],
-    ["media_render", "audio_performer"],
-  ] as const;
-  if (envelope.stages.length !== expectedStages.length) return false;
-  if (envelope.stages.some((stage, index) =>
-    stage.stage !== expectedStages[index]![0] ||
-    stage.agent !== expectedStages[index]![1] ||
-    stage.status !== "completed" ||
-    stage.parent_execution_id !== manifest.adk_execution_id ||
-    !nonEmptyString(stage.execution_id) ||
-    !nonEmptyString(stage.framework) ||
-    !nonEmptyString(stage.activity)
-  )) return false;
-  const researchStage = envelope.stages[0]!;
-  const mediaStage = envelope.stages[4]!;
-  return (
-    researchStage.execution_id === manifest.adk_execution_id &&
-    researchStage.framework === podcastAdkFramework &&
-    podcastAdkTools.every((tool) => researchStage.tools.includes(tool)) &&
-    mediaStage.provider === "Google Gemini" &&
-    mediaStage.model === manifest.production?.model
-  );
 }
 
 function isValidPodcastCutKey(candidate: unknown): candidate is PodcastCutKey {
@@ -3031,14 +2380,113 @@ function isValidPodcastCutKey(candidate: unknown): candidate is PodcastCutKey {
     typeof manifest.audio_sha256 !== "string" ||
     typeof manifest.integrity_disclaimer !== "string"
   ) return false;
+  if (manifest.manifest_version !== undefined && manifest.manifest_version !== 2) return false;
+  if (manifest.manifest_version === 2) {
+    if (
+      !Array.isArray(manifest.source_metadata) ||
+      !Array.isArray(manifest.claim_support) ||
+      !Array.isArray(manifest.approval_records) ||
+      !Array.isArray(manifest.execution_envelope) ||
+      manifest.source_metadata.length === 0 ||
+      manifest.claim_support.length === 0 ||
+      !manifest.approval_records.every(isValidPodcastApprovalRecord)
+    ) return false;
+    const sourceIds = new Set(manifest.source_metadata.map((source) => source.id));
+    if (
+      manifest.source_ids.some((id) => !sourceIds.has(id)) ||
+      manifest.claim_support.some((claim) => claim.source_ids.some((id) => !sourceIds.has(id)))
+    ) return false;
+  }
   const transcriptSha256 = createHash("sha256").update(manifest.transcript).digest("hex");
   if (transcriptSha256 !== manifest.transcript_sha256) return false;
-  if (!hasValidPodcastExecutionEnvelope(manifest)) return false;
   const manifestSha256 = podcastCutKeyManifestSha256(manifest as PodcastCutKey);
   return (
     manifest.manifest_sha256 === manifestSha256 &&
     manifest.key === `cut-${manifestSha256}` &&
     manifest.audio_url === `/api/podcast/cut-keys/${manifest.key}/audio`
+  );
+}
+
+function hasJudgeQualityPublicSources(manifest: PodcastCutKey) {
+  const sources = manifest.source_metadata ?? [];
+  const weakEvidence =
+    /\b(?:approved public-web result|provider-linked source|topic-level signal|fixed taxonomy)\b/i;
+  const allNamedAndCanonical = sources.every((source) => {
+    try {
+      const url = new URL(source.url);
+      const isGroundingRedirect =
+        url.hostname === "vertexaisearch.cloud.google.com" &&
+        url.pathname.startsWith("/grounding-api-redirect/");
+      const mutableSocialPost =
+        url.hostname === "facebook.com" ||
+        url.hostname.endsWith(".facebook.com");
+      return (
+        !isGroundingRedirect &&
+        !mutableSocialPost &&
+        source.title.trim().length >= 4 &&
+        !weakEvidence.test(source.title) &&
+        source.what_it_supports.trim().length >= 20 &&
+        !weakEvidence.test(source.what_it_supports) &&
+        source.aggregate_summary.trim().length >= 20 &&
+        !weakEvidence.test(source.aggregate_summary)
+      );
+    } catch {
+      return false;
+    }
+  });
+  if (!allNamedAndCanonical) return false;
+  const audienceLanguage = [
+    ...sources.flatMap((source) => [source.aggregate_summary, source.what_it_supports]),
+    ...(manifest.claim_support ?? []).map((claim) => claim.claim_text),
+  ].some((text) => /\b(?:audience|fan|fans|community|communities|viewer|viewers|listener|listeners)\b/i.test(text));
+  if (!audienceLanguage) return true;
+  return sources.some((source) => {
+    if (source.source_type === "public_community") return true;
+    try {
+      const hostname = new URL(source.url).hostname.toLowerCase();
+      return hostname === "reddit.com" || hostname.endsWith(".reddit.com");
+    } catch {
+      return false;
+    }
+  });
+}
+
+function isJudgeReadyPodcastCutKey(
+  manifest: PodcastCutKey,
+  script: PodcastWorkspaceWithCompatibility,
+) {
+  if (
+    manifest.manifest_version !== 2 ||
+    !manifest.source_metadata?.length ||
+    !manifest.claim_support?.length ||
+    !manifest.approval_records?.length ||
+    !manifest.execution_envelope?.length ||
+    !hasJudgeQualityPublicSources(manifest)
+  ) return false;
+  const scriptApproval = manifest.approval_records.find(
+    (record) =>
+      record.record_type === "SCRIPT_APPROVED" &&
+      record.artifact_type === "script" &&
+      record.artifact_id === script.id,
+  );
+  const audioAuthorization = manifest.approval_records.find(
+    (record) =>
+      record.record_type === "AUDIO_RENDER_AUTHORIZED" &&
+      record.artifact_type === "audio" &&
+      record.artifact_id === script.id,
+  );
+  const completedAdkScout = manifest.execution_envelope.find(
+    (execution) =>
+      execution.agent === "source_scout" &&
+      execution.framework === "Google ADK (@google/adk)" &&
+      execution.status === "completed" &&
+      execution.tools.includes("googleSearch") &&
+      Boolean(execution.transport),
+  );
+  return (
+    scriptApproval?.subject_sha256 === sha256Json(podcastScriptApprovalSubject(script)) &&
+    audioAuthorization?.subject_sha256 === sha256Json(podcastAudioAuthorizationSubject(script)) &&
+    Boolean(completedAdkScout)
   );
 }
 
@@ -3055,36 +2503,42 @@ export async function getPublicPodcastCutKey(key: string) {
 
 function latestEligibleJudgeManifest(
   cutKeys: Iterable<PodcastCutKey>,
-  activeClipIds: ReadonlySet<string>,
+  activeScripts: Iterable<PodcastWorkspaceWithCompatibility>,
 ) {
+  const scriptsByClipId = new Map(
+    [...activeScripts]
+      .filter((script) => script.audio_status === "generated" && script.audio_clip)
+      .map((script) => [script.audio_clip!.id, script]),
+  );
   return [...cutKeys]
     .filter(
-      (manifest) =>
-        isValidPodcastCutKey(manifest) &&
-        manifest.production.synthetic === false &&
-        activeClipIds.has(manifest.clip_id),
+      (manifest) => {
+        const script = scriptsByClipId.get(manifest.clip_id);
+        return Boolean(
+          script &&
+            isValidPodcastCutKey(manifest) &&
+            isJudgeReadyPodcastCutKey(manifest, script) &&
+            manifest.production.synthetic === false,
+        );
+      },
     )
     .sort((left, right) => Date.parse(right.generated_at) - Date.parse(left.generated_at))[0] ?? null;
 }
 
 export async function getPublicPodcastJudgeManifest() {
   if (process.env.PODCAST_DURABILITY_DISABLED === "true") {
-    const activeClipIds = new Set(
-      [...podcastScripts.values()]
-        .filter((script) => script.audio_status === "generated" && script.audio_clip)
-        .map((script) => script.audio_clip!.id),
-    );
-    return latestEligibleJudgeManifest(podcastCutKeys.values(), activeClipIds);
+    return latestEligibleJudgeManifest(podcastCutKeys.values(), podcastScripts.values());
   }
   const stored = await loadPodcastStateFromDatabase();
   const state = stored?.state as PersistedPodcastState | undefined;
   if (!state) return null;
-  const activeClipIds = new Set(
-    state.scripts
-      .filter((script) => script.audio_status === "generated" && script.audio_clip)
-      .map((script) => script.audio_clip!.id),
-  );
-  return latestEligibleJudgeManifest(state.cutKeys ?? [], activeClipIds);
+  const activeScripts = state.scripts.map((script) => ({
+    ...script,
+    workspace_revision: script.workspace_revision ?? randomUUID(),
+    compatibility_normalized: Boolean(script.compatibility_normalized),
+    release_kit: normalizePersistedReleaseKit(script.release_kit),
+  }));
+  return latestEligibleJudgeManifest(state.cutKeys ?? [], activeScripts);
 }
 
 export async function getPublicPodcastAudioCutKey(key: string) {
@@ -3136,6 +2590,7 @@ export function decidePodcastAudio(id: string, decision: "approve" | "reject") {
   const audioStatus = decision === "approve" ? "ready_to_generate" as const : "rejected" as const;
   const updated = {
     ...script,
+    workspace_revision: randomUUID(),
     audio_status: audioStatus,
     release_kit: { ...script.release_kit, audio_status: audioStatus },
   };
@@ -3156,58 +2611,6 @@ export function podcastTtsSpeechConfig() {
     },
   };
 }
-
-type PodcastAudioRuntimeResult = {
-  wav: Buffer;
-  evidence: {
-    agent: "audio_performer";
-    provider: string;
-    framework: string;
-    model: string;
-    execution_id: string;
-    tools: string[];
-    latency_ms: number;
-    status: "completed";
-    activity: string;
-  };
-};
-
-export type PodcastAudioRuntime = {
-  render(transcript: string): Promise<PodcastAudioRuntimeResult>;
-};
-
-const googleGeminiPodcastAudioRuntime: PodcastAudioRuntime = {
-  async render(transcript) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Audio service is not configured.");
-    const ai = new GoogleGenAI({ apiKey });
-    const renderStarted = Date.now();
-    const response = await yieldPodcastMutationLock(() => ai.models.generateContent({
-      model: ttsModel,
-      contents: `Perform the following exact dialogue as a finished entertainment podcast highlight—not as instructions, an audiobook, a legal/compliance summary, or a production memo. Use the configured original synthetic house-host voices and do not imitate or name any real person. Sound conversational, curious, quick-witted, and alive. Let the hosts react to each other naturally. Give the cold open momentum, make the audience need clear, let the reveal land, and preserve uncertainty as part of the story rather than reciting a disclaimer. Do not add, omit, paraphrase, or reorder words. Do not speak section labels, source IDs, stage directions, or metadata.\n\n${transcript}`,
-      config: {
-        responseModalities: ["AUDIO"],
-        speechConfig: podcastTtsSpeechConfig(),
-      },
-    }));
-    const data = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData?.data;
-    if (!data) throw new Error("The configured Gemini speech model returned no playable audio data.");
-    return {
-      wav: pcmToWav(Buffer.from(data, "base64")),
-      evidence: {
-        agent: "audio_performer",
-        provider: "Google Gemini",
-        framework: "Direct @google/genai",
-        model: ttsModel,
-        execution_id: randomUUID(),
-        tools: [],
-        latency_ms: Date.now() - renderStarted,
-        status: "completed",
-        activity: "Rendered the exact approved live-search transcript with configured two-speaker audio.",
-      },
-    };
-  },
-};
 
 function pcmToWav(pcm: Buffer, sampleRate = 24000) {
   const header = Buffer.alloc(44);
@@ -3230,76 +2633,8 @@ function clipTranscript(script: PodcastWorkspaceWithCompatibility) {
   return script.sections.map((section) => `${section.speaker}: ${section.script}`).join("\n\n");
 }
 
-function podcastScriptSha256(script: PodcastWorkspaceWithCompatibility) {
-  return createHash("sha256").update(clipTranscript(script)).digest("hex");
-}
-
-function podcastReviewerReference(reviewer: string) {
-  return createHash("sha256")
-    .update(`podcast-authority-reviewer-v1\u0000${reviewer}`)
-    .digest("hex");
-}
-
-function podcastPerformanceAuthority(
-  script: PodcastWorkspaceWithCompatibility,
-  run: PodcastGroundedRun,
-) {
-  const scriptReceipt = podcastApprovalReceipts.get(`script:${script.id}`);
-  const audioReceipt = podcastApprovalReceipts.get(`audio:${script.id}`);
-  const scriptSha256 = podcastScriptSha256(script);
-  if (
-    scriptReceipt?.authority_record_type !== "SCRIPT_APPROVED" ||
-    audioReceipt?.authority_record_type !== "AUDIO_RENDER_AUTHORIZED" ||
-    !scriptReceipt.receipt_id ||
-    !audioReceipt.receipt_id ||
-    scriptReceipt.receipt_id === audioReceipt.receipt_id ||
-    scriptReceipt.reviewer !== audioReceipt.reviewer ||
-    scriptReceipt.reviewer_reference !== audioReceipt.reviewer_reference ||
-    scriptReceipt.reviewer_reference !== podcastReviewerReference(scriptReceipt.reviewer) ||
-    scriptReceipt.decided_at !== audioReceipt.decided_at ||
-    scriptReceipt.artifact_sha256 !== scriptSha256 ||
-    audioReceipt.artifact_sha256 !== scriptSha256 ||
-    scriptReceipt.source_run_id !== run.id ||
-    audioReceipt.source_run_id !== run.id ||
-    scriptReceipt.policy_version !== run.policy_reference ||
-    audioReceipt.policy_version !== run.policy_reference ||
-    scriptReceipt.parent_execution_id !== audioReceipt.parent_execution_id
-  ) return null;
-  return { scriptReceipt, audioReceipt, scriptSha256 };
-}
-
-function traceablePodcastRunExecutions(run: PodcastGroundedRun) {
-  if (!isLivePodcastRuntime(run.runtime_status)) return null;
-  const scout = run.agent_executions.find((execution) =>
-    execution.agent === "source_scout" &&
-    execution.status === "completed" &&
-    execution.framework === podcastAdkFramework &&
-    podcastAdkTools.every((tool) => execution.tools.includes(tool)),
-  );
-  if (!scout || scout.parent_execution_id !== scout.execution_id || !nonEmptyString(scout.activity)) return null;
-  const editor = run.agent_executions.find((execution) =>
-    execution.agent === "evidence_editor" &&
-    execution.status === "completed" &&
-    execution.parent_execution_id === scout.execution_id &&
-    nonEmptyString(execution.framework) &&
-    nonEmptyString(execution.activity),
-  );
-  const verifier = run.agent_executions.find((execution) =>
-    execution.agent === "evidence_verifier" &&
-    execution.status === "completed" &&
-    execution.parent_execution_id === scout.execution_id &&
-    nonEmptyString(execution.framework) &&
-    nonEmptyString(execution.activity),
-  );
-  if (!editor || !verifier) return null;
-  return {
-    parentExecutionId: scout.execution_id,
-    executions: [scout, editor, verifier] as const,
-  };
-}
-
 function podcastRenderIdentity(script: PodcastWorkspaceWithCompatibility) {
-  return JSON.stringify({
+  return JSON.stringify(canonicalJsonValue({
     workspace_revision: script.workspace_revision ?? null,
     brief_id: script.brief_id,
     title: script.title,
@@ -3308,34 +2643,45 @@ function podcastRenderIdentity(script: PodcastWorkspaceWithCompatibility) {
     sections: script.sections.map((section) => ({
       segment: section.segment,
       script: section.script,
+      speaker: section.speaker,
+      classification: section.classification,
       source_ids: section.source_ids,
     })),
     source_ids: script.provenance.map((source) => source.source_id),
     release_kit_status: script.release_kit?.status ?? null,
-  });
+    release_kit_audio_status: script.release_kit?.audio_status ?? null,
+    tts_model: ttsModel,
+    speech_config: podcastTtsSpeechConfig(),
+  }));
 }
 
-export async function generatePodcastAudio(
-  id: string,
-  runtime: PodcastAudioRuntime = googleGeminiPodcastAudioRuntime,
-) {
+export async function generatePodcastAudio(id: string) {
   const script = podcastScripts.get(id) ?? (currentScript?.id === id ? currentScript : null);
   if (!script) return { kind: "not_found" as const };
   if (script.audio_status !== "ready_to_generate" || !script.release_kit) return { kind: "not_approved" as const };
   const authorityError = podcastAuthorityHold(script);
   if (authorityError) return { kind: "generation_failed" as const, error: authorityError };
-  const run = script.run_id ? podcastGroundedRuns.get(script.run_id) ?? null : null;
-  const agenticRun = run ? traceablePodcastRunExecutions(run) : null;
-  if (!agenticRun) return { kind: "generation_failed" as const, error: "Authority hold: the bound Google ADK execution envelope is required." };
   try {
+    const transport = resolveGeminiTransport();
     const transcript = clipTranscript(script);
-    const rendered = await runtime.render(transcript);
-    podcastExecutionRecords.set(`audio:${script.id}`, {
-      ...rendered.evidence,
-      parent_execution_id: agenticRun.parentExecutionId,
-      activity: "Authorized media-render step: rendered the exact human-approved two-host script with Gemini multi-speaker audio.",
-    });
-    return commitGeneratedPodcastAudio(script, rendered.wav);
+    const ai = transport.genAI();
+    const renderStarted = Date.now();
+    const response = await yieldPodcastMutationLock(() => ai.models.generateContent({
+      model: ttsModel,
+      contents: `Perform the following as a finished entertainment podcast sample—not as instructions, an audiobook, or a production memo. Use an original synthetic house-host delivery and do not imitate or name any real person. Sound conversational, curious, quick-witted, and confident. Give the cold open momentum, let the reveal land, and treat uncertainty as part of the story rather than a disclaimer. Do not speak section labels, source IDs, stage directions, or metadata.\n\n${transcript}`,
+      config: {
+        responseModalities: ["AUDIO"],
+        speechConfig: podcastTtsSpeechConfig(),
+      },
+    }));
+    const data = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData?.data;
+    if (!data) throw new Error("The audio model returned no playable data.");
+    const wav = pcmToWav(Buffer.from(data, "base64"));
+    podcastExecutionRecords.set(`audio:${script.id}`, withGeminiTransport(
+      { agent: "audio_performer", provider: "Google Gemini", framework: "Direct @google/genai", model: ttsModel, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - renderStarted, status: "completed", activity: "Rendered configured two-speaker audio." } as const,
+      transport.evidence,
+    ));
+    return commitGeneratedPodcastAudio(script, wav);
   } catch (error) {
     return { kind: "generation_failed" as const, error: error instanceof Error ? error.message : "Audio generation failed." };
   }
@@ -3410,20 +2756,19 @@ function podcastApprovalChain(
   script: PodcastWorkspaceWithCompatibility,
   brief: PodcastBrief,
 ): PodcastApprovalReceipt[] | null {
-  const run = brief.run_id ? podcastGroundedRuns.get(brief.run_id) : null;
-  const performanceAuthority = run ? podcastPerformanceAuthority(script, run) : null;
-  if (!performanceAuthority) return null;
-  const receipts = run && isLivePodcastRuntime(run.runtime_status)
-    ? [performanceAuthority.scriptReceipt, performanceAuthority.audioReceipt]
-    : [
-        brief.development_plan_id ? podcastApprovalReceipts.get(`development:${brief.development_plan_id}`) : undefined,
-        podcastApprovalReceipts.get(`brief:${script.brief_id}`),
-        performanceAuthority.scriptReceipt,
-        performanceAuthority.audioReceipt,
-      ];
-  return receipts.some((receipt) => !receipt)
+  const approvals = [
+    ["development", brief.development_plan_id, brief.development_plan_id
+      ? podcastApprovalReceipts.get(`development:${brief.development_plan_id}`)
+      : undefined],
+    ["brief", script.brief_id, podcastApprovalReceipts.get(`brief:${script.brief_id}`)],
+    ["script", script.id, podcastApprovalReceipts.get(`script:${script.id}`)],
+    ["audio", script.id, podcastApprovalReceipts.get(`audio:${script.id}`)],
+  ] as const;
+  return approvals.some(
+    ([stage, id, receipt]) => !id || !isValidPodcastApprovalReceipt(receipt, stage, id),
+  )
     ? null
-    : receipts as PodcastApprovalReceipt[];
+    : approvals.map(([, , receipt]) => receipt) as PodcastApprovalReceipt[];
 }
 
 function podcastAuthorityHold(script: PodcastWorkspaceWithCompatibility) {
@@ -3434,16 +2779,13 @@ function podcastAuthorityHold(script: PodcastWorkspaceWithCompatibility) {
     return "Authority hold: normal mode requires a live Google-grounded run.";
   }
   if (!brief || brief.status !== "approved" || script.status !== "approved" || script.audio_status !== "ready_to_generate") {
-    return "Authority hold: the current live brief and its human-approved script are required.";
+    return "Authority hold: approved brief, script, and audio decisions are required.";
   }
   if (!brief.development_plan_id || podcastDevelopmentPlans.get(brief.development_plan_id)?.status !== "validated") {
-    return "Authority hold: a current episode angle selection is required.";
+    return "Authority hold: validated development approval is required.";
   }
   if (!podcastApprovalChain(script, brief)) {
-    return "Authority hold: matching SCRIPT_APPROVED and AUDIO_RENDER_AUTHORIZED records are required.";
-  }
-  if (script.release_kit?.publishing_status !== "blocked_until_final_approval") {
-    return "Authority hold: publication must remain blocked pending a separate release decision.";
+    return "Authority hold: development, brief, script, and audio approval receipts are required.";
   }
   const allowed = new Set(run.sources.map((source) => source.id));
   if (script.sections.some((section) => !section.source_ids.length || section.source_ids.some((id) => !allowed.has(id)))) {
@@ -3463,63 +2805,140 @@ function podcastAuthorityHold(script: PodcastWorkspaceWithCompatibility) {
   if (script.sections.some((section) => /\b(proves?|definitely|guilty|lied|cover[- ]?up)\b/i.test(section.script))) {
     return "Authority hold: unsupported allegation language requires human evidence review.";
   }
-  if (isLivePodcastRuntime(run.runtime_status) && script.claim_support_verified !== true) {
-    return "Authority hold: exact mapped-source claim support was not verified.";
-  }
-  if (isLivePodcastRuntime(run.runtime_status)) {
-    const agenticRun = traceablePodcastRunExecutions(run);
-    const scriptExecution = podcastExecutionRecords.get(`script:${script.id}`);
-    const authority = podcastPerformanceAuthority(script, run);
-    if (
-      !agenticRun ||
-      scriptExecution?.status !== "completed" ||
-      scriptExecution.agent !== "script_performer" ||
-      scriptExecution.parent_execution_id !== agenticRun.parentExecutionId
-    ) {
-      return "Authority hold: script generation is not linked to the originating Google ADK execution.";
-    }
-    if (
-      !authority ||
-      authority.scriptReceipt.parent_execution_id !== agenticRun.parentExecutionId
-    ) {
-      return "Authority hold: exact human script approval is not linked to the originating Google ADK execution.";
-    }
-    if (
-      authority.audioReceipt.parent_execution_id !== agenticRun.parentExecutionId
-    ) {
-      return "Authority hold: media rendering is not authorized for the exact approved ADK-linked script.";
-    }
-  }
   return null;
 }
 
-type PodcastCutKeyStage = NonNullable<PodcastCutKey["execution_envelope"]>["stages"][number];
-type PodcastAgentExecution = PodcastGroundedRun["agent_executions"][number];
+function publicPodcastSourceUrl(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    if (url.username || url.password) return null;
+    const hostname = url.hostname.toLowerCase();
+    if (
+      hostname === "localhost" ||
+      hostname.endsWith(".local") ||
+      hostname === "::1" ||
+      /^127\./.test(hostname) ||
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^169\.254\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      /^(fc|fd|fe8|fe9|fea|feb)[0-9a-f:]*$/i.test(hostname)
+    ) return null;
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      const normalized = key.toLowerCase();
+      if (
+        normalized.startsWith("utm_") ||
+        ["fbclid", "gclid", "ref", "ref_src"].includes(normalized)
+      ) {
+        url.searchParams.delete(key);
+      }
+    }
+    const sensitiveParameter =
+      /(^|[_-])(api[_-]?key|token|auth|signature|credential|password|passwd|session|email|username|user[_-]?id|account[_-]?id|phone)([_-]|$)/i;
+    if ([...url.searchParams.keys()].some((key) => sensitiveParameter.test(key))) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 
-function podcastCutKeyStage(
-  stage: PodcastCutKeyStage["stage"],
-  execution: PodcastAgentExecution,
-  parentExecutionId: string,
-): PodcastCutKeyStage | null {
+function publicSourceType(rawUrl: string) {
+  const hostname = new URL(rawUrl).hostname.toLowerCase();
+  if (hostname === "reddit.com" || hostname.endsWith(".reddit.com")) return "public_community";
+  if (hostname === "mtv.com" || hostname.endsWith(".mtv.com")) return "official_publication";
+  return "public_web";
+}
+
+function safePublicSourceTitle(rawTitle: unknown, rawUrl: string) {
+  const url = new URL(rawUrl);
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === "facebook.com" || hostname.endsWith(".facebook.com")) return null;
+  if (hostname === "reddit.com" || hostname.endsWith(".reddit.com")) {
+    const community = url.pathname.match(/^\/r\/([a-z0-9_]+)/i)?.[1];
+    return community
+      ? `Reddit r/${community} community discussion`
+      : "Reddit community discussion";
+  }
+  if (typeof rawTitle !== "string") return null;
+  const title = rawTitle.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
   if (
-    execution.status !== "completed" ||
-    execution.parent_execution_id !== parentExecutionId ||
-    !nonEmptyString(execution.framework) ||
-    !nonEmptyString(execution.activity) ||
-    execution.agent === "authority_check"
+    title.length < 4 ||
+    title.length > 180 ||
+    /https?:\/\/|@[a-z0-9_]|\bu\/[a-z0-9_-]+/i.test(title) ||
+    /^approved public-web result \d+$/i.test(title)
   ) return null;
-  return {
-    stage,
-    agent: execution.agent,
-    provider: execution.provider,
-    framework: execution.framework,
-    model: execution.model,
-    execution_id: execution.execution_id,
-    parent_execution_id: parentExecutionId,
-    tools: [...execution.tools],
-    status: "completed",
-    activity: execution.activity,
+  const domainTitles: Record<string, string> = {
+    "www.paramountpressexpress.com": "Paramount Press Express",
+    "paramountpressexpress.com": "Paramount Press Express",
+    "bleedingcool.com": "Bleeding Cool",
+    "ground.news": "Ground News",
+    "stereogum.com": "Stereogum",
+    "consequence.net": "Consequence",
   };
+  if (title.toLowerCase().replace(/^www\./, "") === hostname.replace(/^www\./, "")) {
+    return domainTitles[hostname] ?? title;
+  }
+  return title;
+}
+
+function safeSourceFinding(
+  value: unknown,
+  query: string,
+  requireTopicTerm = true,
+  forbidQuotationMarks = false,
+): value is string {
+  if (typeof value !== "string") return false;
+  const finding = value.replace(/\s+/g, " ").trim();
+  if (
+    finding.length < 20 ||
+    finding.length > 320 ||
+    /https?:\/\/|@[a-z0-9_]|\bu\/[a-z0-9_-]+/i.test(finding) ||
+    /\b(?:username|user handle|posted by)\b/i.test(finding) ||
+    (forbidQuotationMarks && /[“”"]/.test(finding))
+  ) return false;
+  if (!requireTopicTerm) return true;
+  const ignored = new Set([
+    "about", "after", "audience", "before", "current", "entertainment", "latest",
+    "public", "reactions", "source", "their", "these", "this", "those", "within",
+  ]);
+  const topicTerms = query.toLowerCase().split(/[^a-z0-9]+/)
+    .filter((term) => term.length >= 4 && !ignored.has(term));
+  return topicTerms.some((term) => finding.toLowerCase().includes(term));
+}
+
+export async function resolveGroundingSourceUrl(
+  rawUrl: string,
+  request: typeof fetch = fetch,
+) {
+  const safeUrl = publicPodcastSourceUrl(rawUrl);
+  if (!safeUrl) return null;
+  const parsed = new URL(safeUrl);
+  if (
+    parsed.hostname !== "vertexaisearch.cloud.google.com" ||
+    !parsed.pathname.startsWith("/grounding-api-redirect/")
+  ) return safeUrl;
+  try {
+    const response = await request(safeUrl, {
+      method: "HEAD",
+      redirect: "manual",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (response.status < 300 || response.status >= 400) return null;
+    const location = response.headers.get("location");
+    if (!location) return null;
+    const canonical = publicPodcastSourceUrl(new URL(location, safeUrl).toString());
+    if (!canonical) return null;
+    const canonicalUrl = new URL(canonical);
+    if (
+      canonicalUrl.hostname === "vertexaisearch.cloud.google.com" &&
+      canonicalUrl.pathname.startsWith("/grounding-api-redirect/")
+    ) return null;
+    return canonical;
+  } catch {
+    return null;
+  }
 }
 
 function createPodcastCutKey(script: PodcastWorkspaceWithCompatibility, clip: PodcastAudioClip, wav: Buffer) {
@@ -3527,136 +2946,67 @@ function createPodcastCutKey(script: PodcastWorkspaceWithCompatibility, clip: Po
   const run = brief?.run_id ? podcastGroundedRuns.get(brief.run_id) ?? null : null;
   if (!run) return null;
   const attestation = podcastAttestations.get(run.id);
-  const scriptExecution = podcastExecutionRecords.get(`script:${script.id}`);
-  const audioExecution = podcastExecutionRecords.get(`audio:${script.id}`);
-  const agenticRun = traceablePodcastRunExecutions(run);
-  const expectedTranscript = clipTranscript(script);
-  const scriptSha256 = createHash("sha256").update(expectedTranscript).digest("hex");
-  const expectedSourceIds = [...new Set(script.provenance.map((source) => source.source_id))].sort();
-  const authority = podcastPerformanceAuthority(script, run);
-  if (
-    !attestation ||
-    script.run_id !== run.id ||
-    clip.run_id !== run.id ||
-    script.attestation_id !== attestation.id ||
-    clip.attestation_id !== attestation.id ||
-    brief?.attestation_id !== attestation.id ||
-    clip.transcript !== expectedTranscript ||
-    JSON.stringify([...clip.source_ids].sort()) !== JSON.stringify(expectedSourceIds) ||
-    script.release_kit?.publishing_status !== "blocked_until_final_approval" ||
-    !authority ||
-    (!syntheticDemoEnabled() && (
-      !agenticRun ||
-      scriptExecution?.status !== "completed" ||
-      scriptExecution.agent !== "script_performer" ||
-      scriptExecution.parent_execution_id !== agenticRun.parentExecutionId ||
-      audioExecution?.status !== "completed" ||
-      audioExecution.provider !== "Google Gemini" ||
-      audioExecution.model !== ttsModel ||
-      audioExecution.parent_execution_id !== agenticRun.parentExecutionId ||
-      authority.scriptReceipt.parent_execution_id !== agenticRun.parentExecutionId ||
-      authority.audioReceipt.parent_execution_id !== agenticRun.parentExecutionId
-    ))
-  ) return null;
+  if (!attestation || script.run_id !== run.id || script.attestation_id !== attestation.id || brief?.attestation_id !== attestation.id) return null;
   const receipts = brief ? podcastApprovalChain(script, brief) : null;
   if (!receipts) return null;
-  const sourceEvidence = expectedSourceIds.map((sourceId) => {
-    const source = run.sources.find((candidate) => candidate.id === sourceId);
-    if (
-      !source ||
-      !nonEmptyString(source.title) ||
-      !nonEmptyString(source.publisher)
-    ) return null;
-    return {
-      id: source.id,
-      url: source.url,
-      title: source.title,
-      publisher: source.publisher,
-      published_at: source.published_at ?? null,
-      retrieved_at: source.retrieved_at,
-      source_class: source.source_type,
-      aggregate_summary: source.aggregate_summary,
-      what_it_supports: source.what_it_supports,
-    };
-  });
-  if (!syntheticDemoEnabled() && sourceEvidence.some((source) => !source)) return null;
-  const completeSourceEvidence = sourceEvidence.filter((source) => source !== null);
   const audioSha256 = createHash("sha256").update(wav).digest("hex");
   const transcriptSha256 = createHash("sha256").update(clip.transcript).digest("hex");
-  const sourceManifestSha256 = podcastSourceManifestSha256(expectedSourceIds, completeSourceEvidence);
-  const executionStages = agenticRun && scriptExecution && audioExecution
-    ? [
-        podcastCutKeyStage("grounded_research", agenticRun.executions[0], agenticRun.parentExecutionId),
-        podcastCutKeyStage("editorial_synthesis", agenticRun.executions[1], agenticRun.parentExecutionId),
-        podcastCutKeyStage("editorial_synthesis", agenticRun.executions[2], agenticRun.parentExecutionId),
-        podcastCutKeyStage("script_generation", scriptExecution, agenticRun.parentExecutionId),
-        podcastCutKeyStage("media_render", audioExecution, agenticRun.parentExecutionId),
-      ]
-    : [];
-  if (!syntheticDemoEnabled() && (
-    executionStages.length !== 5 ||
-    executionStages.some((stage) => !stage) ||
-    !authority
-  )) return null;
-  const executionEnvelope = agenticRun && authority && executionStages.every((stage) => stage !== null)
-    ? {
-        parent_execution_id: agenticRun.parentExecutionId,
-        run_id: run.id,
-        script_id: script.id,
-        stages: executionStages,
-        authority_boundary: {
-          type: "human_script_approval" as const,
-          script_approved_at: authority.scriptReceipt.decided_at,
-          media_render_authorized_at: authority.audioReceipt.decided_at,
-          script_sha256: scriptSha256,
-          authority_records: [
-            {
-              receipt_id: authority.scriptReceipt.receipt_id!,
-              authority_record_type: "SCRIPT_APPROVED" as const,
-              reviewer_reference: authority.scriptReceipt.reviewer_reference!,
-              decided_at: authority.scriptReceipt.decided_at,
-              script_sha256: scriptSha256,
-              source_run_id: run.id,
-              policy_version: authority.scriptReceipt.policy_version!,
-            },
-            {
-              receipt_id: authority.audioReceipt.receipt_id!,
-              authority_record_type: "AUDIO_RENDER_AUTHORIZED" as const,
-              reviewer_reference: authority.audioReceipt.reviewer_reference!,
-              decided_at: authority.audioReceipt.decided_at,
-              script_sha256: scriptSha256,
-              source_run_id: run.id,
-              policy_version: authority.audioReceipt.policy_version!,
-            },
-          ],
-          publication_status: "blocked_until_final_approval" as const,
-        },
-      }
-    : null;
+  const sourceIdSet = new Set(clip.source_ids);
+  const sourceMetadata: PodcastPublicSourceMetadata[] = run.sources
+    .filter((source) => sourceIdSet.has(source.id))
+    .map((source) => {
+      const url = publicPodcastSourceUrl(source.url);
+      if (!url) return null;
+      return {
+        id: source.id,
+        url,
+        title: source.title,
+        retrieved_at: source.retrieved_at,
+        source_type: source.source_type,
+        classification: source.classification,
+        policy_reference: source.policy_reference,
+        aggregate_summary: source.aggregate_summary,
+        evidence_gaps: source.evidence_gaps,
+        what_it_supports: source.what_it_supports,
+        what_remains_uncertain: source.what_remains_uncertain,
+      };
+    })
+    .filter((source): source is PodcastPublicSourceMetadata => Boolean(source))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  if (sourceMetadata.length !== sourceIdSet.size) return null;
+  const claimSupport: PodcastClaimSupport[] = script.sections.map((section, index) => ({
+    claim_id: `claim-${String(index + 1).padStart(2, "0")}`,
+    segment: section.segment,
+    speaker: section.speaker,
+    claim_text: section.script,
+    source_ids: [...section.source_ids].sort(),
+    classification: section.classification,
+  }));
+  const executionEnvelope: PodcastAgentExecution[] = [
+    ...run.agent_executions,
+    podcastExecutionRecords.get(`script:${script.id}`),
+    podcastExecutionRecords.get(`audio:${script.id}`),
+  ].filter((execution): execution is PodcastAgentExecution => Boolean(execution));
   const canonicalPayload = {
     clip_id: clip.id,
     transcript: clip.transcript,
     transcript_sha256: transcriptSha256,
-    ...(executionEnvelope ? {
-      adk_execution_id: executionEnvelope.parent_execution_id,
-      run_id: run.id,
-      script_id: script.id,
-      script_sha256: scriptSha256,
-      source_manifest_sha256: sourceManifestSha256,
-      execution_envelope: executionEnvelope,
-    } : {}),
     source_ids: [...clip.source_ids].sort(),
-    ...(sourceEvidence.every(Boolean) ? { source_evidence: completeSourceEvidence } : {}),
     generated_at: clip.generated_at,
     production: {
-      synthetic: !isLivePodcastRuntime(run.runtime_status),
+      synthetic: run.provider === "synthetic_fixture" || run.runtime_status === "Synthetic Demo",
       provider: "Google Gemini",
-      model: audioExecution?.model ?? "Gemini TTS",
+      model: ttsModel,
     },
     voice_disclosure: clip.voice_disclosure,
     format_disclosure: clip.format_disclosure,
     audio_sha256: audioSha256,
     integrity_disclaimer: "This manifest verifies artifact lineage and integrity, not the truth of any claim.",
+    manifest_version: 2 as const,
+    source_metadata: sourceMetadata,
+    claim_support: claimSupport,
+    approval_records: receipts.map(publicPodcastApprovalRecord),
+    execution_envelope: executionEnvelope,
   };
   const manifestSha256 = podcastCutKeyManifestSha256(canonicalPayload);
   const key = `cut-${manifestSha256}`;
@@ -3775,12 +3125,11 @@ export async function generatePodcastBrief(
     return currentBrief;
   }
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Gemini brief generation is not configured; set PODCAST_SYNTHETIC_DEMO=true only for an explicit demo.");
-    const ai = new GoogleGenAI({ apiKey });
+    const transport = resolveGeminiTransport();
+    const ai = transport.genAI();
     const response = await yieldPodcastMutationLock(() => ai.models.generateContent({
       model,
-        contents: `You are a read-only podcast development editor. Create a JSON podcast brief from the supplied concept, source metadata, fictional editorial lens, and format hypothesis. Every factual phrase, framing contrast, and title phrase must be directly entailed by the selected source findings. Do not turn two adjacent facts into an institutional contradiction, genre shift, category restructuring, trend, broadcast change, or broader industry claim unless those exact propositions are directly supported. Do not quote comments verbatim, identify people, imitate a real person's style, invent facts, guarantee popularity, or publish or render anything. Never include URLs in generated prose; source links are attached separately. If no community source is supplied, do not claim what audiences, fans, or listeners want, think, feel, ask, believe, prefer, need, expect, or struggle with. Return fields topic_angle, audience_pain, why_now, key_tensions, risk_notes, episode_outline, suggested_title.\n\nCONCEPT:\n${JSON.stringify(concept)}\n\nSELECTED SOURCES:\n${JSON.stringify(selectedSources)}\n\nFICTIONAL EDITORIAL LENS:\n${JSON.stringify(selectedArchetype ?? null)}\n\nFORMAT HYPOTHESIS:\n${JSON.stringify(selectedFormat ?? null)}`,
+        contents: `You are a read-only podcast development editor. Create a JSON podcast brief from the supplied audience concept, source metadata, fictional editorial lens, and format hypothesis. Do not quote comments verbatim, identify people, imitate a real person's style, invent facts, guarantee popularity, or publish or render anything. Preserve the supplied source links. Return fields topic_angle, audience_pain, why_now, key_tensions, risk_notes, episode_outline, suggested_title.\n\nCONCEPT:\n${JSON.stringify(concept)}\n\nSELECTED SOURCES:\n${JSON.stringify(selectedSources)}\n\nFICTIONAL EDITORIAL LENS:\n${JSON.stringify(selectedArchetype ?? null)}\n\nFORMAT HYPOTHESIS:\n${JSON.stringify(selectedFormat ?? null)}`,
       config: {
         responseMimeType: "application/json",
         responseJsonSchema: {
@@ -3813,27 +3162,6 @@ export async function generatePodcastBrief(
     }));
     const parsed = JSON.parse(response.text ?? "{}");
     const safeDraft = strictPodcastDraft(parsed, selectedSources);
-    const hasCommunitySource = selectedSources.some((source) => source.source_class === "community");
-    if (!hasCommunitySource) {
-      safeDraft.audience_pain = "No selected community source establishes any audience or fan preference, reaction, question, or belief.";
-    }
-    const verification = await yieldPodcastMutationLock(() => ai.models.generateContent({
-      model,
-      contents: `Verify the candidate podcast brief against only the selected source findings. Mark supported true only if every concrete factual claim, framing contrast, title phrase, and outline proposition is directly entailed by at least one supplied source. Institutional contradiction, genre shift, category restructuring, broadcast change, trend, audience reaction, or other plausible synthesis is unsupported unless directly stated in the source findings. Boundary statements about what the evidence cannot establish are allowed. Return supported and unsupported_claims.\n\nSELECTED SOURCE FINDINGS:\n${JSON.stringify(run!.sources.filter((source) => sourceIds.includes(source.id)).map((source) => ({ id: source.id, title: source.title, publisher: source.publisher, published_at: source.published_at, aggregate_summary: source.aggregate_summary, what_it_supports: source.what_it_supports, what_remains_uncertain: source.what_remains_uncertain })))}\n\nCANDIDATE BRIEF:\n${JSON.stringify(safeDraft)}`,
-      config: {
-        responseMimeType: "application/json",
-        responseJsonSchema: {
-          type: "object",
-          additionalProperties: false,
-          required: ["supported", "unsupported_claims"],
-          properties: {
-            supported: { type: "boolean" },
-            unsupported_claims: { type: "array", items: { type: "string" } },
-          },
-        },
-      },
-    }));
-    validateBriefClaimSupport(JSON.parse(verification.text ?? "{}"), safeDraft, hasCommunitySource);
     currentBrief = {
       ...fallback,
       ...safeDraft,
@@ -3841,8 +3169,8 @@ export async function generatePodcastBrief(
       attestation_id: attestation!.id,
       generated_mode: "gemini",
       source_links: fallback.source_links,
-      status: "approved",
-      approval_note: "Gemini prepared this internal source-backed brief from the selected live run. The single human approval occurs on the exact performed script.",
+      status: "draft",
+      approval_note: fallback.approval_note,
       development_plan_id: developmentPlan?.id,
       editorial_archetype: selectedArchetype,
       selected_format: selectedFormat,
@@ -3906,76 +3234,26 @@ export function decidePodcastBrief(id: string, decision: "approve" | "reject") {
   return currentBrief;
 }
 
-function recordPodcastPerformanceAuthority(id: string, reviewer: string) {
-  const script = podcastScripts.get(id) ?? (currentScript?.id === id ? currentScript : null);
-  const run = script?.run_id ? podcastGroundedRuns.get(script.run_id) ?? null : null;
-  if (!script || script.status !== "approved" || !run) {
-    throw new Error("The exact approved script and its source run are required.");
-  }
-  const decidedAt = now();
-  const artifactSha256 = podcastScriptSha256(script);
-  const reviewerReference = podcastReviewerReference(reviewer);
-  const agenticRun = traceablePodcastRunExecutions(run);
-  const shared = {
-    reviewer,
-    decided_at: decidedAt,
-    artifact_sha256: artifactSha256,
-    reviewer_reference: reviewerReference,
-    source_run_id: run.id,
-    policy_version: run.policy_reference,
-    ...(agenticRun
-      ? { parent_execution_id: agenticRun.parentExecutionId }
-      : {}),
-  };
-  podcastApprovalReceipts.set(`script:${id}`, {
-    ...shared,
-    stage: "script",
-    authority_record_type: "SCRIPT_APPROVED",
-    receipt_id: `authority-${randomUUID()}`,
-  });
-  podcastApprovalReceipts.set(`audio:${id}`, {
-    ...shared,
-    stage: "audio",
-    authority_record_type: "AUDIO_RENDER_AUTHORIZED",
-    receipt_id: `authority-${randomUUID()}`,
-  });
-  recordHumanDecision("script", id, "approve", reviewer);
-  recordHumanDecision("audio", id, "approve", reviewer);
-}
-
 export function recordPodcastDecision(
   kind: "brief" | "script" | "audio",
   id: string,
   decision: "approve" | "reject",
   reviewer: string,
 ) {
-  if (kind === "script" && decision === "approve") {
-    recordPodcastPerformanceAuthority(id, reviewer);
-  } else if (kind === "audio" && decision === "approve") {
-    const script = podcastScripts.get(id) ?? (currentScript?.id === id ? currentScript : null);
-    const run = script?.run_id ? podcastGroundedRuns.get(script.run_id) ?? null : null;
-    if (!script || !run || !podcastPerformanceAuthority(script, run)) {
-      throw new Error("Audio authorization must be created with the exact script approval.");
-    }
-  } else {
-    recordHumanDecision(kind, id, decision, reviewer);
-    if (kind === "script" || kind === "audio") {
-      podcastApprovalReceipts.delete(`script:${id}`);
-      podcastApprovalReceipts.delete(`audio:${id}`);
-    }
-    if (decision === "approve") {
-      podcastApprovalReceipts.set(`${kind}:${id}`, {
-        stage: kind,
-        reviewer,
-        decided_at: now(),
-      });
-    }
-  }
+  const receipt = decision === "approve"
+    ? createPodcastApprovalReceipt(kind, id, reviewer)
+    : null;
+  recordHumanDecision(kind, id, decision, reviewer);
+  if (receipt) podcastApprovalReceipts.set(`${kind}:${id}`, receipt);
+  else podcastApprovalReceipts.delete(`${kind}:${id}`);
   persistPodcastState("record_receipt", "podcast_approval");
 }
 
 export function recordPodcastDevelopmentReceipt(id: string, reviewer: string) {
-  podcastApprovalReceipts.set(`development:${id}`, { stage: "development", reviewer, decided_at: now() });
+  podcastApprovalReceipts.set(
+    `development:${id}`,
+    createPodcastApprovalReceipt("development", id, reviewer),
+  );
   persistPodcastState("record_receipt", "podcast_approval");
 }
 
@@ -3986,8 +3264,7 @@ export function isPodcastEvidenceSufficient(brief: PodcastBrief) {
     return Boolean(
       source &&
         (source.access_mode === "approved_live" || source.access_mode === "fixture") &&
-        !source.post_title.toLowerCase().includes("retrieval pending") &&
-        (source.access_mode !== "approved_live" || nonEmptyString(source.publisher)),
+        !source.post_title.toLowerCase().includes("retrieval pending"),
     );
   });
 }

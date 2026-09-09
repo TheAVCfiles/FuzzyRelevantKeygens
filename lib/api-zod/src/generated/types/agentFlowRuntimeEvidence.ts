@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AgentFlowRuntimeEvidenceStatus } from './agentFlowRuntimeEvidenceStatus';
+import type { GeminiTransportEvidence } from './geminiTransportEvidence';
 
 export interface AgentFlowRuntimeEvidence {
   stage_id: string;
@@ -17,4 +18,5 @@ export interface AgentFlowRuntimeEvidence {
   latency_ms: number;
   status: AgentFlowRuntimeEvidenceStatus;
   activity: string;
+  transport?: GeminiTransportEvidence;
 }

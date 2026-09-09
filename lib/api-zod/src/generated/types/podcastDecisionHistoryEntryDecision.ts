@@ -10,6 +10,7 @@ export type PodcastDecisionHistoryEntryDecision = typeof PodcastDecisionHistoryE
 
 
 export const PodcastDecisionHistoryEntryDecision = {
+  validate: 'validate',
   approve: 'approve',
   reject: 'reject',
 } as const;

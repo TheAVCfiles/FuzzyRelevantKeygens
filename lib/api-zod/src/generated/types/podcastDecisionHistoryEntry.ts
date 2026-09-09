@@ -7,24 +7,15 @@
  */
 import type { PodcastDecisionHistoryEntryArtifactCreation } from './podcastDecisionHistoryEntryArtifactCreation';
 import type { PodcastDecisionHistoryEntryArtifactType } from './podcastDecisionHistoryEntryArtifactType';
-import type { PodcastDecisionHistoryEntryAuthorityRecordType } from './podcastDecisionHistoryEntryAuthorityRecordType';
 import type { PodcastDecisionHistoryEntryDecision } from './podcastDecisionHistoryEntryDecision';
-import type { PodcastDecisionHistoryEntryPublicationStatus } from './podcastDecisionHistoryEntryPublicationStatus';
+import type { PodcastDecisionHistoryEntryRecordType } from './podcastDecisionHistoryEntryRecordType';
 
 export interface PodcastDecisionHistoryEntry {
+  record_type: PodcastDecisionHistoryEntryRecordType;
   artifact_type: PodcastDecisionHistoryEntryArtifactType;
   artifact_id: string;
   reviewer: string;
   decision: PodcastDecisionHistoryEntryDecision;
   decided_at: string;
   artifact_creation: PodcastDecisionHistoryEntryArtifactCreation;
-  authority_record_type?: PodcastDecisionHistoryEntryAuthorityRecordType;
-  receipt_id?: string;
-  /** @pattern ^[a-f0-9]{64}$ */
-  reviewer_reference?: string;
-  /** @pattern ^[a-f0-9]{64}$ */
-  script_sha256?: string;
-  source_run_id?: string;
-  policy_version?: string;
-  publication_status?: PodcastDecisionHistoryEntryPublicationStatus;
 }

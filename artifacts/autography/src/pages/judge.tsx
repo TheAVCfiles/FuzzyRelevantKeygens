@@ -74,6 +74,18 @@ export function JudgeView() {
     );
   }
 
+  const sourceMetadata = manifest.source_metadata ?? [];
+  const claimSupport = manifest.claim_support ?? [];
+  const approvalRecords = manifest.approval_records ?? [];
+  const executionEnvelope = manifest.execution_envelope ?? [];
+  const transportLabels = [...new Set(
+    executionEnvelope
+      .map((execution) => execution.transport
+        ? `${execution.transport.api.replaceAll('_', ' ')} / ${execution.transport.auth.replaceAll('_', ' ')}`
+        : null)
+      .filter((value): value is string => Boolean(value)),
+  )];
+
   return (
     <div className="min-h-[100dvh] bg-house text-oyster overflow-x-hidden selection:bg-velvet selection:text-oyster relative">
       <div className="fixed inset-0 pointer-events-none opacity-5 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjMTIwZTBmIj48L3JlY3Q+CjxwYXRoIGQ9Ik0wIDBMNCA0Wk00IDBMMCA0WiIgc3Ryb2tlPSIjM2ExZjJiIiBzdHJva2Utd2lkdGg9IjEiPjwvcGF0aD4KPC9zdmc+')] z-0 mix-blend-screen" />
@@ -112,6 +124,32 @@ export function JudgeView() {
           </p>
         </div>
 
+        <section className="mb-8 border border-brass/35 bg-[#191515] p-5 sm:p-6 lg:mb-12" data-testid="judge-zero-context-walkthrough">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-sepia/20 pb-4">
+            <div>
+              <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-tally">No account or product context required</p>
+              <h2 className="mt-2 font-serif text-2xl text-oyster">Judge this build in four checks</h2>
+            </div>
+            <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-brass">
+              Manifest v{manifest.manifest_version ?? 'legacy'} · Read-only public evidence
+            </span>
+          </div>
+          <ol className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ['01', 'Grounding', 'Open each public source and compare its declared support boundary and uncertainty to the transcript citation map.'],
+              ['02', 'Execution', 'Confirm Google ADK performed source scouting and inspect the recorded Developer API or Vertex AI transport.'],
+              ['03', 'Approval', 'Confirm SCRIPT APPROVED and AUDIO RENDER AUTHORIZED are separate hashed human records.'],
+              ['04', 'Artifact', 'Play the audio, open the canonical Cut Key, and compare the transcript, audio, and manifest hashes.'],
+            ].map(([step, label, detail]) => (
+              <li key={step} className="border border-sepia/25 bg-house p-4">
+                <span className="font-mono text-[9px] tracking-[0.15em] text-brass">{step}</span>
+                <strong className="mt-2 block font-mono text-[10px] uppercase tracking-[0.1em] text-oyster">{label}</strong>
+                <p className="mt-2 text-[11px] leading-5 text-sepia">{detail}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
         <div className="grid gap-6 lg:grid-cols-12 lg:gap-8 items-start">
           
           {/* Left Column: Tech Stack & Compliance */}
@@ -141,8 +179,10 @@ export function JudgeView() {
                     <CheckCircle2 className="h-3 w-3 text-brass" />
                   </div>
                   <div>
-                    <h4 className="font-mono text-[11px] uppercase tracking-[0.1em] text-oyster">Powered by Gemini / Google Cloud</h4>
-                    <p className="mt-1 text-[11px] text-sepia leading-relaxed">Google Search grounding, evidence editing, brief and script drafting, and multi-speaker performance—never approval or policy authority.</p>
+                    <h4 className="font-mono text-[11px] uppercase tracking-[0.1em] text-oyster">Gemini Transport Recorded</h4>
+                    <p className="mt-1 text-[11px] text-sepia leading-relaxed">
+                      {transportLabels.length ? transportLabels.join(' · ') : 'Transport was not recorded on this retained legacy manifest.'}
+                    </p>
                   </div>
                 </li>
                 <li className="flex gap-4">
@@ -173,7 +213,7 @@ export function JudgeView() {
                 <div className="flex items-center justify-between bg-house p-3 border border-sepia/20 hover:border-sepia/40 transition-colors">
                   <div className="flex items-center gap-3">
                     <Activity className="h-4 w-4 text-sepia" />
-                    <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-sepia">Gemini / Google Cloud</span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-sepia">Gemini API Transport</span>
                   </div>
                   <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-brass bg-brass/10 px-2 py-1">Runtime</span>
                 </div>
@@ -207,6 +247,30 @@ export function JudgeView() {
                 </div>
               </div>
             </section>
+
+            {executionEnvelope.length ? (
+              <section className="border border-sepia/30 bg-[#151111] p-5 sm:p-6" data-testid="judge-execution-envelope">
+                <h3 className="font-mono text-[10px] uppercase tracking-[0.15em] text-brass mb-4 border-b border-sepia/20 pb-3">
+                  ADK Execution Envelope
+                </h3>
+                <p className="mb-4 text-[11px] leading-5 text-sepia">Safe evidence only. Prompts, model output, credentials, project IDs, and regions are excluded.</p>
+                <div className="space-y-3">
+                  {executionEnvelope.map((execution) => (
+                    <article key={execution.execution_id} className="border border-sepia/25 bg-house p-3">
+                      <div className="flex items-center justify-between gap-2 font-mono text-[9px] uppercase tracking-[0.08em]">
+                        <span className="text-oyster">{execution.agent.replaceAll('_', ' ')}</span>
+                        <span className="text-brass">{execution.status}</span>
+                      </div>
+                      <p className="mt-2 text-[10px] text-sepia">{execution.framework ?? 'Legacy runtime'} · {execution.model}</p>
+                      <p className="mt-1 font-mono text-[9px] text-sepia">
+                        {execution.transport ? `${execution.transport.api.replaceAll('_', ' ')} · ${execution.transport.auth.replaceAll('_', ' ')}` : 'Transport not recorded'}
+                      </p>
+                      <p className="mt-1 font-mono text-[9px] text-sepia">Tools · {execution.tools.length ? execution.tools.join(', ') : 'none'}</p>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
 
           {/* Middle Column: The Manifest & Audio */}
@@ -281,6 +345,21 @@ export function JudgeView() {
                     ))}
                   </div>
                 </div>
+                {sourceMetadata.length ? (
+                  <div data-testid="judge-source-metadata">
+                    <span className="uppercase text-oyster tracking-[0.1em] block mb-2">Public Source Metadata & Declared Boundaries</span>
+                    <div className="space-y-3">
+                      {sourceMetadata.map((source) => (
+                        <article key={source.id} className="border border-sepia/25 bg-house p-3">
+                          <a href={source.url} target="_blank" rel="noreferrer" className="text-oyster underline decoration-sepia underline-offset-4">{source.title}</a>
+                          <p className="mt-2 text-[9px] text-brass">{source.id} · {source.classification.replaceAll('_', ' ')}</p>
+                          <p className="mt-2 text-[10px] normal-case tracking-normal text-sepia">Declared support boundary: {source.what_it_supports}</p>
+                          <p className="mt-2 text-[10px] normal-case tracking-normal text-[#e4a38d]">Still uncertain: {source.what_remains_uncertain}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {/* Hashes */}
@@ -311,10 +390,10 @@ export function JudgeView() {
               </h3>
               
               <h4 className="font-mono text-[10px] uppercase tracking-[0.15em] text-tally mb-3 flex items-center gap-2 relative z-10">
-                <Lock className="h-3 w-3" /> Recorded Velvet Rope refusal
+                <Lock className="h-3 w-3" /> Illustrative Velvet Rope refusal
               </h4>
               <p className="text-[11px] text-oyster font-sans leading-relaxed mb-4 relative z-10">
-                The Velvet Rope is deterministic policy outside Gemini. It cannot be relaxed by a model response.
+                This example shows the deterministic policy path outside Gemini; it is not presented as a runtime receipt from this Cut Key. The rule cannot be relaxed by a model response.
               </p>
               <div className="mb-4 border-l-2 border-tally bg-[#120E0F] p-4 font-mono text-[10px] uppercase leading-6 tracking-[0.08em] text-oyster relative z-10">
                 <strong className="block text-tally">Human Hold</strong>
@@ -358,6 +437,19 @@ export function JudgeView() {
                   </li>
                 ))}
               </ol>
+
+              {approvalRecords.length ? (
+                <div className="mb-6 space-y-2" data-testid="judge-approval-records">
+                  {approvalRecords.map((record) => (
+                    <article key={record.record_sha256} className="border border-sepia/25 bg-house p-3 font-mono text-[9px] text-sepia">
+                      <p className="text-oyster">{record.record_type.replaceAll('_', ' ')}</p>
+                      <p className="mt-1">Reviewer ref · {record.reviewer_reference.slice(0, 16)}…</p>
+                      <p className="mt-1 break-all">Subject · {record.subject_sha256}</p>
+                      <p className="mt-1 break-all text-brass">Record · {record.record_sha256}</p>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
               
               <div className="space-y-4">
                 <div className="border-l-2 border-brass pl-3 bg-brass/5 py-2 pr-2">
@@ -389,6 +481,21 @@ export function JudgeView() {
                   <span className="text-brass opacity-70">{manifest.transcript_sha256}</span>
                 </p>
               </div>
+              {claimSupport.length ? (
+                <div className="border-t border-sepia/30 bg-[#151111] p-4" data-testid="judge-claim-support">
+                  <h4 className="font-mono text-[9px] uppercase tracking-[0.12em] text-brass">Transcript Citation Map · Lineage, Not Independent Fact-Check</h4>
+                  <div className="mt-3 space-y-3">
+                    {claimSupport.map((claim) => (
+                      <article key={claim.claim_id} className="border-l border-brass/50 pl-3">
+                        <p className="font-mono text-[8px] uppercase tracking-[0.08em] text-sepia">
+                          {claim.claim_id} · {claim.classification.replaceAll('_', ' ')} · {claim.source_ids.join(', ')}
+                        </p>
+                        <p className="mt-1 text-[10px] leading-5 text-oyster">{claim.speaker}: {claim.claim_text}</p>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
           </div>

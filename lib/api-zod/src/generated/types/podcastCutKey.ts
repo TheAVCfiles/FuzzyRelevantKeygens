@@ -5,9 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { PodcastCutKeyExecutionEnvelope } from './podcastCutKeyExecutionEnvelope';
+import type { PodcastAgentExecution } from './podcastAgentExecution';
+import type { PodcastApprovalRecord } from './podcastApprovalRecord';
+import type { PodcastClaimSupport } from './podcastClaimSupport';
+import type { PodcastCutKeyManifestVersion } from './podcastCutKeyManifestVersion';
 import type { PodcastCutKeyProduction } from './podcastCutKeyProduction';
-import type { PodcastCutKeySourceEvidenceItem } from './podcastCutKeySourceEvidenceItem';
+import type { PodcastPublicSourceMetadata } from './podcastPublicSourceMetadata';
 
 export interface PodcastCutKey {
   key: string;
@@ -19,19 +22,8 @@ export interface PodcastCutKey {
   transcript: string;
   /** @pattern ^[a-f0-9]{64}$ */
   transcript_sha256: string;
-  /** Google ADK parent execution for this Podcast Room transaction. Optional only for retained manifests. */
-  adk_execution_id?: string;
-  run_id?: string;
-  script_id?: string;
-  /** @pattern ^[a-f0-9]{64}$ */
-  script_sha256?: string;
-  /** @pattern ^[a-f0-9]{64}$ */
-  source_manifest_sha256?: string;
-  execution_envelope?: PodcastCutKeyExecutionEnvelope;
   /** @maxItems 20 */
   source_ids: string[];
-  /** @maxItems 20 */
-  source_evidence?: PodcastCutKeySourceEvidenceItem[];
   generated_at: string;
   production: PodcastCutKeyProduction;
   voice_disclosure: string;
@@ -39,4 +31,14 @@ export interface PodcastCutKey {
   /** @pattern ^[a-f0-9]{64}$ */
   audio_sha256: string;
   integrity_disclaimer: string;
+  /** Version 2 binds public source metadata, claim support, execution evidence, and approval records into the manifest hash. Omitted only on retained legacy manifests. */
+  manifest_version?: PodcastCutKeyManifestVersion;
+  /** @maxItems 20 */
+  source_metadata?: PodcastPublicSourceMetadata[];
+  /** @maxItems 20 */
+  claim_support?: PodcastClaimSupport[];
+  /** @maxItems 8 */
+  approval_records?: PodcastApprovalRecord[];
+  /** @maxItems 12 */
+  execution_envelope?: PodcastAgentExecution[];
 }
