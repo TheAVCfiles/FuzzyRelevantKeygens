@@ -70,6 +70,8 @@ function statusLabel(status?: string) {
   return (status ?? 'unknown').replaceAll('_', ' ');
 }
 
+type ProducerBootstrapState = 'loading' | 'producer' | 'viewer' | 'claiming' | 'error';
+
 function evidenceLabel(source: PodcastSource) {
   if (source.access_mode === 'manual_url') return { label: 'manual-only', className: 'text-[#9e3e2d]' };
   if (source.access_mode === 'approved_live') return { label: 'approved live', className: 'text-[#365f67]' };
@@ -888,6 +890,37 @@ export function Podcast() {
   const [searchResult, setSearchResult] = useState<PodcastContextSearchResponse | null>(null);
   const [searchInFlight, setSearchInFlight] = useState(false);
   const [localError, setLocalError] = useState('');
+  const [producerBootstrap, setProducerBootstrap] = useState<ProducerBootstrapState>('loading');
+
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/auth/me', { credentials: 'same-origin' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Role lookup failed');
+        const result = await response.json() as { role?: string };
+        if (active) setProducerBootstrap(result.role === 'producer' ? 'producer' : 'viewer');
+      })
+      .catch(() => {
+        if (active) setProducerBootstrap('error');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const claimProducerSeat = async () => {
+    setProducerBootstrap('claiming');
+    try {
+      const response = await fetch('/api/auth/bootstrap/producer', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!response.ok) throw new Error('Producer setup failed');
+      window.location.reload();
+    } catch {
+      setProducerBootstrap('error');
+    }
+  };
 
   const concepts = searchInFlight ? [] : searchResult?.results.map((item) => item.concept) ?? room?.concepts ?? [];
   const searchedSources = searchInFlight ? [] : searchResult?.results.flatMap((item) => item.sources) ?? [];
@@ -1105,6 +1138,29 @@ export function Podcast() {
       </header>
 
       <main className="mx-auto max-w-[1480px] px-5 py-6 sm:px-8 sm:py-8 lg:px-12">
+        {producerBootstrap === 'viewer' && (
+          <div className="mb-6 border border-[#9f8b78] bg-[#fff4df] p-5 sm:flex sm:items-center sm:justify-between sm:gap-6" data-testid="panel-producer-bootstrap">
+            <div>
+              <p className="podcast-kicker">Production owner setup</p>
+              <h2 className="mt-1 font-serif text-2xl text-[#201b19]">Claim the producer seat</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5f554e]">This one-time action gives the first verified production owner permission to make and approve podcast decisions.</p>
+            </div>
+            <Button type="button" className="mt-4 bg-[#b34b36] text-[#fffaf2] sm:mt-0" onClick={claimProducerSeat} data-testid="button-claim-producer">
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Claim producer seat
+            </Button>
+          </div>
+        )}
+        {producerBootstrap === 'claiming' && (
+          <div className="mb-6 border border-[#9f8b78] bg-[#fff4df] p-4 text-sm text-[#5f554e]" role="status">
+            <LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" /> Enabling producer permissions…
+          </div>
+        )}
+        {producerBootstrap === 'error' && (
+          <div className="mb-6 border border-[#9e3e2d] bg-[#fff4df] p-4 text-sm text-[#9e3e2d]" role="alert">
+            Producer setup could not be completed. Refresh once and try again.
+          </div>
+        )}
         <div className="mb-7 grid gap-4 border-b border-[#c7b9aa] pb-6 md:grid-cols-[1fr_auto] md:items-end">
           <div>
             <p className="podcast-kicker">Editorial intelligence / 01</p>

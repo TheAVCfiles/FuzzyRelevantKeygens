@@ -1,5 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { clerkClient, getAuth } from "@clerk/express";
+import { db, podcastStateTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { createReadStream, statSync } from "node:fs";
 import type { File } from "@google-cloud/storage";
 import {
@@ -129,6 +131,7 @@ import {
 import { requirePodcastPersistenceReady } from "../lib/podcast-readiness";
 
 const router: IRouter = Router();
+const productionProducerClaimId = "autography-production-producer-claim";
 
 router.use("/podcast", requirePodcastPersistenceReady);
 
@@ -290,6 +293,60 @@ router.post("/auth/preview/producer", async (req, res, next): Promise<void> => {
     await clerkClient.users.updateUserMetadata(auth.userId, {
       publicMetadata: { autography_role: "producer" },
     });
+    res.json({ role: "producer", reviewer_id: auth.userId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/auth/bootstrap/producer", async (req, res, next): Promise<void> => {
+  if (process.env.NODE_ENV !== "production") {
+    res.status(404).json({ error: "Production producer setup is unavailable." });
+    return;
+  }
+  const auth = getAuth(req);
+  if (!auth.userId) {
+    res.status(401).json({ error: "A verified Clerk session is required." });
+    return;
+  }
+  try {
+    const user = await clerkClient.users.getUser(auth.userId);
+    const principal = principalFromVerifiedClerkUser(
+      auth.userId,
+      user.publicMetadata as Record<string, unknown>,
+    );
+    if (principal.role === "producer") {
+      res.json({ role: "producer", reviewer_id: auth.userId });
+      return;
+    }
+
+    const claimed = await db
+      .insert(podcastStateTable)
+      .values({
+        id: productionProducerClaimId,
+        state: { claimed_by: auth.userId },
+        revision: 1,
+      })
+      .onConflictDoNothing()
+      .returning({ id: podcastStateTable.id });
+    if (!claimed.length) {
+      res.status(409).json({ error: "The production producer seat has already been claimed." });
+      return;
+    }
+
+    try {
+      await clerkClient.users.updateUserMetadata(auth.userId, {
+        publicMetadata: {
+          ...user.publicMetadata,
+          autography_role: "producer",
+        },
+      });
+    } catch (error) {
+      await db
+        .delete(podcastStateTable)
+        .where(eq(podcastStateTable.id, productionProducerClaimId));
+      throw error;
+    }
     res.json({ role: "producer", reviewer_id: auth.userId });
   } catch (error) {
     next(error);
