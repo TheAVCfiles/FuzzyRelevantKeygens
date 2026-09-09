@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -344,7 +345,7 @@ test("TTS config is exactly the two declared house speakers", () => {
   ]);
 });
 
-test("synthetic approved cut produces private-safe, superseding Cut Keys only after every gate", { concurrency: false }, async () => {
+test("synthetic approved cut produces a canonical, private-safe Cut Key only after every gate", { concurrency: false }, async () => {
   const sourceIds = ["cut-source-1", "cut-source-2", "cut-source-3"];
   const concept = {
     ...podcastConcepts[0]!,
@@ -428,9 +429,16 @@ test("synthetic approved cut produces private-safe, superseding Cut Keys only af
   if (first.kind !== "generated") return;
   const firstManifest = getPodcastCutKey(first.clip.cut_key!);
   assert.ok(firstManifest);
-  assert.match(JSON.stringify(firstManifest), /safe, approved public summary/i);
   assert.doesNotMatch(JSON.stringify(firstManifest), new RegExp(rawMarker));
-  assert.deepEqual(firstManifest.approval_receipts.map((item) => item.stage).sort(), ["audio", "brief", "development", "script"]);
+  assert.deepEqual(Object.keys(firstManifest).sort(), [
+    "audio_sha256", "audio_url", "clip_id", "format_disclosure", "generated_at",
+    "integrity_disclaimer", "key", "manifest_sha256", "production", "source_ids",
+    "transcript", "transcript_sha256", "voice_disclosure",
+  ]);
+  assert.equal(firstManifest.key, `cut-${firstManifest.manifest_sha256}`);
+  assert.equal(firstManifest.transcript_sha256, createHash("sha256").update(first.clip.transcript).digest("hex"));
+  assert.equal(firstManifest.audio_sha256, createHash("sha256").update(Buffer.alloc(48)).digest("hex"));
+  assert.deepEqual(firstManifest.production, { synthetic: true, provider: "Google Gemini", model: "Gemini TTS" });
 
   const secondDecision = decidePodcastAudio(created.script.id, "approve");
   assert.equal(secondDecision.kind, "updated");
@@ -441,14 +449,78 @@ test("synthetic approved cut produces private-safe, superseding Cut Keys only af
   const secondManifest = getPodcastCutKey(second.clip.cut_key!);
   assert.ok(secondManifest);
   assert.equal(getPodcastCutKey(firstManifest.key)?.key, firstManifest.key);
-  assert.equal(getPodcastAudioPathByCutKey(firstManifest.key), null);
-  assert.equal(secondManifest.version, firstManifest.version + 1);
-  assert.equal(secondManifest.supersedes, firstManifest.key);
-  assert.equal(secondManifest.superseded_by, null);
-  assert.equal(getPodcastCutKey(firstManifest.key)?.superseded_by, secondManifest.key);
-  assert.equal((await getPublicPodcastCutKey(firstManifest.key))?.superseded_by, secondManifest.key);
-  assert.equal(await getPublicPodcastAudioCutKey(firstManifest.key), null);
+  assert.notEqual(secondManifest.key, firstManifest.key);
+  assert.equal((await getPublicPodcastCutKey(firstManifest.key))?.manifest_sha256, firstManifest.manifest_sha256);
   assert.ok(getPodcastAudioPathByCutKey(secondManifest.key));
+  const omitted = { ...secondManifest } as any;
+  delete omitted.transcript_sha256;
+  const { GetPodcastCutKeyResponse } = await import("@workspace/api-zod");
+  assert.equal(GetPodcastCutKeyResponse.safeParse(omitted).success, false);
+
+  const audioPath = join(process.env.PODCAST_AUDIO_DIRECTORY!, `${secondManifest.clip_id}.wav`);
+  const original = readFileSync(audioPath);
+  writeFileSync(audioPath, Buffer.from("tampered"));
+  try {
+    assert.equal(getPodcastAudioPathByCutKey(secondManifest.key), null);
+    await withApiServer(async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/podcast/cut-keys/${secondManifest.key}`);
+      assert.equal(response.status, 200);
+      const body = await response.json() as Record<string, unknown>;
+      assert.deepEqual(Object.keys(body).sort(), Object.keys(secondManifest).sort());
+      assert.equal("approval_receipts" in body, false);
+      assert.equal("private_attestation" in body, false);
+      assert.equal("executions" in body, false);
+    });
+  } finally {
+    writeFileSync(audioPath, original);
+  }
+  const reorderedManifest = {
+    production: {
+      model: secondManifest.production.model,
+      provider: secondManifest.production.provider,
+      synthetic: secondManifest.production.synthetic,
+    },
+    format_disclosure: secondManifest.format_disclosure,
+    key: secondManifest.key,
+    source_ids: secondManifest.source_ids,
+    audio_url: secondManifest.audio_url,
+    manifest_sha256: secondManifest.manifest_sha256,
+    generated_at: secondManifest.generated_at,
+    clip_id: secondManifest.clip_id,
+    transcript_sha256: secondManifest.transcript_sha256,
+    integrity_disclaimer: secondManifest.integrity_disclaimer,
+    transcript: secondManifest.transcript,
+    voice_disclosure: secondManifest.voice_disclosure,
+    audio_sha256: secondManifest.audio_sha256,
+  };
+  assert.equal(rehydratePodcastState({
+    briefs: [],
+    scripts: [],
+    cutKeys: [reorderedManifest],
+    currentBriefId: null,
+    currentScriptId: null,
+  }), true);
+  assert.equal((await getPublicPodcastCutKey(secondManifest.key))?.key, secondManifest.key);
+
+  const redirectedManifest = { ...secondManifest, audio_url: "https://example.test/unverified.wav" };
+  assert.equal(rehydratePodcastState({
+    briefs: [],
+    scripts: [],
+    cutKeys: [redirectedManifest],
+    currentBriefId: null,
+    currentScriptId: null,
+  }), true);
+  assert.equal(await getPublicPodcastCutKey(secondManifest.key), null);
+
+  const tamperedManifest = { ...secondManifest, transcript: `${secondManifest.transcript}\nTAMPERED` };
+  assert.equal(rehydratePodcastState({
+    briefs: [],
+    scripts: [],
+    cutKeys: [tamperedManifest],
+    currentBriefId: null,
+    currentScriptId: null,
+  }), true);
+  assert.equal(await getPublicPodcastCutKey(secondManifest.key), null);
 });
 
 test("exact run resolver never binds an artifact to the newest unrelated run", { concurrency: false }, () => {

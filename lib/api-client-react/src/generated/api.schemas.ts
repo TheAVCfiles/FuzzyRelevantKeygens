@@ -1123,84 +1123,31 @@ export interface PodcastCuttingRoomAttestation {
   created_at: string;
 }
 
-export type PodcastCutKeyLineMappingsItemSpeaker = typeof PodcastCutKeyLineMappingsItemSpeaker[keyof typeof PodcastCutKeyLineMappingsItemSpeaker];
-
-
-export const PodcastCutKeyLineMappingsItemSpeaker = {
-  FRONT_ROW: 'FRONT ROW',
-  BACKSTAGE: 'BACKSTAGE',
-} as const;
-
-export type PodcastCutKeyLineMappingsItemClassification = typeof PodcastCutKeyLineMappingsItemClassification[keyof typeof PodcastCutKeyLineMappingsItemClassification];
-
-
-export const PodcastCutKeyLineMappingsItemClassification = {
-  source_backed: 'source_backed',
-  first_party_attested: 'first_party_attested',
-  disputed: 'disputed',
-  unresolved: 'unresolved',
-} as const;
-
-export type PodcastCutKeyLineMappingsItem = {
-  segment: string;
-  text: string;
-  speaker: PodcastCutKeyLineMappingsItemSpeaker;
-  classification: PodcastCutKeyLineMappingsItemClassification;
-  source_ids: string[];
-};
-
-export type PodcastCutKeyApprovalReceiptsItemStage = typeof PodcastCutKeyApprovalReceiptsItemStage[keyof typeof PodcastCutKeyApprovalReceiptsItemStage];
-
-
-export const PodcastCutKeyApprovalReceiptsItemStage = {
-  development: 'development',
-  brief: 'brief',
-  script: 'script',
-  audio: 'audio',
-} as const;
-
-export type PodcastCutKeyApprovalReceiptsItem = {
-  stage: PodcastCutKeyApprovalReceiptsItemStage;
-  reviewer: string;
-  decided_at: string;
-};
-
-export type PodcastCutKeyPrivateAttestation = {
-  exists: boolean;
-  /** @nullable */
-  classification: string | null;
-  /** @nullable */
-  signer: string | null;
-  /** @nullable */
-  permitted_public_summary: string | null;
+export type PodcastCutKeyProduction = {
+  synthetic: boolean;
+  provider: string;
+  model: string;
 };
 
 export interface PodcastCutKey {
   key: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  manifest_sha256: string;
   clip_id: string;
-  /** @nullable */
-  run_id: string | null;
-  /** @nullable */
-  attestation_id: string | null;
   audio_url: string;
-  citations: PodcastGroundingSource[];
-  line_mappings: PodcastCutKeyLineMappingsItem[];
-  retrievals: string[];
-  script_sha256: string;
+  /** @maxLength 20000 */
+  transcript: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  transcript_sha256: string;
+  /** @maxItems 20 */
+  source_ids: string[];
+  generated_at: string;
+  production: PodcastCutKeyProduction;
+  voice_disclosure: string;
+  format_disclosure: string;
+  /** @pattern ^[a-f0-9]{64}$ */
   audio_sha256: string;
-  /**
-     * @minItems 4
-     * @maxItems 4
-     */
-  approval_receipts: PodcastCutKeyApprovalReceiptsItem[];
-  version: number;
-  /** @nullable */
-  supersedes: string | null;
-  /** @nullable */
-  superseded_by: string | null;
-  executions: PodcastAgentExecution[];
   integrity_disclaimer: string;
-  private_attestation: PodcastCutKeyPrivateAttestation;
 }
 
 export interface PodcastResetResponse {

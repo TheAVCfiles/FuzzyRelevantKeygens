@@ -15,7 +15,7 @@ vi.mock('@workspace/api-client-react', () => ({
 import { useGetPodcastCutKey } from '@workspace/api-client-react';
 
 describe('CutKeyView', () => {
-  it('renders public summary and never raw text', () => {
+  it('renders the bounded public podcast manifest', () => {
     vi.mocked(useGetPodcastCutKey).mockReturnValue({
       isLoading: false,
       error: null,
@@ -23,22 +23,16 @@ describe('CutKeyView', () => {
         key: 'test-key',
         clip_id: 'clip-1',
         audio_url: '/api/podcast/audio',
-        citations: [],
-        line_mappings: [],
-        retrievals: [],
-        script_sha256: 'sha-script',
+        manifest_sha256: 'sha-manifest',
+        transcript: 'Exact transcript.',
+        transcript_sha256: 'sha-script',
+        source_ids: ['source-1'],
+        generated_at: '2026-01-01T00:00:00.000Z',
+        production: { synthetic: true, provider: 'Google Gemini', model: 'Gemini TTS' },
+        voice_disclosure: 'Synthetic house voices.',
+        format_disclosure: 'Performed sample.',
         audio_sha256: 'sha-audio',
-        approval_receipts: [],
-        version: 1,
-        supersedes: null,
-        executions: [],
         integrity_disclaimer: 'Integrity over truth.',
-        private_attestation: {
-           exists: true,
-           classification: 'first_party_attested',
-           signer: 'Producer',
-           permitted_public_summary: 'Public summary OK.',
-        }
       }
     } as any);
 
@@ -46,10 +40,11 @@ describe('CutKeyView', () => {
 
     // Assert main elements
     expect(screen.getByText('Cut Key: test-key')).toBeInTheDocument();
-    expect(screen.getByText('"Public summary OK."')).toBeInTheDocument();
+    expect(screen.getByText('Exact transcript.')).toBeInTheDocument();
     expect(screen.getByText('Integrity over truth.')).toBeInTheDocument();
     expect(screen.getByText('sha-script')).toBeInTheDocument();
     expect(screen.getByText('sha-audio')).toBeInTheDocument();
+    expect(screen.getByText('sha-manifest')).toBeInTheDocument();
     expect(screen.getByTestId('audio-player')).toHaveAttribute('preload', 'metadata');
   });
 });

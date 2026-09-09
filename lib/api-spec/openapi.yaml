@@ -1606,62 +1606,32 @@ components:
         created_at: { type: string }
     PodcastCutKey:
       type: object
-      required: [key, clip_id, run_id, attestation_id, audio_url, citations, line_mappings, retrievals, script_sha256, audio_sha256, approval_receipts, version, supersedes, superseded_by, executions, integrity_disclaimer, private_attestation]
+      additionalProperties: false
+      required: [key, manifest_sha256, clip_id, audio_url, transcript, transcript_sha256, source_ids, generated_at, production, voice_disclosure, format_disclosure, audio_sha256, integrity_disclaimer]
       properties:
         key: { type: string }
+        manifest_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
         clip_id: { type: string }
-        run_id: { type: ["string", "null"] }
-        attestation_id: { type: ["string", "null"] }
         audio_url: { type: string }
-        citations:
+        transcript: { type: string, maxLength: 20000 }
+        transcript_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        source_ids:
           type: array
-          items: { $ref: "#/components/schemas/PodcastGroundingSource" }
-        line_mappings:
-          type: array
-          items:
-            type: object
-            required: [segment, text, speaker, classification, source_ids]
-            properties:
-              segment: { type: string }
-              text: { type: string }
-              speaker: { type: string, enum: [FRONT ROW, BACKSTAGE] }
-              classification:
-                type: string
-                enum: [source_backed, first_party_attested, disputed, unresolved]
-              source_ids:
-                type: array
-                items: { type: string }
-        retrievals:
-          type: array
+          maxItems: 20
           items: { type: string }
-        script_sha256: { type: string }
-        audio_sha256: { type: string }
-        approval_receipts:
-          type: array
-          minItems: 4
-          maxItems: 4
-          items:
-            type: object
-            required: [stage, reviewer, decided_at]
-            properties:
-              stage: { type: string, enum: [development, brief, script, audio] }
-              reviewer: { type: string }
-              decided_at: { type: string }
-        version: { type: number }
-        supersedes: { type: ["string", "null"] }
-        superseded_by: { type: ["string", "null"] }
-        executions:
-          type: array
-          items: { $ref: "#/components/schemas/PodcastAgentExecution" }
-        integrity_disclaimer: { type: string }
-        private_attestation:
+        generated_at: { type: string }
+        production:
           type: object
-          required: [exists, classification, signer, permitted_public_summary]
+          additionalProperties: false
+          required: [synthetic, provider, model]
           properties:
-            exists: { type: boolean }
-            classification: { type: ["string", "null"] }
-            signer: { type: ["string", "null"] }
-            permitted_public_summary: { type: ["string", "null"] }
+            synthetic: { type: boolean }
+            provider: { type: string }
+            model: { type: string }
+        voice_disclosure: { type: string }
+        format_disclosure: { type: string }
+        audio_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        integrity_disclaimer: { type: string }
     PodcastResetResponse:
       type: object
       required: [room, pre_staged_input]

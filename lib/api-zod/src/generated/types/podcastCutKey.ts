@@ -5,36 +5,25 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { PodcastAgentExecution } from './podcastAgentExecution';
-import type { PodcastCutKeyApprovalReceiptsItem } from './podcastCutKeyApprovalReceiptsItem';
-import type { PodcastCutKeyLineMappingsItem } from './podcastCutKeyLineMappingsItem';
-import type { PodcastCutKeyPrivateAttestation } from './podcastCutKeyPrivateAttestation';
-import type { PodcastGroundingSource } from './podcastGroundingSource';
+import type { PodcastCutKeyProduction } from './podcastCutKeyProduction';
 
 export interface PodcastCutKey {
   key: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  manifest_sha256: string;
   clip_id: string;
-  /** @nullable */
-  run_id: string | null;
-  /** @nullable */
-  attestation_id: string | null;
   audio_url: string;
-  citations: PodcastGroundingSource[];
-  line_mappings: PodcastCutKeyLineMappingsItem[];
-  retrievals: string[];
-  script_sha256: string;
+  /** @maxLength 20000 */
+  transcript: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  transcript_sha256: string;
+  /** @maxItems 20 */
+  source_ids: string[];
+  generated_at: string;
+  production: PodcastCutKeyProduction;
+  voice_disclosure: string;
+  format_disclosure: string;
+  /** @pattern ^[a-f0-9]{64}$ */
   audio_sha256: string;
-  /**
-     * @minItems 4
-     * @maxItems 4
-     */
-  approval_receipts: PodcastCutKeyApprovalReceiptsItem[];
-  version: number;
-  /** @nullable */
-  supersedes: string | null;
-  /** @nullable */
-  superseded_by: string | null;
-  executions: PodcastAgentExecution[];
   integrity_disclaimer: string;
-  private_attestation: PodcastCutKeyPrivateAttestation;
 }

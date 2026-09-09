@@ -1588,69 +1588,33 @@ export const GetPodcastCutKeyParams = zod.object({
   "key": zod.coerce.string()
 })
 
+export const getPodcastCutKeyResponseManifestSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getPodcastCutKeyResponseTranscriptMax = 20000;
 
-export const getPodcastCutKeyResponseApprovalReceiptsMin = 4;
-export const getPodcastCutKeyResponseApprovalReceiptsMax = 4;
+export const getPodcastCutKeyResponseTranscriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getPodcastCutKeyResponseSourceIdsMax = 20;
 
+export const getPodcastCutKeyResponseAudioSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 
 export const GetPodcastCutKeyResponse = zod.object({
   "key": zod.string(),
+  "manifest_sha256": zod.string().regex(getPodcastCutKeyResponseManifestSha256RegExp),
   "clip_id": zod.string(),
-  "run_id": zod.string().nullable(),
-  "attestation_id": zod.string().nullable(),
   "audio_url": zod.string(),
-  "citations": zod.array(zod.object({
-  "id": zod.string(),
-  "url": zod.string(),
-  "source_identifier": zod.string(),
-  "title": zod.string(),
-  "retrieved_at": zod.string(),
-  "snippet": zod.string().optional(),
-  "source_type": zod.string(),
-  "consent_reference": zod.string().nullable(),
-  "policy_reference": zod.string(),
-  "aggregate_summary": zod.string(),
-  "evidence_gaps": zod.array(zod.string()).min(1),
-  "classification": zod.enum(['source_backed', 'first_party_attested', 'disputed', 'unresolved']),
-  "what_it_supports": zod.string(),
-  "what_remains_uncertain": zod.string()
-})),
-  "line_mappings": zod.array(zod.object({
-  "segment": zod.string(),
-  "text": zod.string(),
-  "speaker": zod.enum(['FRONT ROW', 'BACKSTAGE']),
-  "classification": zod.enum(['source_backed', 'first_party_attested', 'disputed', 'unresolved']),
-  "source_ids": zod.array(zod.string())
-})),
-  "retrievals": zod.array(zod.string()),
-  "script_sha256": zod.string(),
-  "audio_sha256": zod.string(),
-  "approval_receipts": zod.array(zod.object({
-  "stage": zod.enum(['development', 'brief', 'script', 'audio']),
-  "reviewer": zod.string(),
-  "decided_at": zod.string()
-})).min(getPodcastCutKeyResponseApprovalReceiptsMin).max(getPodcastCutKeyResponseApprovalReceiptsMax),
-  "version": zod.number(),
-  "supersedes": zod.string().nullable(),
-  "superseded_by": zod.string().nullable(),
-  "executions": zod.array(zod.object({
-  "agent": zod.enum(['source_scout', 'evidence_editor', 'script_performer', 'audio_performer', 'authority_check']),
+  "transcript": zod.string().max(getPodcastCutKeyResponseTranscriptMax),
+  "transcript_sha256": zod.string().regex(getPodcastCutKeyResponseTranscriptSha256RegExp),
+  "source_ids": zod.array(zod.string()).max(getPodcastCutKeyResponseSourceIdsMax),
+  "generated_at": zod.string(),
+  "production": zod.object({
+  "synthetic": zod.boolean(),
   "provider": zod.string(),
-  "model": zod.string(),
-  "execution_id": zod.string(),
-  "tools": zod.array(zod.string()),
-  "latency_ms": zod.number(),
-  "status": zod.enum(['completed', 'held', 'failed']),
-  "activity": zod.string().optional()
-})),
-  "integrity_disclaimer": zod.string(),
-  "private_attestation": zod.object({
-  "exists": zod.boolean(),
-  "classification": zod.string().nullable(),
-  "signer": zod.string().nullable(),
-  "permitted_public_summary": zod.string().nullable()
-})
+  "model": zod.string()
+}),
+  "voice_disclosure": zod.string(),
+  "format_disclosure": zod.string(),
+  "audio_sha256": zod.string().regex(getPodcastCutKeyResponseAudioSha256RegExp),
+  "integrity_disclaimer": zod.string()
 })
 
 

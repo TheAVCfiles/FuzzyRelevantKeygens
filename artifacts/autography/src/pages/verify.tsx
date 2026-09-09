@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { useVerifyDrop } from "@workspace/api-client-react";
+import {
+  getGetPodcastCutKeyQueryKey,
+  useGetPodcastCutKey,
+  useVerifyDrop,
+} from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
@@ -7,15 +11,27 @@ import { Link } from "wouter";
 export function Verify() {
   const [lookup, setLookup] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
+  const [submittedCutKey, setSubmittedCutKey] = useState("");
 
   const verifyMutation = useVerifyDrop();
+  const cutKeyQuery = useGetPodcastCutKey(submittedCutKey, {
+    query: {
+      enabled: Boolean(submittedCutKey),
+      queryKey: getGetPodcastCutKeyQueryKey(submittedCutKey),
+    },
+  });
 
   const handleVerify = (e: React.FormEvent) => {
     e.preventDefault();
     if (!lookup.trim()) return;
-    verifyMutation.mutate({ data: { lookup: lookup.trim() } }, {
-      onSettled: () => setHasSearched(true)
-    });
+    const value = lookup.trim();
+    setHasSearched(true);
+    if (value.startsWith("cut-")) {
+      setSubmittedCutKey(value);
+      return;
+    }
+    setSubmittedCutKey("");
+    verifyMutation.mutate({ data: { lookup: value } });
   };
 
   return (
@@ -25,14 +41,14 @@ export function Verify() {
           <div className="font-system text-sepia text-[10px] tracking-[0.2em] mb-4 uppercase border border-sepia/30 inline-block px-3 py-1 bg-house/50">PUBLIC REGISTRY</div>
           <h1 className="font-serif text-4xl sm:text-5xl text-oyster mb-5">Artifact Lookup</h1>
           <p className="font-sans text-sepia text-sm sm:text-lg max-w-lg mx-auto">
-             Check whether an artifact ID or SHA-256 payload hash matches the public Autography registry.
+             Check a Drop ID, payload hash, or podcast Cut Key against the public Autography registry.
           </p>
         </div>
 
         <form onSubmit={handleVerify} className="w-full flex flex-col sm:flex-row gap-4 mb-12 sm:mb-16 relative z-10">
           <Input 
             className="flex-1 h-14 bg-house/80 border-sepia/50 text-oyster font-mono rounded-none focus-visible:ring-1 focus-visible:ring-brass placeholder:text-sepia/40 px-5 text-sm shadow-inner"
-            placeholder="Enter Drop ID or SHA-256 Hash..."
+            placeholder="Enter Drop ID, SHA-256 Hash, or Cut Key..."
             value={lookup}
             onChange={(e) => setLookup(e.target.value)}
           />
@@ -40,13 +56,33 @@ export function Verify() {
             {verifyMutation.isPending ? "VERIFYING..." : "VERIFY"}
           </Button>
         </form>
-        {hasSearched && verifyMutation.error && (
+        {hasSearched && submittedCutKey && cutKeyQuery.error && (
+          <div className="mb-8 border border-tally/40 bg-tally/5 p-4 text-sm leading-6 text-oyster" role="alert">
+            No canonical podcast manifest matches that Cut Key.
+          </div>
+        )}
+        {hasSearched && !submittedCutKey && verifyMutation.error && (
           <div className="mb-8 border border-tally/40 bg-tally/5 p-4 text-sm leading-6 text-oyster" role="alert">
             Verification could not be completed. The registry result is unchanged; check the identifier and retry.
           </div>
         )}
 
-        {hasSearched && verifyMutation.data && (
+        {hasSearched && submittedCutKey && cutKeyQuery.data && (
+          <div className="mb-8 w-full border border-brass/40 bg-house/80 p-6 sm:p-8">
+            <div className="font-system text-[10px] uppercase tracking-[0.15em] text-brass">Podcast manifest verified</div>
+            <p className="mt-3 font-serif text-2xl text-oyster">Exact transcript and audio identity found</p>
+            <div className="mt-5 space-y-3 font-mono text-[10px] text-sepia">
+              <p className="break-all">Manifest SHA-256: {cutKeyQuery.data.manifest_sha256}</p>
+              <p className="break-all">Transcript SHA-256: {cutKeyQuery.data.transcript_sha256}</p>
+              <p className="break-all">Audio SHA-256: {cutKeyQuery.data.audio_sha256}</p>
+            </div>
+            <Link href={`/cut/${cutKeyQuery.data.key}`}>
+              <Button variant="outline" className="mt-6 w-full h-12 tracking-[0.15em] border-brass/40 text-brass hover:bg-brass/10">VIEW PODCAST MANIFEST</Button>
+            </Link>
+          </div>
+        )}
+
+        {hasSearched && !submittedCutKey && verifyMutation.data && (
           <div className="w-full border border-sepia/40 p-6 sm:p-10 bg-house/80 shadow-[0_10px_40px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-4 duration-500 relative overflow-hidden">
             <div className={`absolute top-0 left-0 w-1.5 h-full ${verifyMutation.data.status === "SEALED" ? "bg-brass" : "bg-velvet"}`} />
             

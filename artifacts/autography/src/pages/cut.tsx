@@ -1,14 +1,8 @@
-import { useEffect, useState } from 'react';
 import { useParams, Link } from 'wouter';
 import {
-  Activity,
-  Check,
   CircleAlert,
-  Clock,
-  ExternalLink,
   FileAudio,
   FileText,
-  Link as LinkIcon,
   LoaderCircle,
   ShieldAlert,
   ShieldCheck,
@@ -26,11 +20,6 @@ function formatDate(value?: string) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(date);
-}
-
-function formatLatency(ms?: number) {
-  if (!ms) return '0s';
-  return (ms / 1000).toFixed(1) + 's';
 }
 
 export function CutKeyView() {
@@ -67,17 +56,16 @@ export function CutKeyView() {
 
   const {
     audio_url,
-    citations,
-    line_mappings,
-    approval_receipts,
-    version,
-    supersedes,
-    superseded_by,
-    executions,
     integrity_disclaimer,
-    private_attestation,
-    script_sha256,
+    transcript,
+    transcript_sha256,
     audio_sha256,
+    source_ids,
+    generated_at,
+    production,
+    voice_disclosure,
+    format_disclosure,
+    manifest_sha256,
   } = cutKey;
 
   return (
@@ -90,11 +78,7 @@ export function CutKeyView() {
             </div>
             <h1 className="mt-2 font-serif text-3xl sm:text-4xl text-[#f0e8de]">Cut Key: {key}</h1>
           </div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#80756c] text-right">
-            <span>Version {version}</span>
-            {supersedes && <span className="block mt-1">Supersedes {supersedes}</span>}
-            {superseded_by && <span className="block mt-1">Superseded by {superseded_by}</span>}
-          </div>
+          <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#80756c]">Canonical podcast manifest</span>
         </div>
       </header>
 
@@ -117,46 +101,19 @@ export function CutKeyView() {
               <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#b7aaa0]">Audio SHA-256</p>
               <p className="mt-1 break-all font-mono text-[10px] text-[#80756c]">{audio_sha256}</p>
             </div>
+            <div className="mt-4 space-y-2 text-xs leading-5 text-[#b7aaa0]">
+              <p>{voice_disclosure}</p>
+              <p>{format_disclosure}</p>
+              <p>Generated {formatDate(generated_at)} · {production.provider} / {production.model}</p>
+            </div>
           </section>
-
-          {private_attestation.permitted_public_summary && (
-            <section className="border border-[#46696e] bg-[#20383c] p-5 sm:p-6" data-testid="cut-attestation">
-               <h2 className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#a8d0c9]">
-                <ShieldCheck className="h-4 w-4" /> Publisher Attestation
-              </h2>
-              <p className="mt-3 text-sm leading-6 text-[#c5d8d5]">
-                "{private_attestation.permitted_public_summary}"
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-[#8ea8a2]">
-                 <span className="flex items-center gap-1 font-medium"><Check className="h-3 w-3" /> Attested by {private_attestation.signer || 'Verified Session'}</span>
-              </div>
-            </section>
-          )}
 
           <section data-testid="cut-transcript">
              <h2 className="mb-4 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Annotated Transcript</h2>
-             <div className="space-y-4">
-               {line_mappings.map((line, idx) => (
-                 <div key={idx} className="border border-[#4f4944] bg-[#221f1d] p-4 text-sm" data-testid={`cut-line-${idx}`}>
-                   <div className="mb-2 flex items-center justify-between border-b border-[#3a3532] pb-2 font-mono text-[9px] uppercase tracking-[0.08em] text-[#80756c]">
-                     <span className="text-[#d8a36c]">{line.speaker}</span>
-                     <span>{line.classification.replaceAll('_', ' ')}</span>
-                   </div>
-                   <p className="leading-6 text-[#f0e8de]">{line.text}</p>
-                   {line.source_ids.length > 0 && (
-                     <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-[9px] uppercase tracking-[0.08em] text-[#80756c]">
-                       <span>Sources:</span>
-                       {line.source_ids.map(id => (
-                         <span key={id} className="border border-[#4f4944] px-1.5 py-0.5">{id}</span>
-                       ))}
-                     </div>
-                   )}
-                 </div>
-               ))}
-             </div>
+             <pre className="whitespace-pre-wrap border border-[#4f4944] bg-[#221f1d] p-4 font-sans text-sm leading-6 text-[#f0e8de]">{transcript}</pre>
              <div className="mt-4 border-t border-[#4f4944] pt-4">
-              <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#b7aaa0]">Script SHA-256</p>
-              <p className="mt-1 break-all font-mono text-[10px] text-[#80756c]">{script_sha256}</p>
+               <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#b7aaa0]">Transcript SHA-256</p>
+               <p className="mt-1 break-all font-mono text-[10px] text-[#80756c]">{transcript_sha256}</p>
             </div>
           </section>
         </div>
@@ -173,72 +130,14 @@ export function CutKeyView() {
              </div>
           </section>
 
-          <section data-testid="cut-citations">
-             <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Citations</h2>
-             <div className="space-y-2">
-               {citations.map((citation) => (
-                 <a
-                   key={citation.id}
-                   href={citation.url}
-                   target="_blank"
-                   rel="noreferrer"
-                   className="group block border border-[#4f4944] bg-[#221f1d] p-3 transition-colors hover:border-[#d8a36c]"
-                 >
-                   <p className="line-clamp-2 text-sm leading-5 text-[#f0e8de] group-hover:text-[#d8a36c]">{citation.title}</p>
-                   <div className="mt-2 flex items-center justify-between gap-2 font-mono text-[9px] uppercase tracking-[0.08em] text-[#80756c]">
-                     <span className="truncate">{citation.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}</span>
-                     <ExternalLink className="h-3 w-3 shrink-0" />
-                   </div>
-                   <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[#80756c]">
-                     retrieved {formatDate(citation.retrieved_at)}
-                   </div>
-                 </a>
-               ))}
-             </div>
-          </section>
-
-          <section data-testid="cut-approvals">
-             <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Chain of Approval</h2>
-             <div className="space-y-2">
-               {approval_receipts.map((receipt, idx) => (
-                 <div key={idx} className="flex items-start justify-between gap-3 border border-[#4f4944] bg-[#221f1d] p-3 text-[10px] uppercase tracking-[0.08em]">
-                   <div>
-                     <p className="font-medium text-[#d8a36c]">{receipt.stage} Gate</p>
-                     <p className="mt-1 text-[#b7aaa0]">{receipt.reviewer}</p>
-                   </div>
-                   <div className="text-right text-[#80756c]">
-                     <p><Check className="inline h-3 w-3 text-[#9bc8a9]" /> cleared</p>
-                     <p className="mt-1">{formatDate(receipt.decided_at)}</p>
-                   </div>
-                 </div>
-               ))}
-             </div>
-          </section>
-
-          <section data-testid="cut-executions">
-             <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Agent Executions</h2>
-             <div className="space-y-2">
-               {executions.map((exec) => (
-                 <div key={exec.execution_id} className="border border-[#4f4944] bg-[#221f1d] p-3 text-xs leading-5">
-                   <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.08em]">
-                     <span className="text-[#a8d0c9]">{exec.agent.replaceAll('_', ' ')}</span>
-                     <span className={exec.status === 'completed' ? 'text-[#9bc8a9]' : 'text-[#e4a38d]'}>{exec.status}</span>
-                   </div>
-                   <div className="mt-2 text-[#b7aaa0]">
-                     <span className="text-[#f0e8de]">{exec.model}</span> ({exec.provider})
-                   </div>
-                   {exec.tools.length > 0 && (
-                     <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[#80756c]">
-                       Tools: {exec.tools.join(', ')}
-                     </div>
-                   )}
-                   <div className="mt-2 flex items-center gap-2 font-mono text-[9px] uppercase text-[#80756c]">
-                      <Activity className="h-3 w-3" /> {formatLatency(exec.latency_ms)}
-                   </div>
-                 </div>
-               ))}
-             </div>
-          </section>
+           <section data-testid="cut-source-ids">
+             <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Source IDs</h2>
+             <div className="flex flex-wrap gap-2">{source_ids.map((id) => <span key={id} className="border border-[#4f4944] px-2 py-1 font-mono text-[9px] text-[#b7aaa0]">{id}</span>)}</div>
+           </section>
+           <section>
+             <h2 className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Manifest SHA-256</h2>
+             <p className="break-all font-mono text-[10px] text-[#80756c]">{manifest_sha256}</p>
+           </section>
 
         </div>
       </div>

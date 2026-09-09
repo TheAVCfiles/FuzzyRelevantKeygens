@@ -5,3 +5,4 @@
 - [Podcast lineage across restarts](podcast-lineage-restarts.md) — Keep test state isolated and verify exact run, attestation, approvals, and public audio after process rehydration.
 - [First-publish database readiness](first-publish-database-readiness.md) — Keep liveness independent; fail podcast routes closed until durable production hydration succeeds.
 - [Legacy comparison presets](legacy-comparison-presets.md) — Ownerless presets stay visible and applicable during ownership migration, but authenticated producers cannot rename or remove them.
+- [Public podcast manifests](public-podcast-manifests.md) — Public Cut Keys are self-hashed, bounded proof records; keep room decisions and private provenance out.

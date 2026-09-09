@@ -307,13 +307,18 @@ const podcastBriefs = new Map<string, PodcastBrief>();
 const podcastScripts = new Map<string, PodcastWorkspaceWithCompatibility>();
 
 type OwnedPodcastFilterPreset = PodcastFilterPreset & { owner_id: string | null };
+type PodcastApprovalReceipt = {
+  stage: "development" | "brief" | "script" | "audio";
+  reviewer: string;
+  decided_at: string;
+};
 const podcastFilterPresets = new Map<string, OwnedPodcastFilterPreset>();
 const podcastDevelopmentPlans = new Map<string, PodcastDevelopmentPlan>();
 const podcastGroundedRuns = new Map<string, PodcastGroundedRun>();
 const podcastAttestations = new Map<string, PodcastCuttingRoomAttestation & { raw_text?: string }>();
 const podcastCutKeys = new Map<string, PodcastCutKey>();
 const podcastAudioAssets = new Map<string, string>();
-const podcastApprovalReceipts = new Map<string, { stage: "development" | "brief" | "script" | "audio"; reviewer: string; decided_at: string }>();
+const podcastApprovalReceipts = new Map<string, PodcastApprovalReceipt>();
 const podcastExecutionRecords = new Map<string, PodcastGroundedRun["agent_executions"][number]>();
 
 const podcastStatePath = process.env.PODCAST_STATE_PATH ?? join(process.cwd(), ".podcast-room-state.json");
@@ -343,7 +348,7 @@ type PersistedPodcastState = {
   attestations?: (PodcastCuttingRoomAttestation & { raw_text?: string })[];
   cutKeys?: PodcastCutKey[];
   audioAssets?: { clipId: string; sha256: string }[];
-  approvalReceipts?: { key: string; receipt: { stage: "development" | "brief" | "script" | "audio"; reviewer: string; decided_at: string } }[];
+  approvalReceipts?: { key: string; receipt: PodcastApprovalReceipt }[];
   executionRecords?: { key: string; execution: PodcastGroundedRun["agent_executions"][number] }[];
 };
 
@@ -657,7 +662,7 @@ async function migratePersistedPodcastAudio() {
     const clipId = script.audio_clip?.id;
     if (!clipId) continue;
     const manifest = [...podcastCutKeys.values()].find(
-      (candidate) => candidate.clip_id === clipId && candidate.superseded_by === null,
+      (candidate) => candidate.clip_id === clipId,
     );
     let expectedSha256 = manifest?.audio_sha256 ?? podcastAudioAssets.get(clipId);
     const localPath = join(audioDirectory, `${clipId}.wav`);
@@ -736,18 +741,6 @@ function normalizeGroundedRun(run: PodcastGroundedRun): PodcastGroundedRun {
       const normalized = normalizeGroundingSource(source, policyReference);
       return provider === "google_public_web"
         ? { ...normalized, title: `Approved public-web result ${index + 1}`, snippet: "" }
-        : normalized;
-    }),
-  };
-}
-
-function normalizeCutKeyGroundingSources(cutKey: PodcastCutKey): PodcastCutKey {
-  return {
-    ...cutKey,
-    citations: cutKey.citations.map((source, index) => {
-      const normalized = normalizeGroundingSource(source, "legacy-unverified-provenance");
-      return normalized.policy_reference === currentContextPolicyReference
-        ? { ...normalized, title: `Approved public-web citation ${index + 1}`, snippet: "" }
         : normalized;
     }),
   };
@@ -850,16 +843,7 @@ export function rehydratePodcastState(input: unknown) {
       }
     }
     for (const cutKey of saved.cutKeys ?? []) {
-      if (!cutKey?.key) continue;
-      const persisted = cutKey as PodcastCutKey & { superseded_by?: string | null };
-      const legacySuperseded = typeof persisted.supersedes === "string" && persisted.supersedes.startsWith("superseded-by-");
-      podcastCutKeys.set(persisted.key, normalizeCutKeyGroundingSources({
-        ...persisted,
-        run_id: persisted.run_id ?? null,
-        attestation_id: persisted.attestation_id ?? null,
-        supersedes: legacySuperseded ? null : persisted.supersedes ?? null,
-        superseded_by: persisted.superseded_by ?? (legacySuperseded ? persisted.supersedes : null),
-      }));
+      if (isValidPodcastCutKey(cutKey)) podcastCutKeys.set(cutKey.key, cutKey);
     }
     for (const asset of saved.audioAssets ?? []) {
       if (asset?.clipId && /^[a-f0-9]{64}$/.test(asset.sha256)) {
@@ -2070,31 +2054,94 @@ export function getPodcastCutKey(key: string) {
   return podcastCutKeys.get(key) ?? null;
 }
 
+type PodcastCutKeyCanonicalInput = Pick<
+  PodcastCutKey,
+  | "clip_id"
+  | "transcript"
+  | "transcript_sha256"
+  | "source_ids"
+  | "generated_at"
+  | "production"
+  | "voice_disclosure"
+  | "format_disclosure"
+  | "audio_sha256"
+  | "integrity_disclaimer"
+>;
+
+function podcastCutKeyCanonicalPayload(manifest: PodcastCutKeyCanonicalInput) {
+  return {
+    clip_id: manifest.clip_id,
+    transcript: manifest.transcript,
+    transcript_sha256: manifest.transcript_sha256,
+    source_ids: manifest.source_ids,
+    generated_at: manifest.generated_at,
+    production: {
+      synthetic: manifest.production.synthetic,
+      provider: manifest.production.provider,
+      model: manifest.production.model,
+    },
+    voice_disclosure: manifest.voice_disclosure,
+    format_disclosure: manifest.format_disclosure,
+    audio_sha256: manifest.audio_sha256,
+    integrity_disclaimer: manifest.integrity_disclaimer,
+  };
+}
+
+function podcastCutKeyManifestSha256(manifest: PodcastCutKeyCanonicalInput) {
+  return createHash("sha256")
+    .update(JSON.stringify(podcastCutKeyCanonicalPayload(manifest)))
+    .digest("hex");
+}
+
+function isValidPodcastCutKey(candidate: unknown): candidate is PodcastCutKey {
+  if (!candidate || typeof candidate !== "object") return false;
+  const manifest = candidate as Partial<PodcastCutKey>;
+  if (
+    typeof manifest.key !== "string" ||
+    typeof manifest.manifest_sha256 !== "string" ||
+    typeof manifest.clip_id !== "string" ||
+    typeof manifest.audio_url !== "string" ||
+    typeof manifest.transcript !== "string" ||
+    typeof manifest.transcript_sha256 !== "string" ||
+    !Array.isArray(manifest.source_ids) ||
+    typeof manifest.generated_at !== "string" ||
+    !manifest.production ||
+    typeof manifest.voice_disclosure !== "string" ||
+    typeof manifest.format_disclosure !== "string" ||
+    typeof manifest.audio_sha256 !== "string" ||
+    typeof manifest.integrity_disclaimer !== "string"
+  ) return false;
+  const transcriptSha256 = createHash("sha256").update(manifest.transcript).digest("hex");
+  if (transcriptSha256 !== manifest.transcript_sha256) return false;
+  const manifestSha256 = podcastCutKeyManifestSha256(manifest as PodcastCutKey);
+  return (
+    manifest.manifest_sha256 === manifestSha256 &&
+    manifest.key === `cut-${manifestSha256}` &&
+    manifest.audio_url === `/api/podcast/cut-keys/${manifest.key}/audio`
+  );
+}
+
 export async function getPublicPodcastCutKey(key: string) {
   if (process.env.PODCAST_DURABILITY_DISABLED === "true") {
-    return podcastCutKeys.get(key) ?? null;
+    const manifest = podcastCutKeys.get(key);
+    return isValidPodcastCutKey(manifest) ? manifest : null;
   }
   const stored = await loadPodcastStateFromDatabase();
   const state = stored?.state as PersistedPodcastState | undefined;
   const manifest = state?.cutKeys?.find((candidate) => candidate.key === key);
-  if (!manifest) return null;
-  return normalizeCutKeyGroundingSources({
-    ...manifest,
-    run_id: manifest.run_id ?? null,
-    attestation_id: manifest.attestation_id ?? null,
-  });
+  return isValidPodcastCutKey(manifest) ? manifest : null;
 }
 
 export async function getPublicPodcastAudioCutKey(key: string) {
   if (process.env.PODCAST_DURABILITY_DISABLED === "true") {
     const manifest = podcastCutKeys.get(key);
-    if (!manifest || manifest.superseded_by != null) return null;
+    if (!isValidPodcastCutKey(manifest)) return null;
     return activeGeneratedPodcastClip(manifest.clip_id) ? manifest : null;
   }
   const stored = await loadPodcastStateFromDatabase();
   const state = stored?.state as PersistedPodcastState | undefined;
   const manifest = state?.cutKeys?.find((candidate) => candidate.key === key);
-  if (!manifest || manifest.superseded_by != null) return null;
+  if (!isValidPodcastCutKey(manifest)) return null;
   const active = state?.scripts.some(
     (script) => script.audio_status === "generated" && script.audio_clip?.id === manifest.clip_id,
   );
@@ -2104,7 +2151,7 @@ export async function getPublicPodcastAudioCutKey(key: string) {
 
 export function getPodcastAudioPathByCutKey(key: string) {
   const manifest = podcastCutKeys.get(key);
-  if (!manifest || manifest.superseded_by != null) return null;
+  if (!isValidPodcastCutKey(manifest)) return null;
   if (!activeGeneratedPodcastClip(manifest.clip_id)) return null;
   return getPodcastAudioPath(manifest.clip_id);
 }
@@ -2291,7 +2338,7 @@ export function commitGeneratedPodcastAudio(
 function podcastApprovalChain(
   script: PodcastWorkspaceWithCompatibility,
   brief: PodcastBrief,
-): PodcastCutKey["approval_receipts"] | null {
+): PodcastApprovalReceipt[] | null {
   const receipts = [
     brief.development_plan_id ? podcastApprovalReceipts.get(`development:${brief.development_plan_id}`) : undefined,
     podcastApprovalReceipts.get(`brief:${script.brief_id}`),
@@ -2300,7 +2347,7 @@ function podcastApprovalChain(
   ];
   return receipts.some((receipt) => !receipt)
     ? null
-    : receipts as PodcastCutKey["approval_receipts"];
+    : receipts as PodcastApprovalReceipt[];
 }
 
 function podcastAuthorityHold(script: PodcastWorkspaceWithCompatibility) {
@@ -2348,34 +2395,31 @@ function createPodcastCutKey(script: PodcastWorkspaceWithCompatibility, clip: Po
   if (!attestation || script.run_id !== run.id || script.attestation_id !== attestation.id || brief?.attestation_id !== attestation.id) return null;
   const receipts = brief ? podcastApprovalChain(script, brief) : null;
   if (!receipts) return null;
-  const previous = [...podcastCutKeys.values()].find((item) => item.clip_id === clip.id && item.superseded_by === null);
-  const key = `cut-${randomUUID()}`;
-  if (previous) {
-    podcastCutKeys.set(previous.key, { ...previous, superseded_by: key });
-  }
+  const audioSha256 = createHash("sha256").update(wav).digest("hex");
+  const transcriptSha256 = createHash("sha256").update(clip.transcript).digest("hex");
+  const canonicalPayload = {
+    clip_id: clip.id,
+    transcript: clip.transcript,
+    transcript_sha256: transcriptSha256,
+    source_ids: [...clip.source_ids].sort(),
+    generated_at: clip.generated_at,
+    production: {
+      synthetic: true,
+      provider: "Google Gemini",
+      model: "Gemini TTS",
+    },
+    voice_disclosure: clip.voice_disclosure,
+    format_disclosure: clip.format_disclosure,
+    audio_sha256: audioSha256,
+    integrity_disclaimer: "This manifest verifies artifact lineage and integrity, not the truth of any claim.",
+  };
+  const manifestSha256 = podcastCutKeyManifestSha256(canonicalPayload);
+  const key = `cut-${manifestSha256}`;
   const manifest: PodcastCutKey = {
     key,
-    clip_id: clip.id,
-    run_id: script.run_id,
-    attestation_id: script.attestation_id,
+    manifest_sha256: manifestSha256,
     audio_url: `/api/podcast/cut-keys/${key}/audio`,
-    citations: run.sources,
-    line_mappings: script.sections.map((section) => ({ segment: section.segment, text: section.script, speaker: section.speaker, classification: section.classification, source_ids: section.source_ids })),
-    retrievals: run.sources.map((source) => source.retrieved_at),
-    script_sha256: createHash("sha256").update(clip.transcript).digest("hex"),
-    audio_sha256: createHash("sha256").update(wav).digest("hex"),
-    approval_receipts: receipts,
-    version: previous ? previous.version + 1 : 1,
-    supersedes: previous?.key ?? null,
-    superseded_by: null,
-    executions: [...run.agent_executions, ...[podcastExecutionRecords.get(`script:${script.id}`), podcastExecutionRecords.get(`audio:${script.id}`)].filter(Boolean) as PodcastGroundedRun["agent_executions"], { agent: "authority_check", provider: "deterministic", model: "policy-v1", execution_id: randomUUID(), tools: [], latency_ms: 0, status: "completed", activity: "Confirmed approvals, citations, uncertainty, and private-content boundary." }],
-    integrity_disclaimer: "This manifest verifies artifact lineage and integrity, not the truth of any claim.",
-    private_attestation: {
-      exists: attestation.decision === "add",
-      classification: attestation.decision === "add" ? "first_party_attested" : null,
-      signer: attestation.signer,
-      permitted_public_summary: attestation.permitted_public_summary,
-    },
+    ...canonicalPayload,
   };
   podcastCutKeys.set(key, manifest);
   return manifest;
@@ -2390,9 +2434,9 @@ export function getPodcastAudioPath(clipId: string) {
   if (!/^clip-[a-zA-Z0-9_-]+$/.test(clipId)) return null;
   const storedClip = activeGeneratedPodcastClip(clipId);
   if (!storedClip) return null;
-  const expectedSha256 = [...podcastCutKeys.values()].find(
-    (candidate) => candidate.clip_id === clipId && candidate.superseded_by === null,
-  )?.audio_sha256 ?? podcastAudioAssets.get(clipId);
+  const expectedSha256 = (
+    storedClip.cut_key ? podcastCutKeys.get(storedClip.cut_key)?.audio_sha256 : undefined
+  ) ?? podcastAudioAssets.get(clipId);
   if (!expectedSha256) return null;
   const filePath = join(audioDirectory, `${clipId}.wav`);
   if (!existsSync(filePath)) return null;
@@ -2404,10 +2448,9 @@ export async function getPodcastStoredAudioFile(clipId: string) {
   const storedClip = activeGeneratedPodcastClip(clipId);
   if (!storedClip) return null;
   if (process.env.PODCAST_DURABILITY_DISABLED === "true") return null;
-  const manifest = [...podcastCutKeys.values()].find(
-    (candidate) => candidate.clip_id === clipId && candidate.superseded_by === null,
-  );
-  const expectedSha256 = manifest?.audio_sha256 ?? podcastAudioAssets.get(clipId);
+  const expectedSha256 = (
+    storedClip.cut_key ? podcastCutKeys.get(storedClip.cut_key)?.audio_sha256 : undefined
+  ) ?? podcastAudioAssets.get(clipId);
   if (!expectedSha256) return null;
   return getPodcastAudioFile(clipId, expectedSha256);
 }
