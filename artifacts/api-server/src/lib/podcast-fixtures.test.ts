@@ -43,6 +43,8 @@ import {
   getPodcastAudioPathByCutKey,
   getPodcastAudioPath,
   getPodcastCutKey,
+  getPublicPodcastCutKey,
+  getPublicPodcastAudioCutKey,
   recordPodcastDecision,
   recordPodcastDevelopmentReceipt,
   runForPodcastArtifact,
@@ -248,6 +250,8 @@ test("synthetic approved cut produces private-safe, superseding Cut Keys only af
   assert.equal(secondManifest.supersedes, firstManifest.key);
   assert.equal(secondManifest.superseded_by, null);
   assert.equal(getPodcastCutKey(firstManifest.key)?.superseded_by, secondManifest.key);
+  assert.equal((await getPublicPodcastCutKey(firstManifest.key))?.superseded_by, secondManifest.key);
+  assert.equal(await getPublicPodcastAudioCutKey(firstManifest.key), null);
   assert.ok(getPodcastAudioPathByCutKey(secondManifest.key));
 });
 

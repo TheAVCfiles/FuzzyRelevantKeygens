@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { test } from "node:test";
 
 import app from "./app";
+import { acquirePodcastMutationLock } from "./lib/podcast-fixtures";
 
 async function withServer(run: (baseUrl: string) => Promise<void>) {
   const server = createServer(app);
@@ -49,5 +50,30 @@ test("runtime rejects malformed and oversized JSON bodies safely", async () => {
     assert.deepEqual(await oversized.json(), {
       error: "Request body exceeds the allowed size.",
     });
+  });
+});
+
+test("public Cut Key reads are not blocked by an in-flight podcast mutation", async () => {
+  await withServer(async (baseUrl) => {
+    const lock = await acquirePodcastMutationLock();
+    const [manifestResponse, audioResponse] = await Promise.all([
+      Promise.race([
+        fetch(`${baseUrl}/api/podcast/cut-keys/still-responsive`),
+        new Promise<never>((_, reject) => setTimeout(
+          () => reject(new Error("Public Cut Key manifest remained blocked")),
+          1_000,
+        )),
+      ]),
+      Promise.race([
+        fetch(`${baseUrl}/api/podcast/cut-keys/still-responsive/audio`),
+        new Promise<never>((_, reject) => setTimeout(
+          () => reject(new Error("Public Cut Key audio remained blocked")),
+          1_000,
+        )),
+      ]),
+    ]);
+    lock.release();
+    assert.equal(manifestResponse.status, 404);
+    assert.equal(audioResponse.status, 404);
   });
 });

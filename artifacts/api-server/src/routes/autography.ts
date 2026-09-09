@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { clerkClient, getAuth } from "@clerk/express";
 import { createReadStream, statSync } from "node:fs";
+import type { File } from "@google-cloud/storage";
 import {
   AddPodcastSourceBody,
   AddPodcastSourceResponse,
@@ -115,12 +116,86 @@ import {
   recordPodcastDevelopmentReceipt,
   searchPodcastContexts,
   attestPodcastCuttingRoom,
-  getPodcastAudioPathByCutKey,
-  getPodcastCutKey,
+  getPodcastAudioPathForCutKey,
+  getPodcastAudioFileForCutKey,
+  getPodcastStoredAudioFile,
+  getPublicPodcastCutKey,
+  getPublicPodcastAudioCutKey,
+  flushPodcastPersistence,
+  acquirePodcastMutationLock,
+  runWithPodcastMutationLock,
   resetPodcastDemo,
 } from "../lib/podcast-fixtures";
 
 const router: IRouter = Router();
+
+router.use("/podcast", async (req, res, next): Promise<void> => {
+  const publicCutKeyRead =
+    (req.method === "GET" || req.method === "HEAD") &&
+    /\/podcast\/cut-keys\/[^/?]+(?:\/audio)?(?:\?|$)/.test(req.originalUrl);
+  if (publicCutKeyRead) {
+    next();
+    return;
+  }
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {
+    let disconnected = false;
+    let release: (() => void) | undefined;
+    const releaseOnClose = () => {
+      disconnected = true;
+      release?.();
+    };
+    res.once("close", releaseOnClose);
+    try {
+      const lock = await acquirePodcastMutationLock();
+      release = lock.release;
+      if (disconnected || res.destroyed || res.writableEnded) {
+        release();
+        return;
+      }
+      release();
+      next();
+    } catch (error) {
+      res.off("close", releaseOnClose);
+      next(error);
+    }
+    return;
+  }
+  let disconnected = false;
+  const markDisconnected = () => {
+    disconnected = true;
+  };
+  res.once("close", markDisconnected);
+  let lock: Awaited<ReturnType<typeof acquirePodcastMutationLock>>;
+  try {
+    lock = await acquirePodcastMutationLock();
+    if (disconnected || res.destroyed || res.writableEnded) {
+      lock.release();
+      return;
+    }
+  } catch (error) {
+    res.off("close", markDisconnected);
+    next(error);
+    return;
+  }
+  const sendJson = res.json.bind(res);
+  res.json = ((body: unknown) => {
+    void flushPodcastPersistence().then((persisted) => {
+      try {
+        if (!persisted && res.statusCode < 400) {
+          res.status(503);
+          sendJson({ error: "Podcast changes could not be durably persisted." });
+          return;
+        }
+        sendJson(body);
+      } finally {
+        res.off("close", markDisconnected);
+        lock.release();
+      }
+    });
+    return res;
+  }) as typeof res.json;
+  runWithPodcastMutationLock(lock, () => next());
+});
 
 type PilotRole = "producer" | "talent" | "publicity" | "safety" | "viewer";
 type AutographyPrincipal = {
@@ -262,13 +337,13 @@ router.post("/verify", (req, res): void => {
 
 // Cut Keys are deliberately public, but resolve only an already-approved,
 // current manifest and never expose private attestation raw text.
-router.get("/podcast/cut-keys/:key", (req, res): void => {
+router.get("/podcast/cut-keys/:key", async (req, res): Promise<void> => {
   const params = GetPodcastCutKeyParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const manifest = getPodcastCutKey(params.data.key);
+  const manifest = await getPublicPodcastCutKey(params.data.key);
   if (!manifest) {
     res.status(404).json({ error: "Cut Key not found" });
     return;
@@ -276,13 +351,23 @@ router.get("/podcast/cut-keys/:key", (req, res): void => {
   res.json(GetPodcastCutKeyResponse.parse(manifest));
 });
 
-router.get("/podcast/cut-keys/:key/audio", (req, res): void => {
+router.get("/podcast/cut-keys/:key/audio", async (req, res): Promise<void> => {
   const params = GetPodcastCutKeyParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const path = getPodcastAudioPathByCutKey(params.data.key);
+  const manifest = await getPublicPodcastAudioCutKey(params.data.key);
+  if (!manifest) {
+    res.status(404).json({ error: "Current Cut Key audio not found" });
+    return;
+  }
+  const file = await getPodcastAudioFileForCutKey(manifest);
+  if (file) {
+    await streamAppStorageAudio(req, res, file, "Current Cut Key audio not found");
+    return;
+  }
+  const path = getPodcastAudioPathForCutKey(manifest);
   if (!path) {
     res.status(404).json({ error: "Current Cut Key audio not found" });
     return;
@@ -488,7 +573,7 @@ router.delete("/podcast/presets/:id", requirePermission("stage"), (req, res): vo
     res.status(404).json({ error: "Podcast filter preset not found" });
     return;
   }
-  res.status(204).send();
+  res.status(204).json(null);
 });
 
 router.post("/podcast/brief", requirePermission("stage"), async (req, res): Promise<void> => {
@@ -722,10 +807,15 @@ router.get("/podcast/script/:id/audio", (req, res): void => {
   res.json(GetPodcastAudioResponse.parse(clip));
 });
 
-router.get("/podcast/audio/:id/stream", (req, res): void => {
+router.get("/podcast/audio/:id/stream", async (req, res): Promise<void> => {
   const params = StreamPodcastAudioParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Invalid podcast audio clip id" });
+    return;
+  }
+  const file = await getPodcastStoredAudioFile(params.data.id);
+  if (file) {
+    await streamAppStorageAudio(req, res, file, "Podcast audio file not found");
     return;
   }
   const filePath = getPodcastAudioPath(params.data.id);
@@ -812,6 +902,74 @@ router.get("/podcast/audio/:id/stream", (req, res): void => {
   });
   stream.pipe(res);
 });
+
+async function streamAppStorageAudio(
+  req: Request,
+  res: any,
+  file: File,
+  notFoundMessage: string,
+) {
+  let size: number;
+  try {
+    const [metadata] = await file.getMetadata();
+    size = Number(metadata.size);
+    if (!Number.isSafeInteger(size) || size < 0) throw new Error("Invalid stored audio size");
+  } catch (error) {
+    req.log.warn({ error: error instanceof Error ? error.message : String(error) }, "Podcast App Storage metadata lookup failed");
+    res.status(404).json({ error: notFoundMessage });
+    return;
+  }
+
+  const range = req.header("range");
+  let start = 0;
+  let end = size - 1;
+  let partial = false;
+  if (range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    if (!match || (match[1] === "" && match[2] === "" || size === 0)) {
+      res.setHeader("Content-Range", `bytes */${size}`);
+      res.status(416).end();
+      return;
+    }
+    if (match[1] === "") {
+      const suffixLength = Number(match[2]);
+      if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+        res.setHeader("Content-Range", `bytes */${size}`);
+        res.status(416).end();
+        return;
+      }
+      start = Math.max(size - suffixLength, 0);
+    } else {
+      start = Number(match[1]);
+      end = match[2] === "" ? size - 1 : Number(match[2]);
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= size || end < start) {
+        res.setHeader("Content-Range", `bytes */${size}`);
+        res.status(416).end();
+        return;
+      }
+      end = Math.min(end, size - 1);
+    }
+    partial = true;
+  }
+
+  const contentLength = size === 0 ? 0 : end - start + 1;
+  res.status(partial ? 206 : 200);
+  res.type("audio/wav");
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Content-Length", contentLength);
+  if (partial) res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
+  if (size === 0) {
+    res.end();
+    return;
+  }
+  const stream = file.createReadStream({ start, end });
+  stream.on("error", (error) => {
+    req.log.warn({ error: error.message }, "Podcast App Storage stream failed");
+    if (!res.headersSent) res.status(404).json({ error: notFoundMessage });
+    else res.destroy(error);
+  });
+  stream.pipe(res);
+}
 
 router.get("/context", (_req, res): void => {
   res.json(GetContextResponse.parse({ items: contextItems }));

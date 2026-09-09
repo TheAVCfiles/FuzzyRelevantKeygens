@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,6 +22,14 @@ import type {
 } from "@workspace/api-zod";
 
 import { getLiveObservationSnapshot, recordAgentStage, recordHumanDecision } from "./autography-fixtures";
+import { logger } from "./logger";
+import {
+  getPodcastAudioFile,
+  loadPodcastStateFromDatabase,
+  migrateLocalPodcastAudio,
+  savePodcastStateToDatabase,
+  uploadPodcastAudio,
+} from "./podcast-persistence";
 
 const model = "gemini-3.6-flash";
 
@@ -293,6 +302,7 @@ const podcastDevelopmentPlans = new Map<string, PodcastDevelopmentPlan>();
 const podcastGroundedRuns = new Map<string, PodcastGroundedRun>();
 const podcastAttestations = new Map<string, PodcastCuttingRoomAttestation & { raw_text?: string }>();
 const podcastCutKeys = new Map<string, PodcastCutKey>();
+const podcastAudioAssets = new Map<string, string>();
 const podcastApprovalReceipts = new Map<string, { stage: "development" | "brief" | "script" | "audio"; reviewer: string; decided_at: string }>();
 const podcastExecutionRecords = new Map<string, PodcastGroundedRun["agent_executions"][number]>();
 
@@ -300,6 +310,17 @@ const podcastStatePath = process.env.PODCAST_STATE_PATH ?? join(process.cwd(), "
 const audioDirectory = process.env.PODCAST_AUDIO_DIRECTORY ?? join(process.cwd(), ".podcast-audio");
 type PodcastStorageHealth = "healthy" | "degraded";
 let podcastStorageHealth: PodcastStorageHealth = "healthy";
+let podcastPersistenceQueue: Promise<void> = Promise.resolve();
+let podcastPersistenceRevision: number | null = null;
+let podcastMutationLock: Promise<void> = Promise.resolve();
+let podcastMutationActive = false;
+let stagedPodcastState: PersistedPodcastState | null = null;
+const podcastLockContext = new AsyncLocalStorage<PodcastMutationLock>();
+
+export type PodcastMutationLock = {
+  release: () => void;
+  yieldForExternalWork: <T>(work: () => Promise<T>) => Promise<T>;
+};
 
 type PersistedPodcastState = {
   briefs: PodcastBrief[];
@@ -311,6 +332,7 @@ type PersistedPodcastState = {
   groundedRuns?: PodcastGroundedRun[];
   attestations?: (PodcastCuttingRoomAttestation & { raw_text?: string })[];
   cutKeys?: PodcastCutKey[];
+  audioAssets?: { clipId: string; sha256: string }[];
   approvalReceipts?: { key: string; receipt: { stage: "development" | "brief" | "script" | "audio"; reviewer: string; decided_at: string } }[];
   executionRecords?: { key: string; execution: PodcastGroundedRun["agent_executions"][number] }[];
 };
@@ -343,45 +365,183 @@ export function getPodcastStorageHealth() {
   return { status: podcastStorageHealth } as const;
 }
 
-function persistPodcastState(operation: string, artifactType: string) {
-  const temporaryPath = `${podcastStatePath}.tmp`;
-  try {
-    writeFileSync(
-      temporaryPath,
-      JSON.stringify({
-        briefs: [...podcastBriefs.values()],
-        scripts: [...podcastScripts.values()],
-        filterPresets: [...podcastFilterPresets.values()],
-        developmentPlans: [...podcastDevelopmentPlans.values()],
-        currentBriefId: currentBrief?.id ?? null,
-        currentScriptId: currentScript?.id ?? null,
-        groundedRuns: [...podcastGroundedRuns.values()],
-        attestations: [...podcastAttestations.values()],
-        cutKeys: [...podcastCutKeys.values()],
-        approvalReceipts: [...podcastApprovalReceipts.entries()].map(([key, receipt]) => ({ key, receipt })),
-        executionRecords: [...podcastExecutionRecords.entries()].map(([key, execution]) => ({ key, execution })),
-      } satisfies PersistedPodcastState),
-      "utf8",
+function serializedPodcastState(): PersistedPodcastState {
+  return {
+    briefs: [...podcastBriefs.values()],
+    scripts: [...podcastScripts.values()],
+    filterPresets: [...podcastFilterPresets.values()],
+    developmentPlans: [...podcastDevelopmentPlans.values()],
+    currentBriefId: currentBrief?.id ?? null,
+    currentScriptId: currentScript?.id ?? null,
+    groundedRuns: [...podcastGroundedRuns.values()],
+    attestations: [...podcastAttestations.values()],
+    cutKeys: [...podcastCutKeys.values()],
+    audioAssets: [...podcastAudioAssets.entries()].map(([clipId, sha256]) => ({ clipId, sha256 })),
+    approvalReceipts: [...podcastApprovalReceipts.entries()].map(([key, receipt]) => ({ key, receipt })),
+    executionRecords: [...podcastExecutionRecords.entries()].map(([key, execution]) => ({ key, execution })),
+  };
+}
+
+function enqueuePodcastPersistence(work: () => Promise<void>, operation: string, artifactType: string) {
+  if (process.env.PODCAST_DURABILITY_DISABLED === "true") return;
+  podcastPersistenceQueue = podcastPersistenceQueue
+    .then(work)
+    .then(
+      () => {
+        podcastStorageHealth = "healthy";
+      },
+      (error) => {
+        podcastStorageHealth = "degraded";
+        logger.error(
+          { artifact_type: artifactType, operation, error: error instanceof Error ? error.message : String(error) },
+          "Podcast durable persistence failed",
+        );
+        throw error;
+      },
     );
-    renameSync(temporaryPath, podcastStatePath);
-    podcastStorageHealth = "healthy";
+  podcastPersistenceQueue.catch(() => undefined);
+}
+
+export async function flushPodcastPersistence() {
+  if (podcastMutationActive && stagedPodcastState) {
+    const state = stagedPodcastState;
+    stagedPodcastState = null;
+    enqueuePodcastPersistence(async () => {
+      podcastPersistenceRevision = await savePodcastStateToDatabase(state, podcastPersistenceRevision);
+    }, "commit", "podcast_request");
+  }
+  try {
+    await podcastPersistenceQueue;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function acquirePodcastMutationLockRelease() {
+  let release!: () => void;
+  const previous = podcastMutationLock;
+  podcastMutationLock = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  if (
+    process.env.PODCAST_DURABILITY_DISABLED !== "true" &&
+    !await preparePodcastPersistence()
+  ) {
+    release();
+    throw new Error("Podcast persistence is unavailable.");
+  }
+  podcastMutationActive = true;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    podcastMutationActive = false;
+    stagedPodcastState = null;
+    release();
+  };
+}
+
+export async function acquirePodcastMutationLock(): Promise<PodcastMutationLock> {
+  let currentRelease = await acquirePodcastMutationLockRelease();
+  let released = false;
+  const lock: PodcastMutationLock = {
+    release: () => {
+      if (released) return;
+      released = true;
+      currentRelease();
+    },
+    yieldForExternalWork: async <T>(work: () => Promise<T>) => {
+      if (released) throw new Error("Podcast mutation lock is no longer active.");
+      if (stagedPodcastState) {
+        throw new Error("Podcast state cannot yield after mutation staging has begun.");
+      }
+      const expectedRevision = podcastPersistenceRevision;
+      currentRelease();
+      let result: T | undefined;
+      let workError: unknown;
+      try {
+        result = await work();
+      } catch (error) {
+        workError = error;
+      }
+      currentRelease = await acquirePodcastMutationLockRelease();
+      if (podcastPersistenceRevision !== expectedRevision) {
+        throw new Error("Podcast state changed while external work was running; retry the request.");
+      }
+      if (workError) throw workError;
+      return result as T;
+    },
+  };
+  return lock;
+}
+
+export function runWithPodcastMutationLock<T>(lock: PodcastMutationLock, work: () => T) {
+  return podcastLockContext.run(lock, work);
+}
+
+async function yieldPodcastMutationLock<T>(work: () => Promise<T>) {
+  const lock = podcastLockContext.getStore();
+  return lock ? lock.yieldForExternalWork(work) : work();
+}
+
+export async function refreshPodcastPersistence() {
+  if (process.env.PODCAST_DURABILITY_DISABLED === "true") return;
+  const stored = await loadPodcastStateFromDatabase();
+  if (!stored) return;
+  if (!rehydratePodcastState(stored.state)) throw new Error("Stored podcast state is invalid.");
+  podcastPersistenceRevision = stored.revision;
+}
+
+async function preparePodcastPersistence() {
+  if (!await flushPodcastPersistence()) {
+    podcastPersistenceQueue = Promise.resolve();
+    podcastStorageHealth = "degraded";
+  }
+  try {
+    await refreshPodcastPersistence();
     return true;
   } catch (error) {
     podcastStorageHealth = "degraded";
-    console.error(
-      "Podcast workspace persistence failed",
+    logger.error({ error: error instanceof Error ? error.message : String(error) }, "Podcast state refresh failed");
+    return false;
+  }
+}
+
+function persistPodcastState(operation: string, artifactType: string) {
+  const temporaryPath = `${podcastStatePath}.tmp`;
+  const state = serializedPodcastState();
+  if (podcastMutationActive) {
+    stagedPodcastState = state;
+  } else {
+    enqueuePodcastPersistence(async () => {
+      podcastPersistenceRevision = await savePodcastStateToDatabase(state, podcastPersistenceRevision);
+    }, operation, artifactType);
+  }
+  try {
+    writeFileSync(
+      temporaryPath,
+      JSON.stringify(state),
+      "utf8",
+    );
+    renameSync(temporaryPath, podcastStatePath);
+    return true;
+  } catch (error) {
+    logger.warn(
       {
         artifact_type: artifactType,
         operation,
         error: error instanceof Error ? error.message : String(error),
       },
+      "Podcast workspace compatibility mirror failed",
     );
     try {
       if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
     } catch {
       // The original persistence error is the actionable failure.
     }
-    return false;
+    return true;
   }
 }
 
@@ -398,10 +558,113 @@ export function restorePodcastState() {
     }
   } catch (error) {
     podcastStorageHealth = "degraded";
-    console.error("Podcast workspace restoration failed", {
+    logger.error({
       error: error instanceof Error ? error.message : String(error),
-    });
+    }, "Podcast workspace restoration failed");
   }
+}
+
+export async function initializePodcastPersistence() {
+  try {
+    let importedLocalState = false;
+    const databaseState = await loadPodcastStateFromDatabase();
+    if (databaseState) {
+      if (!rehydratePodcastState(databaseState.state)) {
+        podcastStorageHealth = "degraded";
+        return;
+      }
+      podcastPersistenceRevision = databaseState.revision;
+    } else if (existsSync(podcastStatePath)) {
+      restorePodcastState();
+      if (podcastStorageHealth === "degraded") {
+        throw new Error("The local podcast state could not be imported safely.");
+      }
+      importedLocalState = true;
+    }
+    const discoveredLegacyAudio = await migratePersistedPodcastAudio();
+    if (importedLocalState || discoveredLegacyAudio) {
+      const importedState = serializedPodcastState();
+      try {
+        podcastPersistenceRevision = await savePodcastStateToDatabase(
+          importedState,
+          podcastPersistenceRevision,
+        );
+      } catch (error) {
+        const winningState = await loadPodcastStateFromDatabase();
+        if (
+          !winningState ||
+          !persistedPodcastStateRetainsImport(importedState, winningState.state) ||
+          !rehydratePodcastState(winningState.state)
+        ) {
+          throw error;
+        }
+        podcastPersistenceRevision = winningState.revision;
+        await migratePersistedPodcastAudio();
+        logger.info(
+          { revision: winningState.revision },
+          "Podcast startup converged on a concurrent durable import",
+        );
+      }
+    }
+    podcastStorageHealth = "healthy";
+  } catch (error) {
+    podcastStorageHealth = "degraded";
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+    }, "Podcast durable persistence initialization failed");
+    throw error;
+  }
+}
+
+function persistedPodcastStateRetainsImport(expected: PersistedPodcastState, candidate: unknown) {
+  if (!candidate || typeof candidate !== "object") return false;
+  const actual = candidate as Partial<PersistedPodcastState>;
+  const retainsIds = <T>(
+    expectedItems: T[] | undefined,
+    actualItems: T[] | undefined,
+    identity: (item: T) => string,
+  ) => {
+    const actualIds = new Set((actualItems ?? []).map(identity));
+    return (expectedItems ?? []).every((item) => actualIds.has(identity(item)));
+  };
+  return (
+    retainsIds(expected.briefs, actual.briefs, (item) => item.id) &&
+    retainsIds(expected.scripts, actual.scripts, (item) => item.id) &&
+    retainsIds(expected.filterPresets, actual.filterPresets, (item) => item.id) &&
+    retainsIds(expected.developmentPlans, actual.developmentPlans, (item) => item.id) &&
+    retainsIds(expected.groundedRuns, actual.groundedRuns, (item) => item.id) &&
+    retainsIds(expected.attestations, actual.attestations, (item) => item.id) &&
+    retainsIds(expected.cutKeys, actual.cutKeys, (item) => `${item.key}:${item.audio_sha256}`) &&
+    retainsIds(expected.audioAssets, actual.audioAssets, (item) => `${item.clipId}:${item.sha256}`) &&
+    retainsIds(expected.approvalReceipts, actual.approvalReceipts, (item) => item.key) &&
+    retainsIds(expected.executionRecords, actual.executionRecords, (item) => item.key)
+  );
+}
+
+async function migratePersistedPodcastAudio() {
+  let discoveredLegacyAudio = false;
+  for (const script of podcastScripts.values()) {
+    const clipId = script.audio_clip?.id;
+    if (!clipId) continue;
+    const manifest = [...podcastCutKeys.values()].find(
+      (candidate) => candidate.clip_id === clipId && candidate.superseded_by === null,
+    );
+    let expectedSha256 = manifest?.audio_sha256 ?? podcastAudioAssets.get(clipId);
+    const localPath = join(audioDirectory, `${clipId}.wav`);
+    if (!expectedSha256 && existsSync(localPath)) {
+      expectedSha256 = createHash("sha256").update(readFileSync(localPath)).digest("hex");
+      podcastAudioAssets.set(clipId, expectedSha256);
+      discoveredLegacyAudio = true;
+    }
+    if (!expectedSha256) continue;
+    const available = await migrateLocalPodcastAudio(
+      clipId,
+      localPath,
+      expectedSha256,
+    );
+    if (!available) throw new Error(`Durable podcast audio is missing for ${clipId}`);
+  }
+  return discoveredLegacyAudio;
 }
 
 function normalizePersistedReleaseKit(
@@ -472,6 +735,7 @@ export function rehydratePodcastState(input: unknown) {
     podcastGroundedRuns.clear();
     podcastAttestations.clear();
     podcastCutKeys.clear();
+    podcastAudioAssets.clear();
     podcastApprovalReceipts.clear();
     podcastExecutionRecords.clear();
     for (const brief of saved.briefs ?? []) {
@@ -508,9 +772,16 @@ export function rehydratePodcastState(input: unknown) {
       const legacySuperseded = typeof persisted.supersedes === "string" && persisted.supersedes.startsWith("superseded-by-");
       podcastCutKeys.set(persisted.key, {
         ...persisted,
+        run_id: persisted.run_id ?? null,
+        attestation_id: persisted.attestation_id ?? null,
         supersedes: legacySuperseded ? null : persisted.supersedes ?? null,
         superseded_by: persisted.superseded_by ?? (legacySuperseded ? persisted.supersedes : null),
       });
+    }
+    for (const asset of saved.audioAssets ?? []) {
+      if (asset?.clipId && /^[a-f0-9]{64}$/.test(asset.sha256)) {
+        podcastAudioAssets.set(asset.clipId, asset.sha256);
+      }
     }
     for (const item of saved.approvalReceipts ?? []) if (item?.key && item.receipt) podcastApprovalReceipts.set(item.key, item.receipt);
     for (const item of saved.executionRecords ?? []) if (item?.key && item.execution) podcastExecutionRecords.set(item.key, item.execution);
@@ -535,6 +806,7 @@ export function rehydratePodcastState(input: unknown) {
     podcastGroundedRuns.clear();
     podcastAttestations.clear();
     podcastCutKeys.clear();
+    podcastAudioAssets.clear();
     podcastApprovalReceipts.clear();
     podcastExecutionRecords.clear();
     activeGroundedSources.splice(0);
@@ -1206,7 +1478,7 @@ export async function createPodcastScriptFromGemini(briefId: string) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("Gemini script generation is not configured.");
   const started = Date.now();
-  const response = await new GoogleGenAI({ apiKey }).models.generateContent({
+  const response = await yieldPodcastMutationLock(() => new GoogleGenAI({ apiKey }).models.generateContent({
     model,
     contents: `Create fresh performed podcast dialogue for the exact query, sources, uncertainties, approved brief, format and fictional archetype below. Return JSON {title,sections}. Exactly six sections, in this order: cold_open, banter, evidence, reveal, uncertainty, closing_button. Every section has segment, script, speaker (FRONT ROW or BACKSTAGE), classification (source_backed, first_party_attested, disputed, unresolved), source_ids. Include both speakers; uncertainty must be unresolved. Never write production instructions, source IDs aloud, allegations, or raw private text. Only this permitted public attestation summary may be used: ${attestation.permitted_public_summary ?? "None"}.\nQUERY:${run.query}\nSOURCES:${JSON.stringify(run.sources)}\nUNCERTAINTIES:${JSON.stringify(run.uncertainties)}\nBRIEF:${JSON.stringify(brief)}\nFORMAT:${JSON.stringify(brief.selected_format)}\nARCHETYPE:${JSON.stringify(brief.editorial_archetype)}`,
     config: {
@@ -1237,7 +1509,7 @@ export async function createPodcastScriptFromGemini(briefId: string) {
         },
       },
     },
-  });
+  }));
   const parsed = JSON.parse(response.text ?? "{}") as { title?: unknown; sections?: unknown };
   const valid = validateGeneratedScript(parsed, run, attestation);
   const base = fixtureScript(brief);
@@ -1340,18 +1612,18 @@ export async function searchPodcastContexts(
     if (!apiKey) throw new Error("Google Search grounded podcast search is not configured; set PODCAST_SYNTHETIC_DEMO=true only for an explicit demo.");
     const started = Date.now();
     const ai = new GoogleGenAI({ apiKey });
-    const scout = await ai.models.generateContent({
+    const scout = await yieldPodcastMutationLock(() => ai.models.generateContent({
       model,
       contents: `Search the public web for this exact podcast development query: ${query}. Return only a concise, non-alleging evidence inventory with uncertainties.`,
       config: { tools: [{ googleSearch: {} }] },
-    });
+    }));
     const chunks = scout.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
     const web = chunks.flatMap((chunk: any) => chunk.web?.uri && chunk.web?.title ? [chunk.web] : []);
     const unique = [...new Map(web.map((item: any) => [item.uri, item])).values()].slice(0, 5);
     if (unique.length < 3) throw new Error("Google Search returned fewer than three unique web sources.");
     // A second editor pass is intentionally structured and does not receive private text.
     const editorStarted = Date.now();
-    const editor = await ai.models.generateContent({
+    const editor = await yieldPodcastMutationLock(() => ai.models.generateContent({
       model,
       contents: `Create one cautious podcast concept JSON with title, summary, observed_signal, supported_context, unresolved_questions from these retrieved public URLs: ${JSON.stringify(unique)}. Do not make allegations or issue instructions.`,
       config: {
@@ -1369,7 +1641,7 @@ export async function searchPodcastContexts(
           },
         },
       },
-    });
+    }));
     const parsed = strictPodcastEvidenceConcept(JSON.parse(editor.text ?? "{}"));
     const sources = unique.map((item: any, index) => ({ id: `web-${index + 1}-${randomUUID()}`, url: item.uri, title: item.title, retrieved_at: now(), snippet: "", source_type: "public_web", classification: "source_backed" as const, what_it_supports: "Publicly retrieved context for the exact query.", what_remains_uncertain: "The source does not settle intent or any unsupported allegation." }));
     const concept: PodcastConcept = { id: `concept-${randomUUID()}`, title: parsed.title, summary: parsed.summary, relevance: 0.5, urgency: 0.5, engagement: 0.5, freshness: 0.5, source_diversity: 1, source_ids: sources.map((source) => source.id), observed_signal: parsed.observed_signal, supported_context: parsed.supported_context, unresolved_questions: parsed.unresolved_questions, recommended_route: "producer_review", next_reviewer: "Producer / standards reviewer", confidence_label: "bounded · source-grounded", freshness_label: "retrieved this run", status: "needs_review" };
@@ -1505,6 +1777,7 @@ export function resetPodcastDemo() {
   podcastGroundedRuns.clear();
   podcastAttestations.clear();
   podcastCutKeys.clear();
+  podcastAudioAssets.clear();
   activeGroundedSources.splice(0);
   activeGroundedConcepts.splice(0);
   persistPodcastState("reset", "podcast_demo");
@@ -1518,10 +1791,61 @@ export function getPodcastCutKey(key: string) {
   return podcastCutKeys.get(key) ?? null;
 }
 
+export async function getPublicPodcastCutKey(key: string) {
+  if (process.env.PODCAST_DURABILITY_DISABLED === "true") {
+    return podcastCutKeys.get(key) ?? null;
+  }
+  const stored = await loadPodcastStateFromDatabase();
+  const state = stored?.state as PersistedPodcastState | undefined;
+  const manifest = state?.cutKeys?.find((candidate) => candidate.key === key);
+  if (!manifest) return null;
+  return {
+    ...manifest,
+    run_id: manifest.run_id ?? null,
+    attestation_id: manifest.attestation_id ?? null,
+  };
+}
+
+export async function getPublicPodcastAudioCutKey(key: string) {
+  if (process.env.PODCAST_DURABILITY_DISABLED === "true") {
+    const manifest = podcastCutKeys.get(key);
+    if (!manifest || manifest.superseded_by != null) return null;
+    return activeGeneratedPodcastClip(manifest.clip_id) ? manifest : null;
+  }
+  const stored = await loadPodcastStateFromDatabase();
+  const state = stored?.state as PersistedPodcastState | undefined;
+  const manifest = state?.cutKeys?.find((candidate) => candidate.key === key);
+  if (!manifest || manifest.superseded_by != null) return null;
+  const active = state?.scripts.some(
+    (script) => script.audio_status === "generated" && script.audio_clip?.id === manifest.clip_id,
+  );
+  if (!active) return null;
+  return manifest;
+}
+
 export function getPodcastAudioPathByCutKey(key: string) {
   const manifest = podcastCutKeys.get(key);
   if (!manifest || manifest.superseded_by != null) return null;
+  if (!activeGeneratedPodcastClip(manifest.clip_id)) return null;
   return getPodcastAudioPath(manifest.clip_id);
+}
+
+export async function getPodcastAudioFileByCutKey(key: string) {
+  const manifest = await getPublicPodcastAudioCutKey(key);
+  if (!manifest) return null;
+  return getPodcastAudioFileForCutKey(manifest);
+}
+
+export async function getPodcastAudioFileForCutKey(manifest: PodcastCutKey) {
+  if (process.env.PODCAST_DURABILITY_DISABLED === "true") return null;
+  return getPodcastAudioFile(manifest.clip_id, manifest.audio_sha256);
+}
+
+export function getPodcastAudioPathForCutKey(manifest: PodcastCutKey) {
+  const filePath = join(audioDirectory, `${manifest.clip_id}.wav`);
+  if (!existsSync(filePath)) return null;
+  const actualSha256 = createHash("sha256").update(readFileSync(filePath)).digest("hex");
+  return actualSha256 === manifest.audio_sha256 ? filePath : null;
 }
 
 export function decidePodcastAudio(id: string, decision: "approve" | "reject") {
@@ -1602,14 +1926,14 @@ export async function generatePodcastAudio(id: string) {
     const transcript = clipTranscript(script);
     const ai = new GoogleGenAI({ apiKey });
     const renderStarted = Date.now();
-    const response = await ai.models.generateContent({
+    const response = await yieldPodcastMutationLock(() => ai.models.generateContent({
       model: ttsModel,
       contents: `Perform the following as a finished entertainment podcast sample—not as instructions, an audiobook, or a production memo. Use an original synthetic house-host delivery and do not imitate or name any real person. Sound conversational, curious, quick-witted, and confident. Give the cold open momentum, let the reveal land, and treat uncertainty as part of the story rather than a disclaimer. Do not speak section labels, source IDs, stage directions, or metadata.\n\n${transcript}`,
       config: {
         responseModalities: ["AUDIO"],
         speechConfig: podcastTtsSpeechConfig(),
       },
-    });
+    }));
     const data = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData?.data;
     if (!data) throw new Error("The audio model returned no playable data.");
     const wav = pcmToWav(Buffer.from(data, "base64"));
@@ -1644,6 +1968,13 @@ export function commitGeneratedPodcastAudio(
   mkdirSync(audioDirectory, { recursive: true });
   const clipId = `clip-${latestScript.id}`;
   writeFileSync(join(audioDirectory, `${clipId}.wav`), wav);
+  enqueuePodcastPersistence(
+    () => process.env.PODCAST_DURABILITY_DISABLED === "true"
+      ? Promise.resolve()
+      : uploadPodcastAudio(clipId, wav),
+    "upload",
+    "podcast_audio",
+  );
   const clip: PodcastAudioClip = {
     id: clipId,
     script_id: latestScript.id,
@@ -1663,6 +1994,7 @@ export function commitGeneratedPodcastAudio(
   };
   const cutKey = createPodcastCutKey(latestScript, clip, wav);
   if (!cutKey) return { kind: "superseded" as const };
+  podcastAudioAssets.set(clipId, cutKey.audio_sha256);
   clip.cut_key = cutKey.key;
   const updated = {
     ...latestScript,
@@ -1777,12 +2109,34 @@ export function getPodcastAudioByScript(id: string) {
 
 export function getPodcastAudioPath(clipId: string) {
   if (!/^clip-[a-zA-Z0-9_-]+$/.test(clipId)) return null;
-  const storedClip = [...podcastScripts.values()].find(
-    (script) => script.audio_status === "generated" && script.audio_clip?.id === clipId,
-  )?.audio_clip;
+  const storedClip = activeGeneratedPodcastClip(clipId);
   if (!storedClip) return null;
+  const expectedSha256 = [...podcastCutKeys.values()].find(
+    (candidate) => candidate.clip_id === clipId && candidate.superseded_by === null,
+  )?.audio_sha256 ?? podcastAudioAssets.get(clipId);
+  if (!expectedSha256) return null;
   const filePath = join(audioDirectory, `${clipId}.wav`);
-  return existsSync(filePath) ? filePath : null;
+  if (!existsSync(filePath)) return null;
+  const actualSha256 = createHash("sha256").update(readFileSync(filePath)).digest("hex");
+  return actualSha256 === expectedSha256 ? filePath : null;
+}
+
+export async function getPodcastStoredAudioFile(clipId: string) {
+  const storedClip = activeGeneratedPodcastClip(clipId);
+  if (!storedClip) return null;
+  if (process.env.PODCAST_DURABILITY_DISABLED === "true") return null;
+  const manifest = [...podcastCutKeys.values()].find(
+    (candidate) => candidate.clip_id === clipId && candidate.superseded_by === null,
+  );
+  const expectedSha256 = manifest?.audio_sha256 ?? podcastAudioAssets.get(clipId);
+  if (!expectedSha256) return null;
+  return getPodcastAudioFile(clipId, expectedSha256);
+}
+
+function activeGeneratedPodcastClip(clipId: string) {
+  return [...podcastScripts.values()].find(
+    (script) => script.audio_status === "generated" && script.audio_clip?.id === clipId,
+  )?.audio_clip ?? null;
 }
 
 export function addPodcastSource(sourceUrl: string) {
@@ -1857,7 +2211,7 @@ export async function generatePodcastBrief(
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("Gemini brief generation is not configured; set PODCAST_SYNTHETIC_DEMO=true only for an explicit demo.");
     const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
+    const response = await yieldPodcastMutationLock(() => ai.models.generateContent({
       model,
         contents: `You are a read-only podcast development editor. Create a JSON podcast brief from the supplied audience concept, source metadata, fictional editorial lens, and format hypothesis. Do not quote comments verbatim, identify people, imitate a real person's style, invent facts, guarantee popularity, or publish or render anything. Preserve the supplied source links. Return fields topic_angle, audience_pain, why_now, key_tensions, risk_notes, episode_outline, suggested_title.\n\nCONCEPT:\n${JSON.stringify(concept)}\n\nSELECTED SOURCES:\n${JSON.stringify(selectedSources)}\n\nFICTIONAL EDITORIAL LENS:\n${JSON.stringify(selectedArchetype ?? null)}\n\nFORMAT HYPOTHESIS:\n${JSON.stringify(selectedFormat ?? null)}`,
       config: {
@@ -1889,7 +2243,7 @@ export async function generatePodcastBrief(
           },
         },
       },
-    });
+    }));
     const parsed = JSON.parse(response.text ?? "{}");
     const safeDraft = strictPodcastDraft(parsed, selectedSources);
     currentBrief = {
