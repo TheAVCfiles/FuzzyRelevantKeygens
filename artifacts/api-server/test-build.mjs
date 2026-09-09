@@ -19,6 +19,7 @@ await build({
   external: [
     "@clerk/express",
     "@clerk/shared",
+    "@google/adk",
     "@google/genai",
     "@google-cloud/storage",
     "cookie-parser",

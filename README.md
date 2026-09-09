@@ -36,12 +36,13 @@ Normal mode fails closed when live retrieval, structured generation, or audio re
 - **React + Vite** serves the authenticated editorial workspace and public verification routes.
 - **Express** serves domain state, approval gates, the Drop registry, the receipt ledger, public Cut Keys, and audio streaming.
 - **The Velvet Rope** is a pure deterministic rule engine, outside the model path. It enforces window, countersignature, scope, exclusion, evidence, and reach checks in order.
+- **Google Agent Development Kit via `@google/adk`** orchestrates the four-stage read, classify, reconcile, and draft analysis flow.
 - **Google Gemini via `@google/genai`** performs Search-grounded source scouting, structured evidence editing, brief generation, script performance, and multi-speaker TTS.
 - **OpenAPI + Orval + Zod** keep browser hooks and server validators generated from one contract.
 - **Human approvals and deterministic authority checks** stay outside the model path. Gemini cannot approve, publish, or relax policy.
 - **Per-artifact binding** carries the exact grounded run, citations, attestation, approvals, and executions through the Cut Key.
 
-Autography implements a four-stage Google agent workflow in `artifacts/api-server/src/lib/agent-builder-flow.ts` with the official `@google/genai` SDK. It invokes Gemini at runtime for read, classify, reconcile, and draft stages; it does not deploy a separate Agent Engine resource.
+Autography uses the official Google Agent Development Kit for analysis orchestration. It does not use Agent Builder or Agent Engine and does not claim those services.
 
 ## Runtime modes
 
@@ -84,15 +85,16 @@ Public competition build:
 
 ## Competition submission notes
 
-Autography calls Google Gemini directly through the official `@google/genai`
-SDK. Gemini provides Google Search-grounded source scouting, structured
-evidence and editorial generation, fresh two-host dialogue, and multi-speaker
-text-to-speech. Deterministic policy checks and every approval or publishing
-decision remain outside the model path.
+Autography uses the official Google Agent Development Kit through `@google/adk`
+to orchestrate its read, classify, reconcile, and draft analysis stages. It
+also calls Gemini directly through the official `@google/genai` SDK for Google
+Search-grounded source scouting, structured evidence and editorial generation,
+fresh two-host dialogue, and multi-speaker text-to-speech. Deterministic policy
+checks and every approval or publishing decision remain outside both model
+paths.
 
-The competition workflow is implemented through the official `@google/genai`
-SDK and invokes live Gemini and Google Search at runtime. It does not deploy a
-separate Google ADK or Agent Engine runtime.
+This build does **not** use Agent Builder or Agent Engine and does not claim
+those services.
 
 The Board, PR, Drop, and Receipt examples are synthetic. The Podcast Desk uses
 live Gemini and Google Search grounding by default; synthetic podcast data is

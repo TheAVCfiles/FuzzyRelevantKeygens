@@ -35,7 +35,7 @@ Autography is a cinematic, safety-first entertainment-response and podcast-devel
 - API contract: `lib/api-spec/openapi.yaml`
 - Deterministic policy engine: `artifacts/api-server/src/policy/rope.ts`
 - Fixture-backed domain data and receipt registry: `artifacts/api-server/src/lib/autography-fixtures.ts`
-- Google Gemini four-stage flow: `artifacts/api-server/src/lib/agent-builder-flow.ts`
+- Google ADK-orchestrated Gemini four-stage flow: `artifacts/api-server/src/lib/agent-builder-flow.ts`
 - Podcast grounding, approvals, TTS, persistence, and Cut Keys: `artifacts/api-server/src/lib/podcast-fixtures.ts`
 - Podcast producer workspace: `artifacts/autography/src/pages/podcast.tsx`
 - Public podcast verification: `artifacts/autography/src/pages/cut.tsx`
@@ -44,12 +44,12 @@ Autography is a cinematic, safety-first entertainment-response and podcast-devel
 ## Architecture decisions
 
 - The Velvet Rope never calls Gemini. It is pure, deterministic policy evaluation with the first failing rule returned.
-- Gemini only reads, classifies, reconciles, and drafts. Its output is recorded as model inference and never publishes or alters fixture presentation data.
+- Google ADK orchestrates the read, classify, reconcile, and draft Gemini stages. Their output is recorded as model inference and never publishes or alters fixture presentation data.
 - Board/PR/Drop scenarios use synthetic fixtures. Podcast normal mode uses live Google Search grounding and fails closed; fixtures are restricted to explicit synthetic-demo mode.
 - Podcast artifacts are bound to their exact grounded run, source IDs, attestation decision, and human approval receipts. Never resolve a podcast artifact from the globally latest run.
 - Private cutting-room raw text is internal only. Public Cut Keys may expose only the producer-authorized summary.
 - Cut Key hashes prove artifact integrity and attribution, not factual truth.
-- Gemini is invoked directly through `@google/genai`. Do not claim Google ADK, Agent Builder, or Agent Engine.
+- Use `@google/adk` only for the four-stage analysis orchestration. Direct `@google/genai` remains responsible for Search grounding, structured podcast generation, and TTS. Do not claim Agent Builder or Agent Engine.
 
 ## Product
 
