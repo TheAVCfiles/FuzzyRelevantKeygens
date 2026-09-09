@@ -1139,7 +1139,7 @@ export function Podcast() {
 
       <main className="mx-auto max-w-[1480px] px-5 py-6 sm:px-8 sm:py-8 lg:px-12">
         {producerBootstrap === 'viewer' && (
-          <div className="mb-6 border border-[#9f8b78] bg-[#fff4df] p-5 sm:flex sm:items-center sm:justify-between sm:gap-6" data-testid="panel-producer-bootstrap">
+          <div className="mb-6 border border-[#9f8b78] bg-[#fff4df] p-5 sm:flex sm:items-center sm:justify-between sm:gap-6" data-testid="panel-producer-bootstrap" data-release="producer-bootstrap">
             <div>
               <p className="podcast-kicker">Production owner setup</p>
               <h2 className="mt-1 font-serif text-2xl text-[#201b19]">Claim the producer seat</h2>
@@ -1147,7 +1147,7 @@ export function Podcast() {
             </div>
             <Button type="button" className="mt-4 bg-[#b34b36] text-[#fffaf2] sm:mt-0" onClick={claimProducerSeat} data-testid="button-claim-producer">
               <ShieldCheck className="mr-2 h-4 w-4" />
-              Claim producer seat
+              Claim production producer seat
             </Button>
           </div>
         )}
