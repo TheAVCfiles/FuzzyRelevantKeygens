@@ -53,6 +53,110 @@ test("runtime rejects malformed and oversized JSON bodies safely", async () => {
   });
 });
 
+test("live observation API rejects unapproved envelopes and preserves only safe provenance", { concurrency: false }, async () => {
+  await withServer(async (baseUrl) => {
+    const headers = {
+      "content-type": "application/json",
+      "x-autography-role": "producer",
+      "x-autography-user": "live-source-regression",
+    };
+    const observedAt = new Date(Date.now() - 2 * 60_000).toISOString();
+    const windowStart = new Date(Date.now() - 5 * 60_000).toISOString();
+    const windowEnd = new Date(Date.now() - 60_000).toISOString();
+    const rawText = "RAW-LIVE-CONTENT-MUST-NOT-BE-RETURNED";
+    const resolvableHandle = "resolvable-person-handle";
+    const approvedEnvelope = {
+      source_id: "consented-newsroom-v1",
+      source_class: "consented_newsroom",
+      consent_ref: "consent-live-source-regression",
+      policy_review_ref: "policy-live-source-regression",
+      observations: [{
+        id: "live-source-regression-observation",
+        text: rawText,
+        observed_at: observedAt,
+        observation_window: { start: windowStart, end: windowEnd },
+        confidence: "high",
+        author: {
+          handle: resolvableHandle,
+          profile_url: "https://example.test/people/resolvable-person",
+        },
+      }],
+    };
+
+    for (const unapprovedEnvelope of [
+      { ...approvedEnvelope, source_id: "unapproved-newsroom" },
+      { ...approvedEnvelope, source_class: "pseudonymous_social" },
+    ]) {
+      const rejected = await fetch(`${baseUrl}/api/flood/observations`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(unapprovedEnvelope),
+      });
+      assert.equal(rejected.status, 400);
+    }
+
+    const accepted = await fetch(`${baseUrl}/api/flood/observations`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(approvedEnvelope),
+    });
+    assert.equal(accepted.status, 202);
+    const receipt = await accepted.json() as {
+      accepted: boolean;
+      source_id: string;
+      flood: {
+        events: Array<{
+          text: string;
+          author: { handle: string; account_age_days: number; followers: number };
+          provenance: {
+            source_id: string;
+            source_class: string;
+            consent_ref: string;
+            observation_window: { start: string; end: string };
+            freshness: string;
+            confidence: string;
+          };
+        }>;
+      };
+    };
+
+    assert.equal(receipt.accepted, true);
+    assert.equal(receipt.source_id, approvedEnvelope.source_id);
+    assert.equal(receipt.flood.events.length, 1);
+    const event = receipt.flood.events[0];
+    assert.ok(event);
+    assert.equal(event.provenance.source_id, approvedEnvelope.source_id);
+    assert.equal(event.provenance.source_class, approvedEnvelope.source_class);
+    assert.equal(event.provenance.consent_ref, approvedEnvelope.consent_ref);
+    assert.deepEqual(event.provenance.observation_window, {
+      start: windowStart,
+      end: windowEnd,
+    });
+    assert.match(event.provenance.freshness, /^\d+m old$/);
+    assert.equal(event.provenance.confidence, "high");
+    assert.equal(event.text, "[grouped observation withheld from amplification]");
+    assert.deepEqual(event.author, {
+      handle: "identity unavailable",
+      account_age_days: 0,
+      followers: 0,
+    });
+
+    const serializedReceipt = JSON.stringify(receipt);
+    assert.equal(serializedReceipt.includes(rawText), false);
+    assert.equal(serializedReceipt.includes(resolvableHandle), false);
+    assert.equal(serializedReceipt.includes("profile_url"), false);
+
+    const liveResponse = await fetch(`${baseUrl}/api/flood?source=live`, { headers });
+    assert.equal(liveResponse.status, 200);
+    const serializedLiveResponse = await liveResponse.text();
+    assert.equal(serializedLiveResponse.includes(rawText), false);
+    assert.equal(serializedLiveResponse.includes(resolvableHandle), false);
+    assert.equal(serializedLiveResponse.includes("profile_url"), false);
+    const liveFlood = JSON.parse(serializedLiveResponse);
+    assert.deepEqual(liveFlood.events[0].provenance, event.provenance);
+  });
+});
+
 test("public Cut Key reads are not blocked by an in-flight podcast mutation", async () => {
   await withServer(async (baseUrl) => {
     const lock = await acquirePodcastMutationLock();
