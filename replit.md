@@ -17,6 +17,7 @@ Autography is a cinematic, safety-first entertainment-response and podcast-devel
 - Shared and production approvals require a verified Clerk session.
 - Producer permission comes from Clerk user `publicMetadata.autography_role` set to `producer`. This metadata is server-controlled and cannot be changed by the browser.
 - Grant or revoke producer access from Replit's Auth user management pane by editing that user's public metadata. Removing the key returns the user to read-only `viewer` access on their next request.
+- If trusted user management cannot set the first production producer, configure the exact claimant with `AUTOGRAPHY_PRODUCER_BOOTSTRAP_USER_ID` (preferred) or `AUTOGRAPHY_PRODUCER_BOOTSTRAP_EMAIL`. Email claims require a matching verified primary Clerk address. Remove the setting after the identity-bound one-time claim succeeds.
 - Local preview impersonation is available only when both `NODE_ENV=development` and `AUTOGRAPHY_PREVIEW_ROLE_MODE=true`; it is never an authorization path in shared or production environments.
 - Production Clerk frontend requests default to the same-origin `/api/__clerk` proxy; development uses Clerk's hosted endpoint because development instances reject custom proxy hosts.
 - The web and API use browser-managed cookies. Do not enable wildcard credentialed CORS or add browser bearer-token storage.

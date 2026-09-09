@@ -1143,7 +1143,7 @@ export function Podcast() {
             <div>
               <p className="podcast-kicker">Production owner setup</p>
               <h2 className="mt-1 font-serif text-2xl text-[#201b19]">Claim the producer seat</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5f554e]">This one-time action gives the first verified production owner permission to make and approve podcast decisions.</p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5f554e]">This one-time action gives the explicitly configured production owner permission to make and approve podcast decisions.</p>
             </div>
             <Button type="button" className="mt-4 bg-[#b34b36] text-[#fffaf2] sm:mt-0" onClick={claimProducerSeat} data-testid="button-claim-producer">
               <ShieldCheck className="mr-2 h-4 w-4" />
@@ -1158,7 +1158,7 @@ export function Podcast() {
         )}
         {producerBootstrap === 'error' && (
           <div className="mb-6 border border-[#9e3e2d] bg-[#fff4df] p-4 text-sm text-[#9e3e2d]" role="alert">
-            Producer setup could not be completed. Refresh once and try again.
+            Producer setup could not be completed. Confirm you are signed in with the configured production owner account, then refresh once and try again.
           </div>
         )}
         <div className="mb-7 grid gap-4 border-b border-[#c7b9aa] pb-6 md:grid-cols-[1fr_auto] md:items-end">

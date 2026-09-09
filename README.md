@@ -56,7 +56,7 @@ Cut Key hashes prove integrity and attribution for the rendered artifact. They d
 
 Set `GEMINI_API_KEY` as a secure environment secret. The server calls the Google GenAI SDK only from the API service; the key is never exposed to the browser.
 
-For production producer access, configure Clerk server/client secrets and set `publicMetadata.autography_role` to `producer` on authorized users. Local preview role emulation is development-only.
+For production producer access, configure Clerk server/client secrets. Producer authority comes only from the server-controlled `publicMetadata.autography_role` value. Either set that value to `producer` through trusted user management, or use the one-time in-app claim after configuring `AUTOGRAPHY_PRODUCER_BOOTSTRAP_USER_ID` for the exact Clerk user. `AUTOGRAPHY_PRODUCER_BOOTSTRAP_EMAIL` is also supported, but only a matching verified primary Clerk email is accepted. The durable claim is identity-bound and recoverable by the same user after an interrupted Clerk response. Remove the bootstrap allowlist setting after the claim succeeds. Local preview role emulation is development-only.
 
 ## Local development
 
@@ -72,10 +72,11 @@ For production producer access, configure Clerk server/client secrets and set `p
 The web and API workflows are configured for Replit and bind through the registered artifacts. Production operation requires:
 
 1. Configure production Gemini and Clerk secrets in Replit Secrets.
-2. Confirm producer roles in the production Clerk tenant.
-3. Keep `PODCAST_SYNTHETIC_DEMO` unset or `false`.
-4. Run typechecks and both test suites.
-5. Publish the registered Autography web and API artifacts through Replit.
+2. Configure the exact one-time production producer identity with `AUTOGRAPHY_PRODUCER_BOOTSTRAP_USER_ID` (preferred) or `AUTOGRAPHY_PRODUCER_BOOTSTRAP_EMAIL`.
+3. Confirm the producer role in the production Clerk tenant, then remove the bootstrap allowlist setting.
+4. Keep `PODCAST_SYNTHETIC_DEMO` unset or `false`.
+5. Run `pnpm run validate:release`.
+6. Publish the registered Autography web and API artifacts through Replit.
 
 Public competition build:
 

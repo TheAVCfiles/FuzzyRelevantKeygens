@@ -452,6 +452,43 @@ test("synthetic approved cut produces a canonical, private-safe Cut Key only aft
   assert.notEqual(secondManifest.key, firstManifest.key);
   assert.equal((await getPublicPodcastCutKey(firstManifest.key))?.manifest_sha256, firstManifest.manifest_sha256);
   assert.ok(getPodcastAudioPathByCutKey(secondManifest.key));
+  await withApiServer(async (baseUrl) => {
+    const audioRoutes = [
+      {
+        url: `${baseUrl}/podcast/cut-keys/${secondManifest.key}/audio`,
+        headers: {},
+      },
+      {
+        url: `${baseUrl}/podcast/audio/${secondManifest.clip_id}/stream`,
+        headers: previewProducerHeaders("audio-transport-reviewer"),
+      },
+    ];
+    for (const route of audioRoutes) {
+      const rangeCases = [
+        { range: "bytes=0-31", status: 206, contentRange: "bytes 0-31/52", length: 32 },
+        { range: "bytes=32-", status: 206, contentRange: "bytes 32-51/52", length: 20 },
+        { range: "bytes=-8", status: 206, contentRange: "bytes 44-51/52", length: 8 },
+        { range: "bytes=48-999", status: 206, contentRange: "bytes 48-51/52", length: 4 },
+      ];
+      for (const rangeCase of rangeCases) {
+        const partial = await fetch(route.url, {
+          headers: { ...route.headers, Range: rangeCase.range },
+        });
+        assert.equal(partial.status, rangeCase.status);
+        assert.equal(partial.headers.get("accept-ranges"), "bytes");
+        assert.equal(partial.headers.get("content-range"), rangeCase.contentRange);
+        assert.equal(partial.headers.get("content-length"), String(rangeCase.length));
+        assert.match(partial.headers.get("content-type") ?? "", /^audio\/wav\b/);
+        assert.equal((await partial.arrayBuffer()).byteLength, rangeCase.length);
+      }
+
+      const impossible = await fetch(route.url, {
+        headers: { ...route.headers, Range: "bytes=999999999-" },
+      });
+      assert.equal(impossible.status, 416);
+      assert.equal(impossible.headers.get("content-range"), "bytes */52");
+    }
+  });
   const omitted = { ...secondManifest } as any;
   delete omitted.transcript_sha256;
   const { GetPodcastCutKeyResponse } = await import("@workspace/api-zod");

@@ -212,6 +212,34 @@ type AutographyPrincipal = {
 type AutographyRequest = Request & {
   autographyPrincipal?: AutographyPrincipal;
 };
+export type ProductionProducerSeatUser = {
+  publicMetadata: Record<string, unknown>;
+  primaryEmailAddressId?: string | null;
+  emailAddresses?: Array<{
+    id: string;
+    emailAddress: string;
+    verificationStatus?: string | null;
+  }>;
+};
+export type ProductionProducerBootstrapEligibility = {
+  allowedUserIds?: string;
+  allowedEmails?: string;
+};
+type ProductionProducerSeatClaim = "acquired" | "owned" | "taken";
+export type ProductionProducerSeatDependencies = {
+  getUser: (userId: string) => Promise<ProductionProducerSeatUser>;
+  isEligible: (userId: string, user: ProductionProducerSeatUser) => boolean;
+  tryClaimSeat: (userId: string) => Promise<ProductionProducerSeatClaim>;
+  markSeatActive: (userId: string) => Promise<void>;
+  updateUserMetadata: (
+    userId: string,
+    publicMetadata: Record<string, unknown>,
+  ) => Promise<void>;
+};
+export type ProductionProducerSeatResult =
+  | { kind: "producer"; role: "producer"; reviewer_id: string }
+  | { kind: "already_claimed" }
+  | { kind: "not_eligible" };
 const rolePermissions: Record<PilotRole, Set<string>> = {
   producer: new Set(["read", "ingest", "evaluate", "stage", "sign", "dismiss"]),
   talent: new Set(["read", "evaluate", "sign"]),
@@ -234,6 +262,115 @@ export function principalFromVerifiedClerkUser(
     ? metadataRole as PilotRole
     : "viewer";
   return { role, reviewerId: userId, source: "verified_session" };
+}
+
+const productionProducerSeatDependencies: ProductionProducerSeatDependencies = {
+  getUser: async (userId) => {
+    const user = await clerkClient.users.getUser(userId);
+    return {
+      publicMetadata: user.publicMetadata as Record<string, unknown>,
+      primaryEmailAddressId: user.primaryEmailAddressId,
+      emailAddresses: user.emailAddresses.map((email) => ({
+        id: email.id,
+        emailAddress: email.emailAddress,
+        verificationStatus: email.verification?.status ?? null,
+      })),
+    };
+  },
+  isEligible: (userId, user) => isProductionProducerBootstrapEligible(userId, user),
+  tryClaimSeat: async (userId) => {
+    const claimed = await db
+      .insert(podcastStateTable)
+      .values({
+        id: productionProducerClaimId,
+        state: { claimed_by: userId },
+        revision: 1,
+      })
+      .onConflictDoNothing()
+      .returning({ id: podcastStateTable.id });
+    if (claimed.length > 0) return "acquired";
+
+    const [existing] = await db
+      .select({ state: podcastStateTable.state })
+      .from(podcastStateTable)
+      .where(eq(podcastStateTable.id, productionProducerClaimId))
+      .limit(1);
+    const claimedBy = (
+      existing?.state &&
+      typeof existing.state === "object" &&
+      "claimed_by" in existing.state
+    )
+      ? existing.state.claimed_by
+      : null;
+    return claimedBy === userId ? "owned" : "taken";
+  },
+  markSeatActive: async (userId) => {
+    await db
+      .update(podcastStateTable)
+      .set({
+        state: { claimed_by: userId, status: "active" },
+        revision: 2,
+      })
+      .where(eq(podcastStateTable.id, productionProducerClaimId));
+  },
+  updateUserMetadata: async (userId, publicMetadata) => {
+    await clerkClient.users.updateUserMetadata(userId, { publicMetadata });
+  },
+};
+
+export function isProductionProducerBootstrapEligible(
+  userId: string,
+  user: ProductionProducerSeatUser,
+  configuration: ProductionProducerBootstrapEligibility = {
+    allowedUserIds: process.env.AUTOGRAPHY_PRODUCER_BOOTSTRAP_USER_ID,
+    allowedEmails: process.env.AUTOGRAPHY_PRODUCER_BOOTSTRAP_EMAIL,
+  },
+) {
+  const allowedUserIds = (configuration.allowedUserIds ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (allowedUserIds.includes(userId)) return true;
+
+  const allowedEmails = (configuration.allowedEmails ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const primaryEmail = user.emailAddresses?.find(
+    (email) =>
+      email.id === user.primaryEmailAddressId &&
+      email.verificationStatus === "verified",
+  )?.emailAddress.toLowerCase();
+  return Boolean(primaryEmail && allowedEmails.includes(primaryEmail));
+}
+
+export async function claimProductionProducerSeat(
+  userId: string,
+  dependencies: ProductionProducerSeatDependencies = productionProducerSeatDependencies,
+): Promise<ProductionProducerSeatResult> {
+  const user = await dependencies.getUser(userId);
+  const principal = principalFromVerifiedClerkUser(userId, user.publicMetadata);
+  if (principal.role === "producer") {
+    const existingProducerClaim = await dependencies.tryClaimSeat(userId);
+    if (existingProducerClaim !== "taken") {
+      await dependencies.markSeatActive(userId);
+    }
+    return { kind: "producer", role: "producer", reviewer_id: userId };
+  }
+
+  if (!dependencies.isEligible(userId, user)) {
+    return { kind: "not_eligible" };
+  }
+
+  const claimed = await dependencies.tryClaimSeat(userId);
+  if (claimed === "taken") return { kind: "already_claimed" };
+
+  await dependencies.updateUserMetadata(userId, {
+    autography_role: "producer",
+  });
+  await dependencies.markSeatActive(userId);
+
+  return { kind: "producer", role: "producer", reviewer_id: userId };
 }
 
 async function requestedPrincipal(req: Request): Promise<AutographyPrincipal | null> {
@@ -310,44 +447,16 @@ router.post("/auth/bootstrap/producer", async (req, res, next): Promise<void> =>
     return;
   }
   try {
-    const user = await clerkClient.users.getUser(auth.userId);
-    const principal = principalFromVerifiedClerkUser(
-      auth.userId,
-      user.publicMetadata as Record<string, unknown>,
-    );
-    if (principal.role === "producer") {
-      res.json({ role: "producer", reviewer_id: auth.userId });
-      return;
-    }
-
-    const claimed = await db
-      .insert(podcastStateTable)
-      .values({
-        id: productionProducerClaimId,
-        state: { claimed_by: auth.userId },
-        revision: 1,
-      })
-      .onConflictDoNothing()
-      .returning({ id: podcastStateTable.id });
-    if (!claimed.length) {
+    const result = await claimProductionProducerSeat(auth.userId);
+    if (result.kind === "already_claimed") {
       res.status(409).json({ error: "The production producer seat has already been claimed." });
       return;
     }
-
-    try {
-      await clerkClient.users.updateUserMetadata(auth.userId, {
-        publicMetadata: {
-          ...user.publicMetadata,
-          autography_role: "producer",
-        },
-      });
-    } catch (error) {
-      await db
-        .delete(podcastStateTable)
-        .where(eq(podcastStateTable.id, productionProducerClaimId));
-      throw error;
+    if (result.kind === "not_eligible") {
+      res.status(403).json({ error: "This verified account is not eligible to claim production producer authority." });
+      return;
     }
-    res.json({ role: "producer", reviewer_id: auth.userId });
+    res.json({ role: result.role, reviewer_id: result.reviewer_id });
   } catch (error) {
     next(error);
   }
@@ -432,9 +541,7 @@ router.get("/podcast/cut-keys/:key/audio", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Current Cut Key audio not found" });
     return;
   }
-  res.type("audio/wav").sendFile(path, { dotfiles: "allow" }, (error) => {
-    if (error && !res.headersSent) res.status(404).json({ error: "Current Cut Key audio not found" });
-  });
+  streamLocalAudio(req, res, path, "Current Cut Key audio not found");
 });
 
 // Every production-room read is authenticated; development keeps the existing
@@ -900,16 +1007,25 @@ router.get("/podcast/audio/:id/stream", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Podcast audio file not found" });
     return;
   }
+  streamLocalAudio(req, res, filePath, "Podcast audio file not found");
+});
+
+function streamLocalAudio(
+  req: Request,
+  res: any,
+  filePath: string,
+  notFoundMessage: string,
+) {
   let size: number;
   try {
     const stats = statSync(filePath);
     if (!stats.isFile()) {
-      res.status(404).json({ error: "Podcast audio file not found" });
+      res.status(404).json({ error: notFoundMessage });
       return;
     }
     size = stats.size;
   } catch {
-    res.status(404).json({ error: "Podcast audio file not found" });
+    res.status(404).json({ error: notFoundMessage });
     return;
   }
 
@@ -972,13 +1088,13 @@ router.get("/podcast/audio/:id/stream", async (req, res): Promise<void> => {
     if (!res.headersSent) {
       res.removeHeader("Content-Length");
       res.removeHeader("Content-Range");
-      res.status(404).json({ error: "Podcast audio file not found" });
+      res.status(404).json({ error: notFoundMessage });
       return;
     }
     res.destroy();
   });
   stream.pipe(res);
-});
+}
 
 async function streamAppStorageAudio(
   req: Request,
