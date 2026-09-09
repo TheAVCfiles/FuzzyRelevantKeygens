@@ -11,3 +11,4 @@
 - [Cut Key canonical JSON](cut-key-canonical-json.md) — Hash nested evidence field-by-field because PostgreSQL JSONB may reorder object keys during persistence.
 - [Podcast agentic envelope](podcast-agentic-envelope.md) — New live Cut Keys require one Google ADK parent across research, synthesis, script approval, and Gemini audio.
 - [Duplicate source recovery](duplicate-source-recovery.md) — Remove appended copies; dead-code guards may pass TypeScript while Rollup still rejects duplicate declarations.
+- [GitHub history reconciliation](github-history-reconciliation.md) — Preserve unrelated Replit and GitHub roots as merge parents; never force-push over public commits.
