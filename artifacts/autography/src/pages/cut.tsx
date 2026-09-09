@@ -106,6 +106,7 @@ export function CutKeyView() {
             </h2>
             <audio
               controls
+              preload="metadata"
               src={audio_url}
               className="mt-4 w-full"
               data-testid="audio-player"

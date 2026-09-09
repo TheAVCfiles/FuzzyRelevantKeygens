@@ -50,5 +50,6 @@ describe('CutKeyView', () => {
     expect(screen.getByText('Integrity over truth.')).toBeInTheDocument();
     expect(screen.getByText('sha-script')).toBeInTheDocument();
     expect(screen.getByText('sha-audio')).toBeInTheDocument();
+    expect(screen.getByTestId('audio-player')).toHaveAttribute('preload', 'metadata');
   });
 });
