@@ -17,7 +17,7 @@ export function Scene1() {
         playsInline
         className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-screen"
       />
-      <div className="absolute inset-0 bg-gradient-to-br from-[var(--bg-panel)]/40 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[var(--bg-panel)]/40 to-[var(--bg-dark)]/80" />
       
       <motion.div
         className="relative z-10 flex flex-col items-center"
@@ -26,7 +26,7 @@ export function Scene1() {
         transition={{ delay: 1, duration: 2, ease: "easeOut" }}
       >
         <motion.h1 
-          className="text-[var(--text-light)] font-serif text-[7vw] leading-none tracking-tight mb-[1vw]"
+          className="text-[var(--text-light)] font-serif text-[8vw] leading-none tracking-tight mb-[2vw]"
           initial={{ scale: 0.95 }}
           animate={{ scale: 1 }}
           transition={{ duration: 10, ease: "linear" }}
@@ -34,24 +34,36 @@ export function Scene1() {
           Autography
         </motion.h1>
         
+        <motion.div
+          className="bg-[var(--accent-teal)] px-[1.5vw] py-[0.5vw] mb-[2vw]"
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 2.5, type: "spring", stiffness: 100, damping: 20 }}
+        >
+          <p className="text-[var(--bg-primary)] font-mono uppercase tracking-[0.2em] text-[1.4vw] font-bold">
+            Live Signal to Spoken Story
+          </p>
+        </motion.div>
+        
         <motion.p
           className="text-[var(--accent-gold)] font-mono uppercase tracking-[0.2em] text-[1.2vw]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 3, duration: 1.5 }}
+          transition={{ delay: 3.5, duration: 1.5 }}
         >
-          The signature that writes itself.
+          Trend to Tape in Minutes.
         </motion.p>
       </motion.div>
       
       <motion.div
-        className="absolute bottom-[10vw] max-w-[60vw] text-center"
+        className="absolute bottom-[8vw] max-w-[70vw] text-center"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 6, duration: 1.5 }}
+        transition={{ delay: 5.5, duration: 1.5 }}
       >
-        <p className="text-[var(--text-secondary)] font-serif text-[2vw] leading-relaxed">
-          A cinematic, safety-first entertainment response<br/>and podcast-development workspace.
+        <p className="text-[var(--text-light)] font-serif text-[2.2vw] leading-snug drop-shadow-lg">
+          Live Google Searches and trending talk become an immediate, <br/>
+          <span className="text-[var(--accent-bright-gold)] italic">natural-sounding two-host podcast clip.</span>
         </p>
       </motion.div>
     </motion.div>
