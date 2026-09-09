@@ -58,6 +58,7 @@ import type {
   PolicyEvaluationInput,
   PullRequest,
   Receipt,
+  RunAgentFlow502,
   Show,
   SignPullRequestInput,
   SignResult,
@@ -2724,7 +2725,7 @@ export const runAgentFlow = async ( options?: Parameters<typeof customFetch>[1])
 
 
 
-export const getRunAgentFlowMutationOptions = <TError = ErrorType<unknown>,
+export const getRunAgentFlowMutationOptions = <TError = ErrorType<RunAgentFlow502>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAgentFlow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof runAgentFlow>>, TError,void, TContext> => {
 
@@ -2753,12 +2754,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type RunAgentFlowMutationResult = NonNullable<Awaited<ReturnType<typeof runAgentFlow>>>
 
-    export type RunAgentFlowMutationError = ErrorType<unknown>
+    export type RunAgentFlowMutationError = ErrorType<RunAgentFlow502>
 
     /**
  * @summary Run the four-stage read, classify, reconcile, and draft flow
  */
-export const useRunAgentFlow = <TError = ErrorType<unknown>,
+export const useRunAgentFlow = <TError = ErrorType<RunAgentFlow502>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAgentFlow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof runAgentFlow>>,

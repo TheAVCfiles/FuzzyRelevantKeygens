@@ -87,7 +87,11 @@ import {
   verifyDrop,
   getPilotReport,
 } from "../lib/autography-fixtures";
-import { runAutographyAgentFlow } from "../lib/agent-builder-flow";
+import {
+  AutographyAdkFlowError,
+  runAutographyAgentFlow,
+} from "../lib/agent-builder-flow";
+import { getPodcastAdkFailureEvidence } from "../lib/podcast-adk-research";
 import {
   addPodcastSource,
   createPodcastFilterPreset,
@@ -489,7 +493,15 @@ router.post("/podcast/search", requirePermission("stage"), async (req, res): Pro
       body.data.source_classes,
     )));
   } catch (error) {
-    res.status(502).json({ error: error instanceof Error ? error.message : "Google Search grounded podcast search failed." });
+    const runtimeEvidence = getPodcastAdkFailureEvidence(error);
+    res.status(502).json({
+      error: runtimeEvidence
+        ? "Google ADK grounded podcast research failed."
+        : error instanceof Error
+          ? error.message
+          : "Google Search grounded podcast search failed.",
+      ...(runtimeEvidence ? { runtime_evidence: runtimeEvidence } : {}),
+    });
   }
 });
 
@@ -1071,8 +1083,19 @@ router.post("/evaluate", requirePermission("evaluate"), (req, res): void => {
 });
 
 router.post("/agent/run", requirePermission("stage"), async (_req, res): Promise<void> => {
-  const result = await runAutographyAgentFlow();
-  res.json(RunAgentFlowResponse.parse(result));
+  try {
+    const result = await runAutographyAgentFlow();
+    res.json(RunAgentFlowResponse.parse(result));
+  } catch (error) {
+    if (error instanceof AutographyAdkFlowError) {
+      res.status(502).json({
+        error: error.message,
+        runtime_evidence: error.runtimeEvidence,
+      });
+      return;
+    }
+    throw error;
+  }
 });
 
 router.post("/pr/:id/dismiss", requirePermission("dismiss"), (req, res): void => {

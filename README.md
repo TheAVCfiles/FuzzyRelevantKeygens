@@ -21,7 +21,7 @@ The Board, PR, Drop, and Receipt scenarios use clearly labeled synthetic fixture
 ## Podcast golden path
 
 1. A producer enters a keyword, genre, or current entertainment question.
-2. Gemini uses Google Search grounding to retrieve 3–5 current public sources.
+2. A Google ADK `LlmAgent` invokes Google Search grounding to retrieve 3–5 current public sources.
 3. The desk displays source titles, URLs, retrieval times, source types, support boundaries, and unresolved questions.
 4. The producer explicitly adds authorized private cutting-room context or declines it.
 5. A human validates the development hypothesis, approves the brief, approves the performed script, and separately approves audio.
@@ -36,24 +36,28 @@ Normal mode fails closed when live retrieval, structured generation, or audio re
 - **React + Vite** serves the authenticated editorial workspace and public verification routes.
 - **Express** serves domain state, approval gates, the Drop registry, the receipt ledger, public Cut Keys, and audio streaming.
 - **The Velvet Rope** is a pure deterministic rule engine, outside the model path. It enforces window, countersignature, scope, exclusion, evidence, and reach checks in order.
-- **Google Gemini via `@google/genai`** performs Search-grounded source scouting, structured evidence editing, brief generation, script performance, and multi-speaker TTS.
+- **Google ADK via `@google/adk`** runs both the live Search-grounded podcast source scout and the existing G1–G4 read, classify, reconcile, and draft orchestration with real `LlmAgent` and `InMemoryRunner` invocations.
+- **Google Gemini via `@google/genai`** performs the bounded podcast evidence edit, brief generation, script performance, and multi-speaker TTS after the ADK scout.
 - **OpenAPI + Orval + Zod** keep browser hooks and server validators generated from one contract.
 - **Human approvals and deterministic authority checks** stay outside the model path. Gemini cannot approve, publish, or relax policy.
 - **Per-artifact binding** carries the exact grounded run, citations, attestation, approvals, and executions through the Cut Key.
 
-Autography does not use Google ADK, Agent Builder, or Agent Engine and does not claim those services.
+Autography uses the open-source Google ADK TypeScript framework in the live podcast research path and the four-stage signal-room agent flow. This is a real Google ADK runtime integration; it does not claim a managed Vertex AI Agent Builder or Agent Engine deployment.
 
 ## Runtime modes
 
-- `Live Gemini` — normal runtime with real Google Search grounding and Gemini generation.
+- `Live Google ADK` — normal runtime with a real ADK source-scout invocation, Google Search grounding, and downstream Gemini generation.
+- Retained `Live Gemini` runs remain readable and can complete their already-bound approval path for backward compatibility.
 - `Synthetic Demo` — available only when `PODCAST_SYNTHETIC_DEMO=true`; every surface labels it.
 - `Failed` — live failure state. No fixture artifact is created.
 
 Cut Key hashes prove integrity and attribution for the rendered artifact. They do not prove that every source claim is true.
 
-## Gemini setup
+## Google ADK and Gemini setup
 
-Set `GEMINI_API_KEY` as a secure environment secret. The server calls the Google GenAI SDK only from the API service; the key is never exposed to the browser.
+Set `GEMINI_API_KEY` as a secure environment secret. Google ADK and the Google GenAI SDK are called only from the API service; the key is never exposed to the browser. Normal mode does not fall back to direct source scouting or fixtures when ADK fails.
+
+Each live source-scout and G1–G4 execution exposes only safe runtime evidence: framework, provider, model, ADK invocation ID, declared tools, latency, activity, and completed/failed status. The signal room shows the four stage IDs after a successful run. Prompts, model output, and credentials are not included in that evidence.
 
 For production producer access, configure Clerk server/client secrets and set `publicMetadata.autography_role` to `producer` on authorized users. Local preview role emulation is development-only.
 

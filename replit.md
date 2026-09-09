@@ -9,7 +9,7 @@ Autography is a cinematic, safety-first entertainment-response and podcast-devel
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `GEMINI_API_KEY` is required for live Search grounding, structured evidence/brief/script generation, and multi-speaker TTS.
+- `GEMINI_API_KEY` is required for the Google ADK four-stage signal flow, the ADK Search-grounded source scout, structured evidence/brief/script generation, and multi-speaker TTS.
 - `PODCAST_SYNTHETIC_DEMO=true` enables explicitly labeled podcast fixtures. Keep it unset/false in normal and production operation.
 
 ## Producer access
@@ -35,7 +35,8 @@ Autography is a cinematic, safety-first entertainment-response and podcast-devel
 - API contract: `lib/api-spec/openapi.yaml`
 - Deterministic policy engine: `artifacts/api-server/src/policy/rope.ts`
 - Fixture-backed domain data and receipt registry: `artifacts/api-server/src/lib/autography-fixtures.ts`
-- Google Gemini four-stage flow: `artifacts/api-server/src/lib/agent-builder-flow.ts`
+- Google ADK four-stage signal flow: `artifacts/api-server/src/lib/agent-builder-flow.ts`
+- Google ADK podcast source scout: `artifacts/api-server/src/lib/podcast-adk-research.ts`
 - Podcast grounding, approvals, TTS, persistence, and Cut Keys: `artifacts/api-server/src/lib/podcast-fixtures.ts`
 - Podcast producer workspace: `artifacts/autography/src/pages/podcast.tsx`
 - Public podcast verification: `artifacts/autography/src/pages/cut.tsx`
@@ -44,12 +45,13 @@ Autography is a cinematic, safety-first entertainment-response and podcast-devel
 ## Architecture decisions
 
 - The Velvet Rope never calls Gemini. It is pure, deterministic policy evaluation with the first failing rule returned.
-- Gemini only reads, classifies, reconciles, and drafts. Its output is recorded as model inference and never publishes or alters fixture presentation data.
-- Board/PR/Drop scenarios use synthetic fixtures. Podcast normal mode uses live Google Search grounding and fails closed; fixtures are restricted to explicit synthetic-demo mode.
+- Google ADK runs the bounded G1–G4 Gemini read, classify, reconcile, and draft stages. Model output is recorded only as inference and never publishes, approves, or alters deterministic policy.
+- Board/PR/Drop scenarios use synthetic fixtures. Podcast normal mode invokes the official `@google/adk` TypeScript framework with `LlmAgent`, `GOOGLE_SEARCH`, and `InMemoryRunner`; it fails closed, and fixtures are restricted to explicit synthetic-demo mode.
 - Podcast artifacts are bound to their exact grounded run, source IDs, attestation decision, and human approval receipts. Never resolve a podcast artifact from the globally latest run.
 - Private cutting-room raw text is internal only. Public Cut Keys may expose only the producer-authorized summary.
 - Cut Key hashes prove artifact integrity and attribution, not factual truth.
-- Gemini is invoked directly through `@google/genai`. Do not claim Google ADK, Agent Builder, or Agent Engine.
+- The source scout and G1–G4 signal flow use Google ADK. The podcast evidence editor, brief, script, and TTS stages use `@google/genai` directly. Do not claim a managed Vertex AI Agent Builder or Agent Engine deployment.
+- ADK execution evidence may include only framework, provider, model, execution ID, declared tools, latency, activity, and status. Never include prompts, model output, or credentials.
 
 ## Product
 

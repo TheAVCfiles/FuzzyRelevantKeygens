@@ -1,4 +1,7 @@
-import { useGetFlood } from "@workspace/api-client-react";
+import {
+  useGetFlood,
+  type AgentFlowRuntimeEvidence,
+} from "@workspace/api-client-react";
 import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -6,6 +9,14 @@ import { cn } from "@/lib/utils";
 import { LoadingPanel, ErrorPanel } from "@/components/states";
 
 export function Constellation() {
+  const [adkEvidence] = useState<AgentFlowRuntimeEvidence[]>(() => {
+    try {
+      const stored = window.sessionStorage.getItem("autography-adk-runtime-evidence");
+      return stored ? JSON.parse(stored) as AgentFlowRuntimeEvidence[] : [];
+    } catch {
+      return [];
+    }
+  });
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState("producer");
   const [activePulseId, setActivePulseId] = useState<string | null>(null);
@@ -56,6 +67,25 @@ export function Constellation() {
             </div>
           </div>
         </div>
+        {adkEvidence.length > 0 && (
+          <div className="mt-5 border border-brass/30 bg-brass/5 px-3 py-3" aria-label="Google ADK runtime evidence">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <p className="font-system text-[10px] tracking-[0.16em] text-brass">
+                GOOGLE ADK VERIFIED / {adkEvidence.filter((item) => item.status === "completed").length} OF {adkEvidence.length} STAGES COMPLETED
+              </p>
+              <p className="font-mono text-[9px] text-oyster/60">
+                {adkEvidence[0]?.framework} · {adkEvidence[0]?.model}
+              </p>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+              {adkEvidence.map((item) => (
+                <span key={`${item.stage_id}-${item.execution_id}`} className="font-mono text-[9px] text-oyster/70">
+                  {item.stage_id} / {item.execution_id.slice(0, 12)} / {item.latency_ms}ms / {item.status}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="mt-7 flex flex-col xl:flex-row gap-6 xl:items-end">
           <div className="flex-1 overflow-x-auto no-scrollbar pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
             <div className="font-system text-[10px] tracking-[0.16em] text-sepia mb-3">EPISODE TIMELINE · CLICK A PULSE TO INSPECT</div>

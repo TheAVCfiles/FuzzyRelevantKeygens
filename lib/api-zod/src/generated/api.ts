@@ -444,7 +444,7 @@ export const SearchPodcastContextsResponse = zod.object({
   "provider": zod.enum(['google_public_web', 'synthetic_fixture', 'legacy_unverified']),
   "window": zod.enum(['past_24_hours', 'past_7_days', 'past_30_days', 'not_recorded']),
   "policy_reference": zod.string(),
-  "runtime_status": zod.enum(['Live Gemini', 'Synthetic Demo', 'Failed']),
+  "runtime_status": zod.enum(['Live Google ADK', 'Live Gemini', 'Synthetic Demo', 'Failed']),
   "sources": zod.array(zod.object({
   "id": zod.string(),
   "url": zod.string(),
@@ -485,6 +485,7 @@ export const SearchPodcastContextsResponse = zod.object({
   "agent_executions": zod.array(zod.object({
   "agent": zod.enum(['source_scout', 'evidence_editor', 'script_performer', 'audio_performer', 'authority_check']),
   "provider": zod.string(),
+  "framework": zod.string().optional().describe('Runtime framework used for this execution. Optional for backward compatibility with retained runs.'),
   "model": zod.string(),
   "execution_id": zod.string(),
   "tools": zod.array(zod.string()),
@@ -1858,13 +1859,27 @@ export const EvaluatePolicyResponse = zod.object({
 /**
  * @summary Run the four-stage read, classify, reconcile, and draft flow
  */
+
+
+
 export const RunAgentFlowResponse = zod.object({
-  "mode": zod.enum(['gemini', 'fixture_fallback']),
+  "mode": zod.enum(['google_adk', 'gemini', 'fixture_fallback']),
   "stages": zod.array(zod.object({
   "id": zod.string(),
   "role": zod.string(),
   "status": zod.string()
 })),
+  "runtime_evidence": zod.array(zod.object({
+  "stage_id": zod.string(),
+  "framework": zod.string(),
+  "provider": zod.string(),
+  "model": zod.string(),
+  "execution_id": zod.string(),
+  "tools": zod.array(zod.string()),
+  "latency_ms": zod.number(),
+  "status": zod.enum(['completed', 'failed']),
+  "activity": zod.string()
+})).min(1),
   "message": zod.string()
 })
 
@@ -1956,4 +1971,5 @@ export const GetReceiptsResponseItem = zod.object({
   "result": zod.string(),
   "rule_fired": zod.string().nullable()
 })
-export const GetReceiptsResponse = zod.array(GetReceiptsResponseItem)
+export const GetReceiptsResponse = zod.array(GetReceiptsResponseItem);
+// Generated from lib/api-spec/openapi.yaml.

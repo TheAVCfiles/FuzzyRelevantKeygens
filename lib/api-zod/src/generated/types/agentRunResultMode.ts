@@ -10,6 +10,7 @@ export type AgentRunResultMode = typeof AgentRunResultMode[keyof typeof AgentRun
 
 
 export const AgentRunResultMode = {
+  google_adk: 'google_adk',
   gemini: 'gemini',
   fixture_fallback: 'fixture_fallback',
 } as const;

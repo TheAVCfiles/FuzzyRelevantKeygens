@@ -740,7 +740,7 @@ function GroundedRunDesk({
             </div>
             <h2 className="mt-2 font-serif text-3xl">Grounded Query Desk</h2>
           </div>
-          <div className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] ${run.runtime_status === 'Failed' ? 'border-[#e4a38d] text-[#e4a38d]' : run.runtime_status === 'Live Gemini' ? 'border-[#a8d0c9] text-[#a8d0c9]' : 'border-[#d8a36c] text-[#d8a36c]'}`} data-testid="status-runtime">
+          <div className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] ${run.runtime_status === 'Failed' ? 'border-[#e4a38d] text-[#e4a38d]' : run.runtime_status.startsWith('Live ') ? 'border-[#a8d0c9] text-[#a8d0c9]' : 'border-[#d8a36c] text-[#d8a36c]'}`} data-testid="status-runtime">
             {run.runtime_status}
           </div>
         </div>
@@ -794,6 +794,11 @@ function GroundedRunDesk({
                     <span className={exec.status === 'completed' ? 'text-[#365f67]' : 'text-[#9e3e2d]'}>{exec.status}</span>
                   </div>
                   {exec.activity && <p className="mt-1 text-[#5f554e]">{exec.activity}</p>}
+                  <div className="mt-2 space-y-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[#73675f]">
+                    <p>{exec.framework ?? "Legacy runtime"} · {exec.provider}</p>
+                    <p>Tools · {exec.tools.length ? exec.tools.join(", ") : "none"}</p>
+                    <p className="break-all">Execution · {exec.execution_id}</p>
+                  </div>
                   <div className="mt-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.08em] text-[#73675f]">
                     <span>{exec.model}</span>
                     <span>{formatLatency(exec.latency_ms)}</span>

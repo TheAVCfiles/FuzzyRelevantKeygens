@@ -19,8 +19,12 @@ export function Board() {
   const [runError, setRunError] = useState("");
   const runAgentFlow = useRunAgentFlow({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (result) => {
         setRunError("");
+        window.sessionStorage.setItem(
+          "autography-adk-runtime-evidence",
+          JSON.stringify(result.runtime_evidence),
+        );
         setLocation("/constellation");
       },
       onError: () => {

@@ -10,6 +10,7 @@ export type PodcastGroundedRunRuntimeStatus = typeof PodcastGroundedRunRuntimeSt
 
 
 export const PodcastGroundedRunRuntimeStatus = {
+  Live_Google_ADK: 'Live Google ADK',
   Live_Gemini: 'Live Gemini',
   Synthetic_Demo: 'Synthetic Demo',
   Failed: 'Failed',

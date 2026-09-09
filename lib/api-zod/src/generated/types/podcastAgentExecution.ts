@@ -11,6 +11,8 @@ import type { PodcastAgentExecutionStatus } from './podcastAgentExecutionStatus'
 export interface PodcastAgentExecution {
   agent: PodcastAgentExecutionAgent;
   provider: string;
+  /** Runtime framework used for this execution. Optional for backward compatibility with retained runs. */
+  framework?: string;
   model: string;
   execution_id: string;
   tools: string[];

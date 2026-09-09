@@ -36,6 +36,7 @@ import {
   savePodcastStateToDatabase,
   uploadPodcastAudio,
 } from "./podcast-persistence";
+import { runPodcastAdkResearch } from "./podcast-adk-research";
 
 const model = "gemini-3.6-flash";
 const currentContextPolicyReference = "podcast-current-context-policy-v1";
@@ -768,7 +769,7 @@ function rehydrateActiveGroundedIndexes() {
   activeGroundedConcepts.splice(0);
   // Runs are persisted in insertion order; the newest run remains the room's active run.
   const run = [...podcastGroundedRuns.values()]
-    .filter((candidate) => syntheticDemoEnabled() || candidate.runtime_status === "Live Gemini")
+    .filter((candidate) => syntheticDemoEnabled() || isLivePodcastRuntime(candidate.runtime_status))
     .at(-1);
   if (!run) return;
   activeGroundedSources.push(...groundedRunRoomSources(run));
@@ -777,11 +778,15 @@ function rehydrateActiveGroundedIndexes() {
 
 export function runForPodcastArtifact(conceptId: string, sourceIds: string[]) {
   return [...podcastGroundedRuns.values()].reverse().find((run) =>
-    (syntheticDemoEnabled() || run.runtime_status === "Live Gemini") &&
+    (syntheticDemoEnabled() || isLivePodcastRuntime(run.runtime_status)) &&
     run.concept.id === conceptId &&
     sourceIds.length === run.sources.length &&
     sourceIds.every((id) => run.sources.some((source) => source.id === id)),
   ) ?? null;
+}
+
+function isLivePodcastRuntime(runtimeStatus: PodcastGroundedRun["runtime_status"]) {
+  return runtimeStatus === "Live Google ADK" || runtimeStatus === "Live Gemini";
 }
 
 /**
@@ -1628,7 +1633,7 @@ export async function createPodcastScriptFromGemini(briefId: string) {
   const valid = validateGeneratedScript(parsed, run, attestation);
   const base = fixtureScript(brief);
   const script: PodcastWorkspaceWithCompatibility = { ...base, title: valid.title, sections: valid.sections, run_id: run.id, attestation_id: attestation.id, workspace_revision: randomUUID() };
-  podcastExecutionRecords.set(`script:${script.id}`, { agent: "script_performer", provider: "Google Gemini", model, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - started, status: "completed", activity: "Created structured performed copy." });
+  podcastExecutionRecords.set(`script:${script.id}`, { agent: "script_performer", provider: "Google Gemini", framework: "Direct @google/genai", model, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - started, status: "completed", activity: "Created structured performed copy." });
   currentScript = script;
   podcastScripts.set(script.id, script);
   persistPodcastState("create", "script_workspace");
@@ -1726,7 +1731,6 @@ export async function searchPodcastContexts(
   if (process.env.PODCAST_SYNTHETIC_DEMO !== "true") {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("Google Search grounded podcast search is not configured; set PODCAST_SYNTHETIC_DEMO=true only for an explicit demo.");
-    const started = Date.now();
     const ai = new GoogleGenAI({ apiKey });
     const windowLabel = {
       past_24_hours: "the past 24 hours",
@@ -1739,13 +1743,14 @@ export async function searchPodcastContexts(
     const after = new Date();
     after.setUTCDate(after.getUTCDate() - windowDays);
     const googleDateOperators = `after:${after.toISOString().slice(0, 10)} before:${before.toISOString().slice(0, 10)}`;
-    const scout = await yieldPodcastMutationLock(() => ai.models.generateContent({
+    const scout = await yieldPodcastMutationLock(() => runPodcastAdkResearch({
       model,
-      contents: `Search the public web for current context about this exact podcast development topic: ${query}. Restrict every Google query to ${windowLabel} by including these date operators: ${googleDateOperators}. Return only a concise, aggregate, non-alleging evidence inventory. Do not return identities, usernames, raw comments, quotations, or copied post text.`,
-      config: { tools: [{ googleSearch: {} }] },
+      query,
+      windowLabel,
+      googleDateOperators,
     }));
-    const chunks = scout.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-    const supports = scout.candidates?.[0]?.groundingMetadata?.groundingSupports ?? [];
+    const chunks = scout.groundingMetadata.groundingChunks ?? [];
+    const supports = scout.groundingMetadata.groundingSupports ?? [];
     const web = chunks.flatMap((chunk: any, chunkIndex: number) =>
       chunk.web?.uri && chunk.web?.title ? [{ ...chunk.web, chunkIndex }] : []);
     let unique = [...new Map(web.map((item: any) => [item.uri, item])).values()].slice(0, 5);
@@ -1889,12 +1894,12 @@ export async function searchPodcastContexts(
       status: "needs_review",
     };
     const run: PodcastGroundedRun = {
-      id: `run-${randomUUID()}`, query, provider, window, policy_reference: currentContextPolicyReference, runtime_status: "Live Gemini", sources, concept,
+      id: `run-${randomUUID()}`, query, provider, window, policy_reference: currentContextPolicyReference, runtime_status: "Live Google ADK", sources, concept,
       uncertainties: unresolvedQuestions,
-      grounding_support: "Google Search grounding metadata supplied the cited public web sources.",
+      grounding_support: "Google ADK executed the source scout; Google Search grounding metadata supplied the cited public web sources.",
       agent_executions: [
-        { agent: "source_scout", provider: "Google Gemini", model, execution_id: randomUUID(), tools: ["googleSearch"], latency_ms: Date.now() - started, status: "completed", activity: "Retrieved unique public web sources with Google Search grounding." },
-        { agent: "evidence_editor", provider: "Google Gemini", model, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - editorStarted, status: "completed", activity: "Classified supported evidence into a fixed identity-free taxonomy." },
+        scout.execution,
+        { agent: "evidence_editor", provider: "Google Gemini", framework: "Direct @google/genai", model, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - editorStarted, status: "completed", activity: "Classified supported evidence into a fixed identity-free taxonomy." },
       ],
     };
     podcastGroundedRuns.set(run.id, run);
@@ -1981,8 +1986,8 @@ function createSyntheticGroundedRun(
     uncertainties: concept.unresolved_questions,
     grounding_support: "Synthetic demonstration only; no live Google Search retrieval occurred.",
     agent_executions: [
-      { agent: "source_scout", provider: "synthetic-demo", model: "none", execution_id: randomUUID(), tools: [], latency_ms: 0, status: "completed", activity: "Prepared synthetic demo sources." },
-      { agent: "evidence_editor", provider: "synthetic-demo", model: "none", execution_id: randomUUID(), tools: [], latency_ms: 0, status: "completed", activity: "Prepared one synthetic demo concept and uncertainties." },
+      { agent: "source_scout", provider: "synthetic-demo", framework: "Deterministic fixture", model: "none", execution_id: randomUUID(), tools: [], latency_ms: 0, status: "completed", activity: "Prepared synthetic demo sources." },
+      { agent: "evidence_editor", provider: "synthetic-demo", framework: "Deterministic fixture", model: "none", execution_id: randomUUID(), tools: [], latency_ms: 0, status: "completed", activity: "Prepared one synthetic demo concept and uncertainties." },
     ],
   };
   podcastGroundedRuns.set(run.id, run);
@@ -2297,7 +2302,7 @@ export async function generatePodcastAudio(id: string) {
     const data = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData?.data;
     if (!data) throw new Error("The audio model returned no playable data.");
     const wav = pcmToWav(Buffer.from(data, "base64"));
-    podcastExecutionRecords.set(`audio:${script.id}`, { agent: "audio_performer", provider: "Google Gemini", model: ttsModel, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - renderStarted, status: "completed", activity: "Rendered configured two-speaker audio." });
+    podcastExecutionRecords.set(`audio:${script.id}`, { agent: "audio_performer", provider: "Google Gemini", framework: "Direct @google/genai", model: ttsModel, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - renderStarted, status: "completed", activity: "Rendered configured two-speaker audio." });
     return commitGeneratedPodcastAudio(script, wav);
   } catch (error) {
     return { kind: "generation_failed" as const, error: error instanceof Error ? error.message : "Audio generation failed." };
@@ -2388,8 +2393,8 @@ function podcastAuthorityHold(script: PodcastWorkspaceWithCompatibility) {
   const brief = podcastBriefs.get(script.brief_id);
   const run = brief?.run_id ? podcastGroundedRuns.get(brief.run_id) ?? null : null;
   if (!run || run.uncertainties.length === 0) return "Authority hold: an active grounded run with visible uncertainty is required.";
-  if (!syntheticDemoEnabled() && run.runtime_status !== "Live Gemini") {
-    return "Authority hold: normal mode requires a live Gemini grounded run.";
+  if (!syntheticDemoEnabled() && !isLivePodcastRuntime(run.runtime_status)) {
+    return "Authority hold: normal mode requires a live Google-grounded run.";
   }
   if (!brief || brief.status !== "approved" || script.status !== "approved" || script.audio_status !== "ready_to_generate") {
     return "Authority hold: approved brief, script, and audio decisions are required.";

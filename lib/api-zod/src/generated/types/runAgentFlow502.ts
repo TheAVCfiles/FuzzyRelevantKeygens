@@ -6,13 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AgentFlowRuntimeEvidence } from './agentFlowRuntimeEvidence';
-import type { AgentRunResultMode } from './agentRunResultMode';
-import type { AgentStage } from './agentStage';
 
-export interface AgentRunResult {
-  mode: AgentRunResultMode;
-  stages: AgentStage[];
+export type RunAgentFlow502 = {
+  error: string;
   /** @minItems 1 */
   runtime_evidence: AgentFlowRuntimeEvidence[];
-  message: string;
-}
+};

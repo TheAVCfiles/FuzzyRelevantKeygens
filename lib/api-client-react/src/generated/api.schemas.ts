@@ -722,6 +722,7 @@ export type PodcastGroundedRunRuntimeStatus = typeof PodcastGroundedRunRuntimeSt
 
 
 export const PodcastGroundedRunRuntimeStatus = {
+  Live_Google_ADK: 'Live Google ADK',
   Live_Gemini: 'Live Gemini',
   Synthetic_Demo: 'Synthetic Demo',
   Failed: 'Failed',
@@ -779,6 +780,8 @@ export const PodcastAgentExecutionStatus = {
 export interface PodcastAgentExecution {
   agent: PodcastAgentExecutionAgent;
   provider: string;
+  /** Runtime framework used for this execution. Optional for backward compatibility with retained runs. */
+  framework?: string;
   model: string;
   execution_id: string;
   tools: string[];
@@ -1240,10 +1243,31 @@ export interface AgentStage {
   status: string;
 }
 
+export type AgentFlowRuntimeEvidenceStatus = typeof AgentFlowRuntimeEvidenceStatus[keyof typeof AgentFlowRuntimeEvidenceStatus];
+
+
+export const AgentFlowRuntimeEvidenceStatus = {
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export interface AgentFlowRuntimeEvidence {
+  stage_id: string;
+  framework: string;
+  provider: string;
+  model: string;
+  execution_id: string;
+  tools: string[];
+  latency_ms: number;
+  status: AgentFlowRuntimeEvidenceStatus;
+  activity: string;
+}
+
 export type AgentRunResultMode = typeof AgentRunResultMode[keyof typeof AgentRunResultMode];
 
 
 export const AgentRunResultMode = {
+  google_adk: 'google_adk',
   gemini: 'gemini',
   fixture_fallback: 'fixture_fallback',
 } as const;
@@ -1251,6 +1275,8 @@ export const AgentRunResultMode = {
 export interface AgentRunResult {
   mode: AgentRunResultMode;
   stages: AgentStage[];
+  /** @minItems 1 */
+  runtime_evidence: AgentFlowRuntimeEvidence[];
   message: string;
 }
 
@@ -1333,3 +1359,9 @@ export const GetFloodSource = {
   fixture: 'fixture',
   live: 'live',
 } as const;
+
+export type RunAgentFlow502 = {
+  error: string;
+  /** @minItems 1 */
+  runtime_evidence: AgentFlowRuntimeEvidence[];
+};

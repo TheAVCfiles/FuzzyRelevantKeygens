@@ -613,6 +613,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentRunResult"
+        "502":
+          description: Google ADK failed closed before the flow completed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, runtime_evidence]
+                properties:
+                  error: { type: string }
+                  runtime_evidence:
+                    type: array
+                    minItems: 1
+                    items: { $ref: "#/components/schemas/AgentFlowRuntimeEvidence" }
   /pr/{id}/dismiss:
     post:
       operationId: dismissPullRequest
@@ -1525,6 +1538,9 @@ components:
           type: string
           enum: [source_scout, evidence_editor, script_performer, audio_performer, authority_check]
         provider: { type: string }
+        framework:
+          type: string
+          description: Runtime framework used for this execution. Optional for backward compatibility with retained runs.
         model: { type: string }
         execution_id: { type: string }
         tools:
@@ -1573,7 +1589,7 @@ components:
         policy_reference: { type: string }
         runtime_status:
           type: string
-          enum: [Live Gemini, Synthetic Demo, Failed]
+          enum: [Live Google ADK, Live Gemini, Synthetic Demo, Failed]
         sources:
           type: array
           minItems: 3
@@ -1750,16 +1766,37 @@ components:
         id: { type: string }
         role: { type: string }
         status: { type: string }
+    AgentFlowRuntimeEvidence:
+      type: object
+      required: [stage_id, framework, provider, model, execution_id, tools, latency_ms, status, activity]
+      properties:
+        stage_id: { type: string }
+        framework: { type: string }
+        provider: { type: string }
+        model: { type: string }
+        execution_id: { type: string }
+        tools:
+          type: array
+          items: { type: string }
+        latency_ms: { type: number }
+        status:
+          type: string
+          enum: [completed, failed]
+        activity: { type: string }
     AgentRunResult:
       type: object
-      required: [mode, stages, message]
+      required: [mode, stages, runtime_evidence, message]
       properties:
         mode:
           type: string
-          enum: [gemini, fixture_fallback]
+          enum: [google_adk, gemini, fixture_fallback]
         stages:
           type: array
           items: { $ref: "#/components/schemas/AgentStage" }
+        runtime_evidence:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/AgentFlowRuntimeEvidence" }
         message: { type: string }
     DropClaim:
       type: object
