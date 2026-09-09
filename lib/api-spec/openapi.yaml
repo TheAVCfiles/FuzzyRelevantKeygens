@@ -1,0 +1,1821 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: autography
+    description: Synthetic Autography experience
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /show:
+    get:
+      operationId: getShow
+      tags: [autography]
+      summary: Get the current synthetic episode
+      responses:
+        "200":
+          description: Show and episode context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Show"
+  /flood:
+    get:
+      operationId: getFlood
+      tags: [autography]
+      summary: Get the Signal Room flood and clusters
+      parameters:
+        - name: source
+          in: query
+          required: false
+          description: Use the approved live connector, or the synthetic fixture fallback.
+          schema:
+            type: string
+            enum: [fixture, live]
+      responses:
+        "200":
+          description: Signal events grouped into clusters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FloodResponse"
+  /flood/observations:
+    post:
+      operationId: ingestLiveObservations
+      tags: [autography]
+      summary: Ingest observations from the approved consented newsroom connector
+      description: |
+        Connector boundary for the policy-reviewed pilot source `consented-newsroom-v1`.
+        The source must send its consent and policy review references. Identity fields are
+        intentionally not accepted. Content is retained only for server-side grouping and
+        is de-amplified in the Signal Room response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveObservationBatch"
+      responses:
+        "202":
+          description: Observations accepted and normalized into the live room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveObservationReceipt"
+        "400":
+          description: The source envelope is invalid or not approved
+  /podcast/sources:
+    get:
+      operationId: getPodcastRoom
+      tags: [autography]
+      summary: Get podcast intelligence sources and ranked concepts
+      responses:
+        "200":
+          description: Podcast intelligence room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastRoom"
+    post:
+      operationId: addPodcastSource
+      tags: [autography]
+      summary: Add a consented public or manually supplied source URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPodcastSourceInput"
+      responses:
+        "200":
+          description: Updated podcast intelligence room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastRoom"
+  /podcast/search:
+    post:
+      operationId: searchPodcastContexts
+      tags: [autography]
+      summary: Search an explicitly approved current-context provider
+      description: Returns a bounded, aggregate-only context package from an approved provider. It does not scrape autonomously, expose identities, copy comments, or create production artifacts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastContextSearchInput"
+      responses:
+        "200":
+          description: Ranked entertainment context packages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastContextSearchResponse"
+  /podcast/runs/{id}/attestation:
+    post:
+      operationId: attestPodcastCuttingRoom
+      tags: [autography]
+      summary: Add or decline a private cutting-room attestation for the active grounded run
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastCuttingRoomAttestationInput"
+      responses:
+        "200":
+          description: Private attestation receipt for the grounded run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastCuttingRoomAttestation"
+  /podcast/live-snapshot:
+    get:
+      operationId: getPodcastLiveSnapshot
+      tags: [autography]
+      summary: Refresh the bounded podcast live-signal snapshot
+      description: Returns only aggregate metadata from the approved consented newsroom source, with an explicit synthetic fallback when no live batch is available.
+      responses:
+        "200":
+          description: Bounded live-signal snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastLiveSnapshot"
+  /podcast/development:
+    post:
+      operationId: createPodcastDevelopment
+      tags: [autography]
+      summary: Create source-backed podcast format variants for human review
+      description: Creates inspectable editorial hypotheses and never approves a brief, renders audio, imitates a real person, or publishes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastDevelopmentInput"
+      responses:
+        "201":
+          description: Draft development plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastDevelopmentPlan"
+  /podcast/development/{id}/validation:
+    post:
+      operationId: recordPodcastDevelopmentValidation
+      tags: [autography]
+      summary: Record a human development-plan decision
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastDevelopmentValidationInput"
+      responses:
+        "200":
+          description: Reviewed development plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastDevelopmentPlan"
+  /podcast/presets:
+    post:
+      operationId: createPodcastFilterPreset
+      tags: [autography]
+      summary: Save a reusable podcast comparison filter preset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastFilterPresetInput"
+      responses:
+        "201":
+          description: Saved comparison filter preset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastFilterPreset"
+  /podcast/presets/{id}:
+    patch:
+      operationId: renamePodcastFilterPreset
+      tags: [autography]
+      summary: Rename a podcast comparison filter preset
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastFilterPresetRenameInput"
+      responses:
+        "200":
+          description: Renamed comparison filter preset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastFilterPreset"
+    delete:
+      operationId: deletePodcastFilterPreset
+      tags: [autography]
+      summary: Remove a podcast comparison filter preset
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Comparison filter preset removed
+  /podcast/brief:
+    post:
+      operationId: generatePodcastBrief
+      tags: [autography]
+      summary: Generate a source-backed podcast brief for human review
+      description: The generated brief is durably stored server-side so its provenance and review state survive an API restart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeneratePodcastBriefInput"
+      responses:
+        "200":
+          description: Draft podcast brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastBrief"
+  /podcast/brief/{id}/decision:
+    post:
+      operationId: decidePodcastBrief
+      tags: [autography]
+      summary: Approve or reject a podcast brief before rendering
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastBriefDecisionInput"
+      responses:
+        "200":
+          description: Updated podcast brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastBrief"
+  /podcast/brief/{id}/script:
+    post:
+      operationId: createPodcastScript
+      tags: [autography]
+      summary: Open a script-only workspace from an approved brief
+      description: The workspace and its provenance are durably stored server-side and remain gated by the persisted brief approval state.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          description: Gated podcast script workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastScriptWorkspace"
+        "409":
+          description: Brief is not approved
+    get:
+      operationId: getPodcastScriptByBrief
+      tags: [autography]
+      summary: Retrieve a script workspace by its approved brief
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Previously created script workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastScriptWorkspace"
+        "404":
+          description: Script workspace not found
+        "409":
+          description: Brief is not approved
+  /podcast/script/{id}:
+    get:
+      operationId: getPodcastScript
+      tags: [autography]
+      summary: Retrieve a script workspace by workspace ID
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Previously created script workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastScriptWorkspace"
+        "404":
+          description: Script workspace not found
+        "409":
+          description: Brief is not approved
+  /podcast/script/{id}/decision:
+    post:
+      operationId: decidePodcastScript
+      tags: [autography]
+      summary: Approve or reject a podcast script before audio work
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastScriptDecisionInput"
+      responses:
+        "200":
+          description: Reviewed podcast script workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastScriptWorkspace"
+  /podcast/script/{id}/release-kit:
+    post:
+      operationId: createPodcastReleaseKit
+      tags: [autography]
+      summary: Prepare a release kit from an approved podcast script
+      description: Creates a staged editorial and promotion package. It never renders audio, exports, publishes, or bypasses final human approval.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          description: Staged release kit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastReleaseKit"
+        "409":
+          description: Script is not approved
+  /podcast/script/{id}/audio/decision:
+    post:
+      operationId: decidePodcastAudio
+      tags: [autography]
+      summary: Approve or reject audio generation for a staged release kit
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PodcastAudioDecisionInput"
+      responses:
+        "200":
+          description: Updated script workspace and audio gate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastScriptWorkspace"
+        "409":
+          description: Script or release kit is not ready for audio approval
+  /podcast/script/{id}/audio:
+    post:
+      operationId: generatePodcastAudio
+      tags: [autography]
+      summary: Generate a short spoken clip from an audio-approved script
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          description: Generated playable podcast clip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastAudioClip"
+        "409":
+          description: Audio generation has not been approved
+    get:
+      operationId: getPodcastAudio
+      tags: [autography]
+      summary: Retrieve generated clip metadata
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Generated playable podcast clip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastAudioClip"
+        "404":
+          description: Audio clip has not been generated
+  /podcast/audio/{id}/stream:
+    get:
+      operationId: streamPodcastAudio
+      tags: [autography]
+      summary: Stream an approved generated podcast clip
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: WAV audio stream
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+  /podcast/reset:
+    post:
+      operationId: resetPodcastDemo
+      tags: [autography]
+      summary: Reset authenticated podcast demo state and return a pre-staged input
+      responses:
+        "200":
+          description: Reset state and a pre-staged project input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastResetResponse"
+  /podcast/cut-keys/{key}:
+    get:
+      operationId: getPodcastCutKey
+      tags: [autography]
+      summary: Get a public integrity manifest for an approved podcast cut
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Public Cut Key manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastCutKey"
+        "404":
+          description: Cut Key not found
+  /podcast/cut-keys/{key}/audio:
+    get:
+      operationId: streamPodcastCutKeyAudio
+      tags: [autography]
+      summary: Stream audio only when resolved by a current public Cut Key
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: WAV audio stream
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+  /context:
+    get:
+      operationId: getContext
+      tags: [autography]
+      summary: Get the context repository
+      responses:
+        "200":
+          description: Context items used to draft claims
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextResponse"
+  /calls:
+    get:
+      operationId: getCalls
+      tags: [autography]
+      summary: Get all Calls
+      responses:
+        "200":
+          description: Calls
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Call"
+  /call/active:
+    get:
+      operationId: getActiveCall
+      tags: [autography]
+      summary: Get the active Call and computed clock state
+      responses:
+        "200":
+          description: Active Call state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveCall"
+  /pr/{id}:
+    get:
+      operationId: getPullRequest
+      tags: [autography]
+      summary: Get a staged response set
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Pull request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullRequest"
+        "404":
+          description: Not found
+  /pr/{id}/sign:
+    post:
+      operationId: signPullRequest
+      tags: [autography]
+      summary: Sign one staged move
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignPullRequestInput"
+      responses:
+        "200":
+          description: Evaluation and possible issued Drop
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignResult"
+  /evaluate:
+    post:
+      operationId: evaluatePolicy
+      tags: [autography]
+      summary: Evaluate a proposed action through the deterministic Velvet Rope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyEvaluationInput"
+      responses:
+        "200":
+          description: First policy failure or pass
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Evaluation"
+  /agent/run:
+    post:
+      operationId: runAgentFlow
+      tags: [autography]
+      summary: Run the four-stage read, classify, reconcile, and draft flow
+      responses:
+        "200":
+          description: Agent flow status; fixture data remains available for the demo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRunResult"
+  /pr/{id}/dismiss:
+    post:
+      operationId: dismissPullRequest
+      tags: [autography]
+      summary: Close a Pull Request without publishing
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Dismissed Pull Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DismissResult"
+  /drop/{id}:
+    get:
+      operationId: getDrop
+      tags: [autography]
+      summary: Get an issued Drop
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Issued Drop
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Drop"
+        "404":
+          description: Not found
+  /verify:
+    post:
+      operationId: verifyDrop
+      tags: [autography]
+      summary: Verify a Drop id or hash
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyDropInput"
+      responses:
+        "200":
+          description: Registry lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResult"
+  /receipts:
+    get:
+      operationId: getReceipts
+      tags: [autography]
+      summary: Get the append-only Receipt log
+      responses:
+        "200":
+          description: Receipt entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Receipt"
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status, storage, readiness]
+      properties:
+        status:
+          type: string
+        storage:
+          type: string
+          enum: [healthy, degraded]
+        readiness:
+          type: string
+          enum: [initializing, ready, failed]
+    Show:
+      type: object
+      required: [title, episode, subtitle, aired_at, transcript_excerpt]
+      properties:
+        title: { type: string }
+        episode: { type: number }
+        subtitle: { type: string }
+        aired_at: { type: string }
+        transcript_excerpt: { type: string }
+    CallSubject:
+      type: object
+      required: [id, display]
+      properties:
+        id: { type: string }
+        display: { type: string }
+    CallIssuer:
+      type: object
+      required: [id, display]
+      properties:
+        id: { type: string }
+        display: { type: string }
+    CallEngagement:
+      type: object
+      required: [show, episode, capacity]
+      properties:
+        show: { type: string }
+        episode: { type: number }
+        capacity: { type: string }
+    CallWindow:
+      type: object
+      required: [valid_from, valid_until]
+      properties:
+        valid_from: { type: string }
+        valid_until: { type: string }
+    CallReach:
+      type: object
+      required: [territory, platform]
+      properties:
+        territory: { type: string }
+        platform: { type: string }
+    CallSignatures:
+      type: object
+      required: [issuer_sig]
+      properties:
+        issuer_sig: { type: string }
+        subject_countersig: { type: ["string", "null"] }
+    Call:
+      type: object
+      required: [call_id, subject, issuer, attestation, engagement, window, scopes, exclusions, reach, sig]
+      properties:
+        call_id: { type: string }
+        subject: { $ref: "#/components/schemas/CallSubject" }
+        issuer: { $ref: "#/components/schemas/CallIssuer" }
+        attestation: { type: string }
+        engagement: { $ref: "#/components/schemas/CallEngagement" }
+        window: { $ref: "#/components/schemas/CallWindow" }
+        scopes:
+          type: array
+          items: { type: string }
+        exclusions:
+          type: array
+          items: { type: string }
+        reach: { $ref: "#/components/schemas/CallReach" }
+        sig: { $ref: "#/components/schemas/CallSignatures" }
+    ActiveCall:
+      type: object
+      required: [call, state, seconds_remaining]
+      properties:
+        call: { $ref: "#/components/schemas/Call" }
+        state:
+          type: string
+          enum: [LIVE, INERT, DARK]
+        seconds_remaining: { type: number }
+    SignalAuthor:
+      type: object
+      required: [handle, account_age_days, followers]
+      properties:
+        handle: { type: string }
+        account_age_days: { type: number }
+        followers: { type: number }
+    SignalEngagement:
+      type: object
+      required: [likes, reposts]
+      properties:
+        likes: { type: number }
+        reposts: { type: number }
+    SignalEvent:
+      type: object
+      required: [id, text, author, posted_at, platform, engagement, cluster_id]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        author: { $ref: "#/components/schemas/SignalAuthor" }
+        posted_at: { type: string }
+        platform: { type: string }
+        engagement: { $ref: "#/components/schemas/SignalEngagement" }
+        cluster_id: { type: string }
+        provenance: { $ref: "#/components/schemas/ObservationProvenance" }
+    ObservationProvenance:
+      type: object
+      required: [source_id, source_class, consent_ref, observation_window, received_at, freshness, confidence]
+      properties:
+        source_id: { type: string }
+        source_class: { type: string }
+        consent_ref: { type: string }
+        observation_window:
+          type: object
+          required: [start, end]
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+        received_at: { type: string, format: date-time }
+        freshness: { type: string }
+        confidence: { type: string }
+    LiveObservation:
+      type: object
+      required: [id, text, observed_at, observation_window, confidence]
+      properties:
+        id: { type: string }
+        text: { type: string, minLength: 1, maxLength: 2000 }
+        observed_at: { type: string, format: date-time }
+        observation_window:
+          type: object
+          required: [start, end]
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+        confidence:
+          type: string
+          enum: [low, medium, high]
+    LiveObservationBatch:
+      type: object
+      required: [source_id, source_class, consent_ref, policy_review_ref, observations]
+      properties:
+        source_id:
+          type: string
+          enum: [consented-newsroom-v1]
+        source_class:
+          type: string
+          enum: [consented_newsroom]
+        consent_ref: { type: string, minLength: 1 }
+        policy_review_ref: { type: string, minLength: 1 }
+        observations:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/LiveObservation" }
+    LiveObservationReceipt:
+      type: object
+      required: [accepted, source_id, received_at, observation_count, flood]
+      properties:
+        accepted: { type: boolean }
+        source_id: { type: string }
+        received_at: { type: string, format: date-time }
+        observation_count: { type: number }
+        flood: { $ref: "#/components/schemas/FloodResponse" }
+    TimelinePulse:
+      type: object
+      required: [id, label, timestamp, intensity, cluster_id, source_class, freshness, confidence]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        timestamp: { type: string }
+        intensity: { type: number }
+        cluster_id: { type: string }
+        source_class: { type: string }
+        freshness: { type: string }
+        confidence: { type: string }
+    EvidenceCitation:
+      type: object
+      required: [id, label, source_class, source_ref, observation_window, freshness, confidence, excerpt]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        source_class: { type: string }
+        source_ref: { type: string }
+        observation_window: { type: string }
+        freshness: { type: string }
+        confidence: { type: string }
+        excerpt: { type: string }
+    AudienceQuestion:
+      type: object
+      required: [id, prompt, grouped_count, cluster_id, answerability, context_refs]
+      properties:
+        id: { type: string }
+        prompt: { type: string }
+        grouped_count: { type: number }
+        cluster_id: { type: string }
+        answerability: { type: string }
+        context_refs:
+          type: array
+          items: { type: string }
+    SafetyHold:
+      type: object
+      required: [id, label, severity, reason, status, safe_action]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        severity: { type: string }
+        reason: { type: string }
+        status: { type: string }
+        safe_action: { type: string }
+    RolePermission:
+      type: object
+      required: [role, label, can_view, can_stage, can_sign, emphasis]
+      properties:
+        role: { type: string }
+        label: { type: string }
+        can_view: { type: boolean }
+        can_stage: { type: boolean }
+        can_sign: { type: boolean }
+        emphasis:
+          type: array
+          items: { type: string }
+    CoordinationSignals:
+      type: object
+      required: [duplicate_phrasing, account_age_clustering, burst_window_seconds, cadence_irregularity]
+      properties:
+        duplicate_phrasing: { type: number }
+        account_age_clustering: { type: number }
+        burst_window_seconds: { type: number }
+        cadence_irregularity: { type: number }
+    Cluster:
+      type: object
+      required: [id, label, class, member_ids, coordination_signals, confidence, note, share_of_observed_volume]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        class: { type: string }
+        member_ids:
+          type: array
+          items: { type: string }
+        coordination_signals: { $ref: "#/components/schemas/CoordinationSignals" }
+        confidence: { type: string }
+        note: { type: string }
+        share_of_observed_volume: { type: number }
+    FloodResponse:
+      type: object
+      required: [observed_volume, events, clusters, timeline, evidence, questions, safety_holds, role_permissions, data_notice]
+      properties:
+        observed_volume: { type: number }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/SignalEvent" }
+        clusters:
+          type: array
+          items: { $ref: "#/components/schemas/Cluster" }
+        timeline:
+          type: array
+          items: { $ref: "#/components/schemas/TimelinePulse" }
+        evidence:
+          type: array
+          items: { $ref: "#/components/schemas/EvidenceCitation" }
+        questions:
+          type: array
+          items: { $ref: "#/components/schemas/AudienceQuestion" }
+        safety_holds:
+          type: array
+          items: { $ref: "#/components/schemas/SafetyHold" }
+        role_permissions:
+          type: array
+          items: { $ref: "#/components/schemas/RolePermission" }
+        data_notice: { type: string }
+    ContextItem:
+      type: object
+      required: [id, label, source_class, excerpt]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        source_class: { type: string }
+        excerpt: { type: string }
+    PodcastSource:
+      type: object
+      required: [id, source_url, platform, community, post_title, timestamp, retrieved_at, engagement, source_id, access_mode]
+      properties:
+        id: { type: string }
+        source_url: { type: string }
+        platform: { type: string }
+        community: { type: string }
+        post_title: { type: string }
+        timestamp: { type: string }
+        retrieved_at: { type: string }
+        engagement:
+          type: object
+          required: [score, comments]
+          properties:
+            score: { type: number }
+            comments: { type: number }
+        source_id: { type: ["string", "null"] }
+        access_mode:
+          type: string
+          enum: [fixture, approved_live, public_url, manual_url]
+        source_class: { type: string }
+        evidence_type: { type: string }
+        consent_reference: { type: ["string", "null"] }
+        policy_reference: { type: ["string", "null"] }
+        evidence_gaps:
+          type: array
+          items: { type: string }
+    PodcastConcept:
+      type: object
+      required: [id, title, summary, relevance, urgency, engagement, freshness, source_diversity, source_ids, status, observed_signal, supported_context, unresolved_questions, recommended_route, next_reviewer, confidence_label, freshness_label]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        summary: { type: string }
+        relevance: { type: number }
+        urgency: { type: number }
+        engagement: { type: number }
+        freshness: { type: number }
+        source_diversity: { type: number }
+        source_ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+        status:
+          type: string
+          enum: [ready, needs_review]
+        observed_signal: { type: string }
+        supported_context: { type: string }
+        unresolved_questions:
+          type: array
+          items: { type: string }
+        recommended_route:
+          type: string
+          enum: [producer_review, publicity_clarification, safety_legal_hold, subject_matter_expert]
+        next_reviewer: { type: string }
+        confidence_label: { type: string }
+        freshness_label: { type: string }
+    PodcastRoom:
+      type: object
+      required: [sources, concepts, filter_presets, data_notice, rendering_status, selected_brief_id, decision_history]
+      properties:
+        sources:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastSource" }
+        concepts:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastConcept" }
+        filter_presets:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastFilterPreset" }
+        data_notice: { type: string }
+        rendering_status:
+          type: string
+          enum: [blocked_until_approval]
+        selected_brief_id: { type: ["string", "null"] }
+        decision_history:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastDecisionHistoryEntry" }
+    PodcastDecisionHistoryEntry:
+      type: object
+      required: [artifact_type, artifact_id, reviewer, decision, decided_at, artifact_creation]
+      properties:
+        artifact_type:
+          type: string
+          enum: [brief, script]
+        artifact_id: { type: string }
+        reviewer: { type: string }
+        decision:
+          type: string
+          enum: [approve, reject]
+        decided_at: { type: string }
+        artifact_creation:
+          type: string
+          enum: [none]
+    PodcastLiveSnapshot:
+      type: object
+      required: [source_mode, source_status, source_id, source_class, consent_reference, policy_review_reference, freshness, refreshed_at, observation_window, aggregate_observations, signal_label, data_notice]
+      properties:
+        source_mode:
+          type: string
+          enum: [approved_live, synthetic_fixture]
+        source_status: { type: string }
+        source_id: { type: string }
+        source_class: { type: string }
+        consent_reference: { type: ["string", "null"] }
+        policy_review_reference: { type: ["string", "null"] }
+        freshness: { type: string }
+        refreshed_at: { type: string }
+        observation_window:
+          type: object
+          required: [start, end]
+          properties:
+            start: { type: string }
+            end: { type: string }
+        aggregate_observations: { type: number }
+        signal_label: { type: string }
+        data_notice: { type: string }
+    PodcastArchetype:
+      type: object
+      required: [id, label, point_of_view, delivery_guidance, audience_fit, non_impersonation_disclosure]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        point_of_view: { type: string }
+        delivery_guidance: { type: string }
+        audience_fit: { type: string }
+        non_impersonation_disclosure: { type: string }
+    PodcastMethodologyFactor:
+      type: object
+      required: [id, label, score, evidence, uncertainty]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        score: { type: number, minimum: 0, maximum: 100 }
+        evidence: { type: string }
+        uncertainty: { type: string }
+    PodcastFormatSegment:
+      type: object
+      required: [label, purpose, source_ids]
+      properties:
+        label: { type: string }
+        purpose: { type: string }
+        source_ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+    PodcastForecastHypothesis:
+      type: object
+      required: [metric, statement, validation_method]
+      properties:
+        metric: { type: string }
+        statement: { type: string }
+        validation_method: { type: string }
+    PodcastFormatVariant:
+      type: object
+      required: [id, title, format, premise, opening_beat, segment_spine, citation_ids, methodology_factors, hypotheses, risks, tradeoff, forecast_label]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        format:
+          type: string
+          enum: [cold_open_explainer, reported_explainer, structured_debate, context_recap, listener_question]
+        premise: { type: string }
+        opening_beat: { type: string }
+        segment_spine:
+          type: array
+          minItems: 3
+          items: { $ref: "#/components/schemas/PodcastFormatSegment" }
+        citation_ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+        methodology_factors:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastMethodologyFactor" }
+        hypotheses:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastForecastHypothesis" }
+        risks:
+          type: array
+          items: { type: string }
+        tradeoff: { type: string }
+        forecast_label: { type: string }
+    PodcastDevelopmentMeasurementRecord:
+      type: object
+      required: [id, recorded_at, concept_id, source_ids, source_mode, archetype_id, format_id, factor_scores, validation_status, validation_note]
+      properties:
+        id: { type: string }
+        recorded_at: { type: string }
+        concept_id: { type: string }
+        source_ids:
+          type: array
+          items: { type: string }
+        source_mode:
+          type: string
+          enum: [approved_live, synthetic_fixture]
+        archetype_id: { type: ["string", "null"] }
+        format_id: { type: ["string", "null"] }
+        factor_scores:
+          type: object
+          additionalProperties: { type: number }
+        validation_status:
+          type: string
+          enum: [pending, validated, rejected]
+        validation_note: { type: string }
+    PodcastDevelopmentPlan:
+      type: object
+      required: [id, concept_id, source_ids, audience, use_case, source_snapshot, archetypes, format_variants, methodology_note, measurement_record, status, selected_archetype_id, selected_format_id, decision_note]
+      properties:
+        id: { type: string }
+        concept_id: { type: string }
+        source_ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+        audience: { type: string }
+        use_case: { type: string }
+        source_snapshot: { $ref: "#/components/schemas/PodcastLiveSnapshot" }
+        archetypes:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/PodcastArchetype" }
+        format_variants:
+          type: array
+          minItems: 2
+          items: { $ref: "#/components/schemas/PodcastFormatVariant" }
+        methodology_note: { type: string }
+        measurement_record: { $ref: "#/components/schemas/PodcastDevelopmentMeasurementRecord" }
+        status:
+          type: string
+          enum: [draft, validated, rejected]
+        selected_archetype_id: { type: ["string", "null"] }
+        selected_format_id: { type: ["string", "null"] }
+        decision_note: { type: string }
+    PodcastDevelopmentInput:
+      type: object
+      required: [concept_id, source_ids, audience, use_case]
+      properties:
+        concept_id: { type: string }
+        source_ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+        audience:
+          type: string
+          enum: [consumers, clients, users]
+        use_case:
+          type: string
+          enum: [recap, development, publicity, audience_strategy, cultural_context]
+    PodcastDevelopmentValidationInput:
+      type: object
+      required: [decision, archetype_id, format_id]
+      properties:
+        decision:
+          type: string
+          enum: [validate, reject]
+        archetype_id: { type: string }
+        format_id: { type: string }
+    PodcastContextSearchInput:
+      type: object
+      required: [query, audience, use_case, provider, window]
+      properties:
+        query: { type: string, minLength: 2, maxLength: 240 }
+        audience:
+          type: string
+          enum: [consumers, clients, users]
+        use_case:
+          type: string
+          enum: [recap, development, publicity, audience_strategy, cultural_context]
+        provider:
+          type: string
+          enum: [google_public_web]
+        window:
+          type: string
+          enum: [past_24_hours, past_7_days, past_30_days]
+        source_classes:
+          type: array
+          items: { type: string }
+    PodcastContextSearchResponse:
+      type: object
+      required: [query, audience, use_case, provider, window, policy_reference, generated_at, search_mode, results, grounded_run]
+      properties:
+        query: { type: string }
+        audience: { type: string }
+        use_case: { type: string }
+        provider:
+          type: string
+          enum: [google_public_web, synthetic_fixture]
+        window:
+          type: string
+          enum: [past_24_hours, past_7_days, past_30_days]
+        policy_reference: { type: string }
+        generated_at: { type: string }
+        search_mode:
+          type: string
+          enum: [google_search_grounded, synthetic_demo]
+        grounded_run:
+          $ref: "#/components/schemas/PodcastGroundedRun"
+        results:
+          type: array
+          items:
+            type: object
+            required: [concept, sources, match_reason, speculation, safest_next_reviewer]
+            properties:
+              concept: { $ref: "#/components/schemas/PodcastConcept" }
+              sources:
+                type: array
+                items: { $ref: "#/components/schemas/PodcastSource" }
+              match_reason: { type: string }
+              speculation: { type: string }
+              safest_next_reviewer: { type: string }
+    PodcastFilterPreset:
+      type: object
+      required: [id, name, platforms, communities, owner_id]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        owner_id:
+          type: ["string", "null"]
+          description: Authenticated producer who owns the preset; null identifies a legacy shared preset.
+        platforms:
+          type: array
+          items: { type: string }
+        communities:
+          type: array
+          items: { type: string }
+    PodcastFilterPresetInput:
+      type: object
+      required: [name, platforms, communities]
+      properties:
+        name: { type: string, minLength: 1 }
+        platforms:
+          type: array
+          items: { type: string }
+        communities:
+          type: array
+          items: { type: string }
+    PodcastFilterPresetRenameInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+    AddPodcastSourceInput:
+      type: object
+      required: [source_url]
+      properties:
+        source_url: { type: string }
+    GeneratePodcastBriefInput:
+      type: object
+      required: [concept_id, source_ids, development_plan_id]
+      properties:
+        concept_id: { type: string }
+        source_ids:
+          type: array
+          minItems: 1
+          description: Source IDs currently visible in the producer's comparison selection.
+          items: { type: string }
+        development_plan_id:
+          type: string
+          description: Validated development plan that fixes the selected fictional archetype, format, and exact cited source set for this brief.
+    PodcastBrief:
+      type: object
+      required: [id, concept_id, selected_source_ids, run_id, attestation_id, status, generated_mode, topic_angle, audience_pain, why_now, key_tensions, source_links, risk_notes, episode_outline, suggested_title, approval_note]
+      properties:
+        id: { type: string }
+        concept_id: { type: string }
+        selected_source_ids:
+          type: array
+          items: { type: string }
+        run_id: { type: ["string", "null"] }
+        attestation_id: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [draft, approved, rejected]
+        generated_mode:
+          type: string
+          enum: [gemini, synthetic_demo]
+        topic_angle: { type: string }
+        audience_pain: { type: string }
+        why_now: { type: string }
+        key_tensions:
+          type: array
+          items: { type: string }
+        source_links:
+          type: array
+          items:
+            type: object
+            required: [source_id, url, label, retrieved_at]
+            properties:
+              source_id: { type: string }
+              url: { type: string }
+              label: { type: string }
+              retrieved_at: { type: string }
+        risk_notes:
+          type: array
+          items: { type: string }
+        episode_outline:
+          type: array
+          items:
+            type: object
+            required: [segment, purpose]
+            properties:
+              segment: { type: string }
+              purpose: { type: string }
+        suggested_title: { type: string }
+        approval_note: { type: string }
+        development_plan_id: { type: string }
+        editorial_archetype: { $ref: "#/components/schemas/PodcastArchetype" }
+        selected_format: { $ref: "#/components/schemas/PodcastFormatVariant" }
+        methodology_summary: { type: string }
+    PodcastBriefDecisionInput:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+    PodcastScriptSection:
+      type: object
+      required: [segment, script, source_ids, classification, speaker]
+      properties:
+        segment: { type: string }
+        script: { type: string }
+        source_ids:
+          type: array
+          items: { type: string }
+        classification:
+          type: string
+          enum: [source_backed, first_party_attested, disputed, unresolved]
+        speaker:
+          type: string
+          enum: [FRONT ROW, BACKSTAGE]
+    PodcastScriptWorkspace:
+      type: object
+      required: [id, brief_id, run_id, attestation_id, status, title, sections, provenance, safety_note, review_note, audio_status, release_kit, compatibility_normalized]
+      properties:
+        id: { type: string }
+        brief_id: { type: string }
+        run_id: { type: ["string", "null"] }
+        attestation_id: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [draft, approved, rejected]
+        title: { type: string }
+        sections:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastScriptSection" }
+        provenance:
+          type: array
+          items:
+            type: object
+            required: [source_id, url, label, retrieved_at]
+            properties:
+              source_id: { type: string }
+              url: { type: string }
+              label: { type: string }
+              retrieved_at: { type: string }
+        safety_note: { type: string }
+        review_note: { type: string }
+        audio_status:
+          type: string
+          enum: [blocked_until_script_approval, awaiting_audio_approval, ready_to_generate, generated, rejected]
+        compatibility_normalized:
+          type: boolean
+          description: Whether restoring this workspace required compatibility normalization from an older saved format.
+        release_kit:
+          anyOf:
+            - $ref: "#/components/schemas/PodcastReleaseKit"
+            - type: "null"
+        audio_clip:
+          anyOf:
+            - $ref: "#/components/schemas/PodcastAudioClip"
+            - type: "null"
+    PodcastReleaseKit:
+      type: object
+      required: [id, script_id, status, title_options, episode_description, chapters, host_notes, promotion_copy, accessibility_notes, provenance_summary, audio_status, publishing_status, next_reviewer]
+      properties:
+        id: { type: string }
+        script_id: { type: string }
+        status:
+          type: string
+          enum: [staged]
+        title_options:
+          type: array
+          items: { type: string }
+        episode_description: { type: string }
+        chapters:
+          type: array
+          items:
+            type: object
+            required: [label, timing, purpose]
+            properties:
+              label: { type: string }
+              timing: { type: string }
+              purpose: { type: string }
+        host_notes:
+          type: array
+          items: { type: string }
+        promotion_copy:
+          type: array
+          items:
+            type: object
+            required: [channel, copy]
+            properties:
+              channel: { type: string }
+              copy: { type: string }
+        accessibility_notes:
+          type: array
+          items: { type: string }
+        provenance_summary: { type: string }
+        audio_status:
+          type: string
+          enum: [awaiting_audio_approval, ready_to_generate, generated, rejected]
+        publishing_status:
+          type: string
+          enum: [blocked_until_final_approval]
+        next_reviewer: { type: string }
+    PodcastAudioDecisionInput:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+    PodcastAudioClip:
+      type: object
+      required: [id, script_id, run_id, attestation_id, status, audio_url, mime_type, duration_seconds, transcript, voice_disclosure, format_disclosure, source_ids, provenance_summary, generated_at]
+      properties:
+        id: { type: string }
+        script_id: { type: string }
+        run_id: { type: ["string", "null"] }
+        attestation_id: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [ready]
+        audio_url: { type: string }
+        mime_type:
+          type: string
+          enum: [audio/wav]
+        duration_seconds: { type: number }
+        transcript: { type: string }
+        voice_disclosure: { type: string }
+        format_disclosure: { type: string }
+        source_ids:
+          type: array
+          items: { type: string }
+        provenance_summary: { type: string }
+        generated_at: { type: string }
+        cut_key: { type: ["string", "null"] }
+    PodcastAgentExecution:
+      type: object
+      required: [agent, provider, model, execution_id, tools, latency_ms, status]
+      properties:
+        agent:
+          type: string
+          enum: [source_scout, evidence_editor, script_performer, audio_performer, authority_check]
+        provider: { type: string }
+        model: { type: string }
+        execution_id: { type: string }
+        tools:
+          type: array
+          items: { type: string }
+        latency_ms: { type: number }
+        status:
+          type: string
+          enum: [completed, held, failed]
+        activity: { type: string }
+    PodcastGroundingSource:
+      type: object
+      required: [id, url, source_identifier, title, retrieved_at, source_type, classification, consent_reference, policy_reference, aggregate_summary, evidence_gaps, what_it_supports, what_remains_uncertain]
+      properties:
+        id: { type: string }
+        url: { type: string }
+        source_identifier: { type: string }
+        title: { type: string }
+        retrieved_at: { type: string }
+        snippet: { type: string }
+        source_type: { type: string }
+        consent_reference: { type: ["string", "null"] }
+        policy_reference: { type: string }
+        aggregate_summary: { type: string }
+        evidence_gaps:
+          type: array
+          minItems: 1
+          items: { type: string }
+        classification:
+          type: string
+          enum: [source_backed, first_party_attested, disputed, unresolved]
+        what_it_supports: { type: string }
+        what_remains_uncertain: { type: string }
+    PodcastGroundedRun:
+      type: object
+      required: [id, query, provider, window, policy_reference, runtime_status, sources, concept, uncertainties, agent_executions, grounding_support]
+      properties:
+        id: { type: string }
+        query: { type: string }
+        provider:
+          type: string
+          enum: [google_public_web, synthetic_fixture, legacy_unverified]
+        window:
+          type: string
+          enum: [past_24_hours, past_7_days, past_30_days, not_recorded]
+        policy_reference: { type: string }
+        runtime_status:
+          type: string
+          enum: [Live Gemini, Synthetic Demo, Failed]
+        sources:
+          type: array
+          minItems: 3
+          maxItems: 5
+          items: { $ref: "#/components/schemas/PodcastGroundingSource" }
+        concept: { $ref: "#/components/schemas/PodcastConcept" }
+        uncertainties:
+          type: array
+          minItems: 1
+          items: { type: string }
+        grounding_support: { type: string }
+        agent_executions:
+          type: array
+          minItems: 2
+          items: { $ref: "#/components/schemas/PodcastAgentExecution" }
+    PodcastCuttingRoomAttestationInput:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [add, decline]
+        raw_text: { type: string, minLength: 1 }
+        permitted_public_summary: { type: string, minLength: 1 }
+        authorized_uses:
+          type: array
+          minItems: 1
+          items: { type: string }
+    PodcastCuttingRoomAttestation:
+      type: object
+      required: [id, run_id, decision, attested, signer, permitted_public_summary, authorized_uses, created_at]
+      properties:
+        id: { type: string }
+        run_id: { type: string }
+        decision:
+          type: string
+          enum: [add, decline]
+        attested: { type: boolean }
+        signer: { type: ["string", "null"] }
+        permitted_public_summary: { type: ["string", "null"] }
+        authorized_uses:
+          type: array
+          items: { type: string }
+        created_at: { type: string }
+    PodcastCutKey:
+      type: object
+      additionalProperties: false
+      required: [key, manifest_sha256, clip_id, audio_url, transcript, transcript_sha256, source_ids, generated_at, production, voice_disclosure, format_disclosure, audio_sha256, integrity_disclaimer]
+      properties:
+        key: { type: string }
+        manifest_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        clip_id: { type: string }
+        audio_url: { type: string }
+        transcript: { type: string, maxLength: 20000 }
+        transcript_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        source_ids:
+          type: array
+          maxItems: 20
+          items: { type: string }
+        generated_at: { type: string }
+        production:
+          type: object
+          additionalProperties: false
+          required: [synthetic, provider, model]
+          properties:
+            synthetic: { type: boolean }
+            provider: { type: string }
+            model: { type: string }
+        voice_disclosure: { type: string }
+        format_disclosure: { type: string }
+        audio_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        integrity_disclaimer: { type: string }
+    PodcastResetResponse:
+      type: object
+      required: [room, pre_staged_input]
+      properties:
+        room: { $ref: "#/components/schemas/PodcastRoom" }
+        pre_staged_input: { $ref: "#/components/schemas/PodcastContextSearchInput" }
+    PodcastScriptDecisionInput:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+    ContextResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ContextItem" }
+    ProjectedOutcome:
+      type: object
+      required: [headline, detail]
+      properties:
+        headline: { type: string }
+        detail: { type: string }
+    PullRequestMove:
+      type: object
+      required: [id, label, description, projected_outcome, context_refs, requested_action, target_platform]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        description: { type: string }
+        projected_outcome: { $ref: "#/components/schemas/ProjectedOutcome" }
+        context_refs:
+          type: array
+          items: { type: string }
+        requested_action: { type: string }
+        target_platform: { type: string }
+    PullRequestFinding:
+      type: object
+      required: [observed_volume, coordinated_share, authentic_concern, commercial_exposure]
+      properties:
+        observed_volume: { type: number }
+        coordinated_share: { type: number }
+        authentic_concern: { type: string }
+        commercial_exposure:
+          type: array
+          items: { type: string }
+    PullRequest:
+      type: object
+      required: [id, opened_at, finding, moves, state, merged_move_id]
+      properties:
+        id: { type: string }
+        opened_at: { type: string }
+        finding: { $ref: "#/components/schemas/PullRequestFinding" }
+        moves:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { $ref: "#/components/schemas/PullRequestMove" }
+        state: { type: string }
+        merged_move_id: { type: ["string", "null"] }
+    SignPullRequestInput:
+      type: object
+      required: [move_id]
+      properties:
+        move_id: { type: string }
+    Evaluation:
+      type: object
+      required: [pass, rule_id, reason, receipt_entry]
+      properties:
+        pass: { type: boolean }
+        rule_id: { type: string }
+        reason: { type: string }
+        receipt_entry: { type: string }
+    PolicyClaim:
+      type: object
+      required: [text, source_class, source_ref, is_third_party, tags]
+      properties:
+        text: { type: string }
+        source_class: { type: string }
+        source_ref: { type: ["string", "null"] }
+        is_third_party: { type: boolean }
+        tags:
+          type: array
+          items: { type: string }
+    PolicyEvaluationInput:
+      type: object
+      required: [action, target_platform, territory, claims]
+      properties:
+        action: { type: string }
+        target_platform: { type: string }
+        territory: { type: string }
+        claims:
+          type: array
+          items: { $ref: "#/components/schemas/PolicyClaim" }
+    AgentStage:
+      type: object
+      required: [id, role, status]
+      properties:
+        id: { type: string }
+        role: { type: string }
+        status: { type: string }
+    AgentRunResult:
+      type: object
+      required: [mode, stages, message]
+      properties:
+        mode:
+          type: string
+          enum: [gemini, fixture_fallback]
+        stages:
+          type: array
+          items: { $ref: "#/components/schemas/AgentStage" }
+        message: { type: string }
+    DropClaim:
+      type: object
+      required: [text, source_class, source_ref]
+      properties:
+        text: { type: string }
+        source_class: { type: string }
+        source_ref: { type: string }
+    DropEdition:
+      type: object
+      required: [number, of]
+      properties:
+        number: { type: number }
+        of: { type: number }
+    DropSeal:
+      type: object
+      required: [issued_at, signed_by, scope_ref, signatures_simulated]
+      properties:
+        issued_at: { type: string }
+        signed_by: { type: string }
+        scope_ref: { type: string }
+        signatures_simulated: { type: boolean }
+    Drop:
+      type: object
+      required: [drop_id, call_id, title, edition, claims, hash, seal]
+      properties:
+        drop_id: { type: string }
+        call_id: { type: string }
+        title: { type: string }
+        edition: { $ref: "#/components/schemas/DropEdition" }
+        claims:
+          type: array
+          items: { $ref: "#/components/schemas/DropClaim" }
+        hash: { type: string }
+        seal: { $ref: "#/components/schemas/DropSeal" }
+    SignResult:
+      type: object
+      required: [evaluation, drop]
+      properties:
+        evaluation: { $ref: "#/components/schemas/Evaluation" }
+        drop: { $ref: "#/components/schemas/Drop" }
+    DismissResult:
+      type: object
+      required: [dismissed, receipt_entry]
+      properties:
+        dismissed: { type: boolean }
+        receipt_entry: { type: string }
+    VerifyDropInput:
+      type: object
+      required: [lookup]
+      properties:
+        lookup: { type: string }
+    VerifyResult:
+      type: object
+      required: [status, drop]
+      properties:
+        status:
+          type: string
+          enum: [SEALED, NOT_IN_REGISTRY]
+        drop:
+          oneOf:
+            - $ref: "#/components/schemas/Drop"
+            - type: "null"
+    Receipt:
+      type: object
+      required: [ts, actor, action, call_id, result, rule_fired]
+      properties:
+        ts: { type: string }
+        actor: { type: string }
+        action: { type: string }
+        call_id: { type: string }
+        result: { type: string }
+        rule_fired: { type: ["string", "null"] }

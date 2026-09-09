@@ -1,0 +1,12 @@
+{
+  "name": "@workspace/api-spec",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "codegen": "orval --config ./orval.config.ts",
+    "check": "pnpm run codegen && (git diff --quiet -- ../api-client-react/src/generated ../api-zod/src/generated || (echo 'Generated API contracts are stale. Run: pnpm --filter @workspace/api-spec run codegen' >&2; git diff --stat -- ../api-client-react/src/generated ../api-zod/src/generated >&2; exit 1))"
+  },
+  "devDependencies": {
+    "orval": "^8.23.0"
+  }
+}
