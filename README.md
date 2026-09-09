@@ -65,6 +65,7 @@ Each live source-scout and G1–G4 execution exposes only safe runtime evidence:
 
 For production producer access, configure Clerk server/client secrets. Producer authority comes only from the server-controlled `publicMetadata.autography_role` value. Either set that value to `producer` through trusted user management, or use the one-time in-app claim after configuring `AUTOGRAPHY_PRODUCER_BOOTSTRAP_USER_ID` for the exact Clerk user. `AUTOGRAPHY_PRODUCER_BOOTSTRAP_EMAIL` is also supported, but only a matching verified primary Clerk email is accepted. The durable claim is identity-bound and recoverable by the same user after an interrupted Clerk response. Remove the bootstrap allowlist setting after the claim succeeds. Local preview role emulation is development-only.
 
+
 ## Local development
 
 - `pnpm --filter @workspace/autography run dev` — web interface
@@ -73,41 +74,12 @@ For production producer access, configure Clerk server/client secrets. Producer 
 - `pnpm --filter @workspace/api-server test` — API and policy checks using isolated test state
 - `pnpm run typecheck` — verify the workspace
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate clients and validators after OpenAPI changes
+- `pnpm run validate:release` — full contract, typecheck, API test, frontend test, and production-build validation
+- `pnpm --filter @workspace/scripts cleanup:podcast-audio` — dry-run inventory of App Storage WAVs not referenced by PostgreSQL; add `--apply` to delete only exact objects older than the seven-day retention window
+## License
 
-## Exact-commit release audit
+MIT. See [LICENSE](LICENSE).
 
-Before any future publish, first commit all intended changes and record both
-identifiers from that exact commit:
-
-```sh
-EXPECTED_COMMIT=$(git rev-parse HEAD)
-EXPECTED_TREE=$(git rev-parse HEAD^{tree})
-pnpm run audit:release --expected-commit "$EXPECTED_COMMIT" --expected-tree "$EXPECTED_TREE"
-```
-
-This preview/local-only, offline audit fails closed for a dirty worktree, a
-different HEAD or tree, stale generated API clients, or a stale pnpm lockfile.
-It emits one secret-free JSON envelope with the exact commit, tree, and gate
-results. Passing the audit is a prerequisite only; the command does not publish
-or deploy anything.
-
-## Deployment readiness
-
-The web and API workflows are configured for Replit and bind through the registered artifacts. Production operation requires:
-
-1. Configure production Gemini and Clerk secrets in Replit Secrets.
-2. Configure the exact one-time production producer identity with `AUTOGRAPHY_PRODUCER_BOOTSTRAP_USER_ID` (preferred) or `AUTOGRAPHY_PRODUCER_BOOTSTRAP_EMAIL`.
-3. Confirm the producer role in the production Clerk tenant, then remove the bootstrap allowlist setting.
-4. Keep `PODCAST_SYNTHETIC_DEMO` unset or `false`.
-5. Run `pnpm run validate:release`.
-6. Run the exact-commit release audit above against the commit intended for publishing.
-7. Publish the registered Autography web and API artifacts through Replit.
-
-Public competition build:
-
-- Source: https://github.com/TheAVCfiles/FuzzyRelevantKeygens
-- Hosted app: https://fuzzy-relevant-keygens.replit.app
-- License: MIT
 
 ## Competition submission notes
 
@@ -126,6 +98,38 @@ The Board, PR, Drop, and Receipt examples are synthetic. The Podcast Desk uses
 live Gemini and Google Search grounding by default; synthetic podcast data is
 available only in explicitly labeled demo mode.
 
-## License
+## Exact-commit release audit
 
-MIT. See [LICENSE](LICENSE).
+Before any future publish, first commit all intended changes and record both
+identifiers from that exact commit:
+
+```sh
+EXPECTED_COMMIT=$(git rev-parse HEAD)
+EXPECTED_TREE=$(git rev-parse HEAD^{tree})
+pnpm run audit:release --expected-commit "$EXPECTED_COMMIT" --expected-tree "$EXPECTED_TREE"
+```
+
+This preview/local-only, offline audit fails closed for a dirty worktree, a
+different HEAD or tree, stale generated API clients, or a stale pnpm lockfile.
+It emits one secret-free JSON envelope with the exact commit, tree, and gate
+results. Passing the audit is a prerequisite only; the command does not publish
+or deploy anything.
+
+
+## Deployment readiness
+
+The web and API workflows are configured for Replit and bind through the registered artifacts. Production operation requires:
+
+1. Configure production Gemini and Clerk secrets in Replit Secrets.
+2. Configure the exact one-time production producer identity with `AUTOGRAPHY_PRODUCER_BOOTSTRAP_USER_ID` (preferred) or `AUTOGRAPHY_PRODUCER_BOOTSTRAP_EMAIL`.
+3. Confirm the producer role in the production Clerk tenant, then remove the bootstrap allowlist setting.
+4. Keep `PODCAST_SYNTHETIC_DEMO` unset or `false`.
+5. Run `pnpm run validate:release`.
+6. Run the exact-commit release audit above against the commit intended for publishing.
+7. Publish the registered Autography web and API artifacts through Replit.
+
+Public competition build:
+
+- Source: https://github.com/TheAVCfiles/FuzzyRelevantKeygens
+- Hosted app: https://fuzzy-relevant-keygens.replit.app
+- License: MIT

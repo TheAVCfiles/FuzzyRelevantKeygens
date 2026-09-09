@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "cleanup:podcast-audio": "tsx ../artifacts/api-server/src/scripts/cleanup-podcast-audio.ts",
     "hello": "tsx ./src/hello.ts",
     "release:audit": "tsx ./src/release-audit.ts",
     "test": "tsx --test ./src/*.test.ts",

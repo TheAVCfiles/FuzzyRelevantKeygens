@@ -2,8 +2,43 @@ uploads = []
 generated = []
 
 [[outputs]]
-id = "AUpkEWoXmhgFa7TMs9XoY"
-uri = "file://artifacts/autography-submission-video/public/audio/bg_music.mp3"
-type = "audio"
-title = "cinematic submission background music"
-description = "Generated music: Cinematic editorial ambient-orchestral instrumental background music scoring a three-minute AI product and trust-systems hackathon film. Warm analog synth pulse, restrained piano, lo…"
+id = "12_X6POuiepW683ezU7G_"
+uri = "file://screenshots/autography-cut-key-proof.jpg"
+type = "image"
+title = "AUTOGRAPHY Cut Key proof"
+description = "Preview-only capture of the validated public manifest, Gemini audio player, transcript, publisher evidence, source classes, dates, and integrity hashes."
+logical_id = "2fe7fc44-e0f1-4045-944a-14945ffe61b2"
+content_hash = "sha256:64a8ce69496a4fccb6d1f3f3c2f0342c1a56429831e9e684f779db611b7dfebe"
+size = 141209
+mtime_ms = 1788993506530
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:6bf67aa6-84aa-4259-88ff-f96feead07bb/2fe7fc44-e0f1-4045-944a-14945ffe61b2/97b5b3c2-7774-4486-a69f-0985e9ff067c"
+storage_version_token = "1788993534228333"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "UJ4SQGv4W7v9CxvCdUOIW"
+uri = "file://screenshots/autography-adk-audio-envelope.jpg"
+type = "image"
+title = "AUTOGRAPHY ADK-to-audio Cut Key"
+description = "Preview-only public Cut Key showing five linked execution stages, exact source evidence, authority timestamps, and integrity hashes."
+logical_id = "cd579bf5-ec07-4961-8802-6dbe5182384c"
+content_hash = "sha256:a572c4e8f152910b6cc9ab34e06c9b35858bb4fddaf7c7f938787ec2196939bb"
+size = 253758
+mtime_ms = 1788994384426
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:6bf67aa6-84aa-4259-88ff-f96feead07bb/cd579bf5-ec07-4961-8802-6dbe5182384c/57a7db21-bcd5-400f-9527-ce25c7fc3b7d"
+storage_version_token = "1788994425644787"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "ogaOl_vFHwrI11b1LCM-7"
+uri = "file://screenshots/autography-judge-final.jpg"
+type = "image"
+title = "Autography judge proof"
+description = "Final preview judge page showing the selected Manifest v2 Cut Key, approval proof, and playable 60-second audio."
+logical_id = "2eabda6c-664b-4280-b607-98f6805be809"
+content_hash = "sha256:78864d804b51a9dc9f1d43fcc52194e2cd4aafc0077ced9d547fa59beec252bc"
+size = 113347
+mtime_ms = 1788996882489
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:6bf67aa6-84aa-4259-88ff-f96feead07bb/2eabda6c-664b-4280-b607-98f6805be809/e95db5c3-e396-49e5-8159-165723aa905c"
+storage_version_token = "1788997270121779"
+content_type = "image/jpeg"
