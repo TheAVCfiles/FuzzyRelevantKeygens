@@ -9,7 +9,7 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "test": "NODE_ENV=development AUTOGRAPHY_PREVIEW_ROLE_MODE=true node ./test-build.mjs && NODE_ENV=development AUTOGRAPHY_PREVIEW_ROLE_MODE=true PODCAST_DURABILITY_DISABLED=true PODCAST_STATE_PATH=/tmp/autography-podcast-test-state-$$.json PODCAST_AUDIO_DIRECTORY=/tmp/autography-podcast-test-audio-$$ node --test --test-concurrency=1 $(find .test-dist -name '*.test.js' -print)",
     "test:podcast-durability": "node ./test-build.mjs && PODCAST_DURABILITY_TEST=true PODCAST_DURABILITY_DISABLED=false node --test --test-concurrency=1 .test-dist/lib/podcast-persistence.integration.test.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "if [ \"${API_CONTRACTS_CHECKED:-0}\" != \"1\" ]; then pnpm --filter @workspace/api-spec run check; fi && tsc --build ../../lib/db/tsconfig.json ../../lib/api-zod/tsconfig.json --pretty false && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@clerk/express": "^2.1.64",
