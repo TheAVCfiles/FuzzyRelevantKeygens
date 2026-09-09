@@ -94,6 +94,7 @@ import {
 import { getPodcastAdkFailureEvidence } from "../lib/podcast-adk-research";
 import {
   addPodcastSource,
+  PodcastDevelopmentLinkageError,
   createPodcastFilterPreset,
   createPodcastDevelopment,
   deletePodcastFilterPreset,
@@ -103,6 +104,7 @@ import {
   createPodcastReleaseKit,
   decidePodcastAudio,
   decidePodcastScript,
+  PodcastClaimSupportError,
   generatePodcastBrief,
   generatePodcastAudio,
   getPodcastAudioByScript,
@@ -118,7 +120,6 @@ import {
   recordPodcastDecision,
   renamePodcastFilterPreset,
   recordPodcastDevelopmentValidation,
-  recordPodcastDevelopmentReceipt,
   searchPodcastContexts,
   attestPodcastCuttingRoom,
   getPodcastAudioPathForCutKey,
@@ -548,12 +549,24 @@ router.post("/podcast/development", requirePermission("stage"), (req, res): void
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const plan = createPodcastDevelopment(
-    body.data.concept_id,
-    body.data.source_ids,
-    body.data.audience,
-    body.data.use_case,
-  );
+  let plan;
+  try {
+    plan = createPodcastDevelopment(
+      body.data.concept_id,
+      body.data.source_ids,
+      body.data.audience,
+      body.data.use_case,
+    );
+  } catch (error) {
+    if (error instanceof PodcastDevelopmentLinkageError) {
+      res.status(409).json({
+        error: error.message,
+        missing_fields: error.missingFields,
+      });
+      return;
+    }
+    throw error;
+  }
   if (!plan) {
     res.status(404).json({ error: "Podcast concept or cited source set not found" });
     return;
@@ -582,9 +595,6 @@ router.post("/podcast/development/:id/validation", requirePermission("sign"), (r
   if (!plan) {
     res.status(404).json({ error: "Podcast development plan, archetype, or format not found" });
     return;
-  }
-  if (body.data.decision === "validate") {
-    recordPodcastDevelopmentReceipt(params.data.id, (req as AutographyRequest).autographyPrincipal!.reviewerId);
   }
   res.json(RecordPodcastDevelopmentValidationResponse.parse(plan));
 });
@@ -718,7 +728,7 @@ router.post("/podcast/brief/:id/script", requirePermission("stage"), async (req,
     return;
   }
   if (result.kind === "brief_not_approved") {
-    res.status(409).json({ error: "Only an approved podcast brief can open a script workspace." });
+    res.status(409).json({ error: "Only a current source-backed brief can open a script workspace." });
     return;
   }
   res.status(201).json(CreatePodcastScriptResponse.parse(result.script));
@@ -772,7 +782,16 @@ router.post("/podcast/script/:id/decision", requirePermission("sign"), (req, res
     res.status(409).json({ error: "Only a script from an approved podcast brief can be changed." });
     return;
   }
-  const script = decidePodcastScript(params.data.id, body.data.decision);
+  let script;
+  try {
+    script = decidePodcastScript(params.data.id, body.data.decision);
+  } catch (error) {
+    if (error instanceof PodcastClaimSupportError) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
   if (!script) {
     res.status(404).json({ error: "Podcast script workspace not found" });
     return;
@@ -841,7 +860,7 @@ router.post("/podcast/script/:id/audio", requirePermission("stage"), async (req,
     return;
   }
   if (result.kind === "not_approved") {
-    res.status(409).json({ error: "Human audio approval is required before generation." });
+    res.status(409).json({ error: "Human approval of the current live script is required before generation." });
     return;
   }
   if (result.kind === "generation_failed") {

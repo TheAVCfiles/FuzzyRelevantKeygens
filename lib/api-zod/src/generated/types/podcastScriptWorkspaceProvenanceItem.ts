@@ -11,4 +11,9 @@ export type PodcastScriptWorkspaceProvenanceItem = {
   url: string;
   label: string;
   retrieved_at: string;
+  title?: string;
+  publisher?: string;
+  /** @nullable */
+  published_at?: string | null;
+  source_class?: string;
 };

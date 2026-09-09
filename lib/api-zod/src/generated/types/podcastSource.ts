@@ -14,6 +14,9 @@ export interface PodcastSource {
   platform: string;
   community: string;
   post_title: string;
+  publisher?: string;
+  /** @nullable */
+  published_at?: string | null;
   timestamp: string;
   retrieved_at: string;
   engagement: PodcastSourceEngagement;

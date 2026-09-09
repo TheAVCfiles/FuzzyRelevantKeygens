@@ -8,6 +8,7 @@ Autography is a cinematic, safety-first entertainment-response and podcast-devel
 - `pnpm --filter @workspace/autography run dev` — run the web experience
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
+- `pnpm run validate:release` — contract freshness, typechecks, API tests, frontend tests, and production builds
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `GEMINI_API_KEY` is required for the Google ADK four-stage signal flow, the ADK Search-grounded source scout, structured evidence/brief/script generation, and multi-speaker TTS.
 - `PODCAST_SYNTHETIC_DEMO=true` enables explicitly labeled podcast fixtures. Keep it unset/false in normal and production operation.
@@ -50,15 +51,18 @@ Autography is a cinematic, safety-first entertainment-response and podcast-devel
 - Podcast artifacts are bound to their exact grounded run, source IDs, attestation decision, and human approval receipts. Never resolve a podcast artifact from the globally latest run.
 - Private cutting-room raw text is internal only. Public Cut Keys may expose only the producer-authorized summary.
 - Cut Key hashes prove artifact integrity and attribution, not factual truth.
-- The source scout and G1–G4 signal flow use Google ADK. The podcast evidence editor, brief, script, and TTS stages use `@google/genai` directly. Do not claim a managed Vertex AI Agent Builder or Agent Engine deployment.
+- The source scout and G1–G4 signal flow use Google ADK. The podcast evidence editor, brief, script, and multi-speaker speech stages use `@google/genai` directly.
+- Current non-secret runtime evidence identifies `Google Gemini API` as the provider and has no Vertex project/location configuration. `@google-cloud/vertexai` is present only as an `@google/adk` transitive dependency; canonical Vertex AI Search redirect URLs may be accepted as Google grounding links. Do not claim a separately deployed managed Agent Engine resource unless runtime evidence verifies one.
 - ADK execution evidence may include only framework, provider, model, execution ID, declared tools, latency, activity, and status. Never include prompts, model output, or credentials.
+- One `Approve exact script and perform` action creates distinct `SCRIPT_APPROVED` and `AUDIO_RENDER_AUTHORIZED` records bound to the same reviewer commitment, timestamp, script hash, source run, policy version, and ADK parent. Publication remains separately blocked.
 
 ## Product
 
 - Board, Constellation, PR, Drop, public verification, and append-only Receipt views.
 - Tally and page saturation derive directly from the Call window.
 - Scoped response signing, refusal display, Drop sealing, and registry verification.
-- Podcast Desk golden path: live question, 3–5 grounded sources, explicit cutting-room decision, development/brief/script/audio approvals, two-speaker audio, and public Cut Key.
+- Podcast Desk golden path: live question, 3–5 grounded sources, explicit cutting-room decision, development and brief approval, one atomic exact-script/performance approval, two-speaker audio, and a public Cut Key with publication still blocked.
+- Current public URL: `https://fuzzy-relevant-keygens.replit.app`. GitHub syncs must retain both the public commit history and the tested Replit Agent checkpoint history; never force-push over public commits.
 
 ## User preferences
 

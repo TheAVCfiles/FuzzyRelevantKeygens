@@ -59,8 +59,15 @@ export function CutKeyView() {
     integrity_disclaimer,
     transcript,
     transcript_sha256,
+    adk_execution_id,
+    run_id,
+    script_id,
+    script_sha256,
+    source_manifest_sha256,
+    execution_envelope,
     audio_sha256,
     source_ids,
+    source_evidence,
     generated_at,
     production,
     voice_disclosure,
@@ -116,6 +123,63 @@ export function CutKeyView() {
                <p className="mt-1 break-all font-mono text-[10px] text-[#80756c]">{transcript_sha256}</p>
             </div>
           </section>
+
+          {execution_envelope && adk_execution_id && (
+            <section className="border border-[#4f4944] bg-[#221f1d] p-5 sm:p-6" data-testid="cut-execution-envelope">
+              <h2 className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">
+                <FileText className="h-4 w-4" /> Podcast Room agentic execution
+              </h2>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#b7aaa0]">Google ADK execution ID</p>
+                  <p className="mt-1 break-all font-mono text-[10px] text-[#f0e8de]">{adk_execution_id}</p>
+                </div>
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#b7aaa0]">Authority boundary</p>
+                  <p className="mt-1 text-xs leading-5 text-[#f0e8de]">Two exact-script authority records · one reviewer action</p>
+                  <p className="text-xs leading-5 text-[#e4a38d]">Publication {execution_envelope.authority_boundary.publication_status?.replaceAll('_', ' ') ?? 'not authorized'}</p>
+                </div>
+              </div>
+              {execution_envelope.authority_boundary.authority_records?.length ? (
+                <div className="mt-5 grid gap-3 sm:grid-cols-2" data-testid="cut-authority-records">
+                  {execution_envelope.authority_boundary.authority_records.map((record) => (
+                    <div key={record.receipt_id} className="border border-[#4f4944] bg-[#1b1918] p-3">
+                      <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#d8a36c]">{record.authority_record_type.replaceAll('_', ' ')}</p>
+                      <p className="mt-2 text-xs text-[#f0e8de]">{formatDate(record.decided_at)}</p>
+                      <p className="mt-2 break-all font-mono text-[9px] text-[#80756c]">receipt {record.receipt_id}</p>
+                      <p className="mt-1 break-all font-mono text-[9px] text-[#80756c]">reviewer ref {record.reviewer_reference}</p>
+                      <p className="mt-1 break-all font-mono text-[9px] text-[#80756c]">run {record.source_run_id} · policy {record.policy_version}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-5 border border-[#4f4944] bg-[#1b1918] p-3 text-xs text-[#b7aaa0]">
+                  Legacy manifest · authority timestamps retained from the earlier schema.
+                </div>
+              )}
+              <div className="mt-5 space-y-3">
+                {execution_envelope.stages.map((stage) => (
+                  <div key={`${stage.stage}-${stage.execution_id}`} className="border-l border-[#c7a481]/50 pl-3">
+                    <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#d8a36c]">{stage.stage.replaceAll('_', ' ')}</p>
+                    <p className="mt-1 text-xs leading-5 text-[#f0e8de]">{stage.agent.replaceAll('_', ' ')} · {stage.provider} · {stage.framework}</p>
+                    <p className="text-xs leading-5 text-[#b7aaa0]">{stage.model} · tools: {stage.tools.length ? stage.tools.join(', ') : 'none'}</p>
+                    <p className="mt-1 break-all font-mono text-[9px] text-[#80756c]">execution {stage.execution_id} · parent {stage.parent_execution_id}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 space-y-3 border-t border-[#4f4944] pt-4">
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#b7aaa0]">Full script SHA-256</p>
+                  <p className="mt-1 break-all font-mono text-[10px] text-[#80756c]">{script_sha256}</p>
+                </div>
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#b7aaa0]">Source manifest SHA-256</p>
+                  <p className="mt-1 break-all font-mono text-[10px] text-[#80756c]">{source_manifest_sha256}</p>
+                </div>
+                <p className="break-all font-mono text-[9px] text-[#80756c]">run {run_id} · script {script_id}</p>
+              </div>
+            </section>
+          )}
         </div>
 
         <div className="space-y-8">
@@ -131,8 +195,23 @@ export function CutKeyView() {
           </section>
 
            <section data-testid="cut-source-ids">
-             <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Source IDs</h2>
-             <div className="flex flex-wrap gap-2">{source_ids.map((id) => <span key={id} className="border border-[#4f4944] px-2 py-1 font-mono text-[9px] text-[#b7aaa0]">{id}</span>)}</div>
+             <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Publisher evidence</h2>
+             {source_evidence?.length ? (
+               <div className="space-y-3">
+                 {source_evidence.map((source) => (
+                   <a key={source.id} href={source.url} target="_blank" rel="noreferrer" className="block border border-[#4f4944] bg-[#221f1d] p-3 transition-colors hover:border-[#c7a481]">
+                     <p className="font-serif text-sm leading-5 text-[#f0e8de]">{source.title}</p>
+                     <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[#b7aaa0]">
+                       {source.publisher} · {source.source_class.replaceAll('_', ' ')} · {source.published_at ? `Published ${formatDate(source.published_at)}` : 'Publication date unknown'} · Retrieved {formatDate(source.retrieved_at)}
+                     </p>
+                     <p className="mt-2 text-xs leading-5 text-[#b7aaa0]">{source.what_it_supports}</p>
+                     <p className="mt-2 break-all font-mono text-[9px] text-[#80756c]">{source.id}</p>
+                   </a>
+                 ))}
+               </div>
+             ) : (
+               <div className="flex flex-wrap gap-2">{source_ids.map((id) => <span key={id} className="border border-[#4f4944] px-2 py-1 font-mono text-[9px] text-[#b7aaa0]">{id}</span>)}</div>
+             )}
            </section>
            <section>
              <h2 className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">Manifest SHA-256</h2>

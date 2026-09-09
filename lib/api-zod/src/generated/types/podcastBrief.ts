@@ -20,6 +20,7 @@ export interface PodcastBrief {
   run_id: string | null;
   /** @nullable */
   attestation_id: string | null;
+  /** Live Gemini briefs are internally source-bound and approved for script drafting; the single human approval remains on the exact script before audio. */
   status: PodcastBriefStatus;
   generated_mode: PodcastBriefGeneratedMode;
   topic_angle: string;

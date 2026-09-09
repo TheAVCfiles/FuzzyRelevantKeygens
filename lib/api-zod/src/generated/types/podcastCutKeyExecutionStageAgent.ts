@@ -6,14 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type PodcastAgentExecutionAgent = typeof PodcastAgentExecutionAgent[keyof typeof PodcastAgentExecutionAgent];
+export type PodcastCutKeyExecutionStageAgent = typeof PodcastCutKeyExecutionStageAgent[keyof typeof PodcastCutKeyExecutionStageAgent];
 
 
-export const PodcastAgentExecutionAgent = {
+export const PodcastCutKeyExecutionStageAgent = {
   source_scout: 'source_scout',
   evidence_editor: 'evidence_editor',
   evidence_verifier: 'evidence_verifier',
   script_performer: 'script_performer',
   audio_performer: 'audio_performer',
-  authority_check: 'authority_check',
 } as const;

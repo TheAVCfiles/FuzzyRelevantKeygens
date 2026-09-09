@@ -302,6 +302,9 @@ export interface PodcastSource {
   platform: string;
   community: string;
   post_title: string;
+  publisher?: string;
+  /** @nullable */
+  published_at?: string | null;
   timestamp: string;
   retrieved_at: string;
   engagement: PodcastSourceEngagement;
@@ -381,6 +384,7 @@ export type PodcastDecisionHistoryEntryArtifactType = typeof PodcastDecisionHist
 export const PodcastDecisionHistoryEntryArtifactType = {
   brief: 'brief',
   script: 'script',
+  audio: 'audio',
 } as const;
 
 export type PodcastDecisionHistoryEntryDecision = typeof PodcastDecisionHistoryEntryDecision[keyof typeof PodcastDecisionHistoryEntryDecision];
@@ -398,6 +402,21 @@ export const PodcastDecisionHistoryEntryArtifactCreation = {
   none: 'none',
 } as const;
 
+export type PodcastDecisionHistoryEntryAuthorityRecordType = typeof PodcastDecisionHistoryEntryAuthorityRecordType[keyof typeof PodcastDecisionHistoryEntryAuthorityRecordType];
+
+
+export const PodcastDecisionHistoryEntryAuthorityRecordType = {
+  SCRIPT_APPROVED: 'SCRIPT_APPROVED',
+  AUDIO_RENDER_AUTHORIZED: 'AUDIO_RENDER_AUTHORIZED',
+} as const;
+
+export type PodcastDecisionHistoryEntryPublicationStatus = typeof PodcastDecisionHistoryEntryPublicationStatus[keyof typeof PodcastDecisionHistoryEntryPublicationStatus];
+
+
+export const PodcastDecisionHistoryEntryPublicationStatus = {
+  blocked_until_final_approval: 'blocked_until_final_approval',
+} as const;
+
 export interface PodcastDecisionHistoryEntry {
   artifact_type: PodcastDecisionHistoryEntryArtifactType;
   artifact_id: string;
@@ -405,6 +424,15 @@ export interface PodcastDecisionHistoryEntry {
   decision: PodcastDecisionHistoryEntryDecision;
   decided_at: string;
   artifact_creation: PodcastDecisionHistoryEntryArtifactCreation;
+  authority_record_type?: PodcastDecisionHistoryEntryAuthorityRecordType;
+  receipt_id?: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  reviewer_reference?: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  script_sha256?: string;
+  source_run_id?: string;
+  policy_version?: string;
+  publication_status?: PodcastDecisionHistoryEntryPublicationStatus;
 }
 
 export interface PodcastRoom {
@@ -743,6 +771,9 @@ export interface PodcastGroundingSource {
   url: string;
   source_identifier: string;
   title: string;
+  publisher?: string;
+  /** @nullable */
+  published_at?: string | null;
   retrieved_at: string;
   snippet?: string;
   source_type: string;
@@ -763,6 +794,7 @@ export type PodcastAgentExecutionAgent = typeof PodcastAgentExecutionAgent[keyof
 export const PodcastAgentExecutionAgent = {
   source_scout: 'source_scout',
   evidence_editor: 'evidence_editor',
+  evidence_verifier: 'evidence_verifier',
   script_performer: 'script_performer',
   audio_performer: 'audio_performer',
   authority_check: 'authority_check',
@@ -784,6 +816,8 @@ export interface PodcastAgentExecution {
   framework?: string;
   model: string;
   execution_id: string;
+  /** Parent Google ADK execution for this Podcast Room transaction. Optional for retained runs created before traceable envelopes. */
+  parent_execution_id?: string;
   tools: string[];
   latency_ms: number;
   status: PodcastAgentExecutionStatus;
@@ -850,6 +884,9 @@ export interface GeneratePodcastBriefInput {
   development_plan_id: string;
 }
 
+/**
+ * Live Gemini briefs are internally source-bound and approved for script drafting; the single human approval remains on the exact script before audio.
+ */
 export type PodcastBriefStatus = typeof PodcastBriefStatus[keyof typeof PodcastBriefStatus];
 
 
@@ -872,6 +909,11 @@ export type PodcastBriefSourceLinksItem = {
   url: string;
   label: string;
   retrieved_at: string;
+  title?: string;
+  publisher?: string;
+  /** @nullable */
+  published_at?: string | null;
+  source_class?: string;
 };
 
 export type PodcastBriefEpisodeOutlineItem = {
@@ -887,6 +929,7 @@ export interface PodcastBrief {
   run_id: string | null;
   /** @nullable */
   attestation_id: string | null;
+  /** Live Gemini briefs are internally source-bound and approved for script drafting; the single human approval remains on the exact script before audio. */
   status: PodcastBriefStatus;
   generated_mode: PodcastBriefGeneratedMode;
   topic_angle: string;
@@ -956,8 +999,16 @@ export type PodcastScriptWorkspaceProvenanceItem = {
   url: string;
   label: string;
   retrieved_at: string;
+  title?: string;
+  publisher?: string;
+  /** @nullable */
+  published_at?: string | null;
+  source_class?: string;
 };
 
+/**
+ * New live work moves directly from human script approval to ready_to_generate. Legacy saved workspaces may retain awaiting_audio_approval.
+ */
 export type PodcastScriptWorkspaceAudioStatus = typeof PodcastScriptWorkspaceAudioStatus[keyof typeof PodcastScriptWorkspaceAudioStatus];
 
 
@@ -1068,6 +1119,7 @@ export interface PodcastScriptWorkspace {
   provenance: PodcastScriptWorkspaceProvenanceItem[];
   safety_note: string;
   review_note: string;
+  /** New live work moves directly from human script approval to ready_to_generate. Legacy saved workspaces may retain awaiting_audio_approval. */
   audio_status: PodcastScriptWorkspaceAudioStatus;
   /** Whether restoring this workspace required compatibility normalization from an older saved format. */
   compatibility_normalized: boolean;
@@ -1085,6 +1137,107 @@ export const PodcastAudioDecisionInputDecision = {
 
 export interface PodcastAudioDecisionInput {
   decision: PodcastAudioDecisionInputDecision;
+}
+
+export type PodcastCutKeyExecutionStageStage = typeof PodcastCutKeyExecutionStageStage[keyof typeof PodcastCutKeyExecutionStageStage];
+
+
+export const PodcastCutKeyExecutionStageStage = {
+  grounded_research: 'grounded_research',
+  editorial_synthesis: 'editorial_synthesis',
+  script_generation: 'script_generation',
+  media_render: 'media_render',
+} as const;
+
+export type PodcastCutKeyExecutionStageAgent = typeof PodcastCutKeyExecutionStageAgent[keyof typeof PodcastCutKeyExecutionStageAgent];
+
+
+export const PodcastCutKeyExecutionStageAgent = {
+  source_scout: 'source_scout',
+  evidence_editor: 'evidence_editor',
+  evidence_verifier: 'evidence_verifier',
+  script_performer: 'script_performer',
+  audio_performer: 'audio_performer',
+} as const;
+
+export type PodcastCutKeyExecutionStageStatus = typeof PodcastCutKeyExecutionStageStatus[keyof typeof PodcastCutKeyExecutionStageStatus];
+
+
+export const PodcastCutKeyExecutionStageStatus = {
+  completed: 'completed',
+} as const;
+
+export interface PodcastCutKeyExecutionStage {
+  stage: PodcastCutKeyExecutionStageStage;
+  agent: PodcastCutKeyExecutionStageAgent;
+  provider: string;
+  framework: string;
+  model: string;
+  execution_id: string;
+  parent_execution_id: string;
+  tools: string[];
+  status: PodcastCutKeyExecutionStageStatus;
+  activity: string;
+}
+
+export type PodcastCutKeyAuthorityBoundaryType = typeof PodcastCutKeyAuthorityBoundaryType[keyof typeof PodcastCutKeyAuthorityBoundaryType];
+
+
+export const PodcastCutKeyAuthorityBoundaryType = {
+  human_script_approval: 'human_script_approval',
+} as const;
+
+export type PodcastCutKeyAuthorityBoundaryPublicationStatus = typeof PodcastCutKeyAuthorityBoundaryPublicationStatus[keyof typeof PodcastCutKeyAuthorityBoundaryPublicationStatus];
+
+
+export const PodcastCutKeyAuthorityBoundaryPublicationStatus = {
+  blocked_until_final_approval: 'blocked_until_final_approval',
+} as const;
+
+export type PodcastCutKeyAuthorityRecordAuthorityRecordType = typeof PodcastCutKeyAuthorityRecordAuthorityRecordType[keyof typeof PodcastCutKeyAuthorityRecordAuthorityRecordType];
+
+
+export const PodcastCutKeyAuthorityRecordAuthorityRecordType = {
+  SCRIPT_APPROVED: 'SCRIPT_APPROVED',
+  AUDIO_RENDER_AUTHORIZED: 'AUDIO_RENDER_AUTHORIZED',
+} as const;
+
+export interface PodcastCutKeyAuthorityRecord {
+  receipt_id: string;
+  authority_record_type: PodcastCutKeyAuthorityRecordAuthorityRecordType;
+  /** @pattern ^[a-f0-9]{64}$ */
+  reviewer_reference: string;
+  decided_at: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  script_sha256: string;
+  source_run_id: string;
+  policy_version: string;
+}
+
+export interface PodcastCutKeyAuthorityBoundary {
+  type: PodcastCutKeyAuthorityBoundaryType;
+  script_approved_at: string;
+  media_render_authorized_at: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  script_sha256: string;
+  /**
+     * @minItems 2
+     * @maxItems 2
+     */
+  authority_records?: PodcastCutKeyAuthorityRecord[];
+  publication_status?: PodcastCutKeyAuthorityBoundaryPublicationStatus;
+}
+
+export interface PodcastCutKeyExecutionEnvelope {
+  parent_execution_id: string;
+  run_id: string;
+  script_id: string;
+  /**
+     * @minItems 5
+     * @maxItems 5
+     */
+  stages: PodcastCutKeyExecutionStage[];
+  authority_boundary: PodcastCutKeyAuthorityBoundary;
 }
 
 export type PodcastCuttingRoomAttestationInputDecision = typeof PodcastCuttingRoomAttestationInputDecision[keyof typeof PodcastCuttingRoomAttestationInputDecision];
@@ -1126,6 +1279,19 @@ export interface PodcastCuttingRoomAttestation {
   created_at: string;
 }
 
+export type PodcastCutKeySourceEvidenceItem = {
+  id: string;
+  url: string;
+  title: string;
+  publisher: string;
+  /** @nullable */
+  published_at: string | null;
+  retrieved_at: string;
+  source_class: string;
+  aggregate_summary: string;
+  what_it_supports: string;
+};
+
 export type PodcastCutKeyProduction = {
   synthetic: boolean;
   provider: string;
@@ -1142,8 +1308,19 @@ export interface PodcastCutKey {
   transcript: string;
   /** @pattern ^[a-f0-9]{64}$ */
   transcript_sha256: string;
+  /** Google ADK parent execution for this Podcast Room transaction. Optional only for retained manifests. */
+  adk_execution_id?: string;
+  run_id?: string;
+  script_id?: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  script_sha256?: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  source_manifest_sha256?: string;
+  execution_envelope?: PodcastCutKeyExecutionEnvelope;
   /** @maxItems 20 */
   source_ids: string[];
+  /** @maxItems 20 */
+  source_evidence?: PodcastCutKeySourceEvidenceItem[];
   generated_at: string;
   production: PodcastCutKeyProduction;
   voice_disclosure: string;
@@ -1365,3 +1542,4 @@ export type RunAgentFlow502 = {
   /** @minItems 1 */
   runtime_evidence: AgentFlowRuntimeEvidence[];
 };
+

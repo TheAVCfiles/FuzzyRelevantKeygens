@@ -73,6 +73,7 @@ test("signing, dismissal, and fixture fallback preserve the trust boundary", { c
     });
 
     assert.equal(adkResult.mode, "google_adk");
+    assert.equal(adkResult.runtime_evidence.every((evidence) => evidence.framework === "Google ADK (@google/adk)"), true);
     assert.deepEqual(calls.map((call) => call.id), ["G1", "G2", "G3", "G4"]);
     assert.match(calls[2]!.prompt, /G1 OUTPUT:[\s\S]*G2 OUTPUT:/);
     assert.match(calls[3]!.prompt, /G3 OUTPUT:/);

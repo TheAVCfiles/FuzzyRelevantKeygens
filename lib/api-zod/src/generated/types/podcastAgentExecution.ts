@@ -15,6 +15,8 @@ export interface PodcastAgentExecution {
   framework?: string;
   model: string;
   execution_id: string;
+  /** Parent Google ADK execution for this Podcast Room transaction. Optional for retained runs created before traceable envelopes. */
+  parent_execution_id?: string;
   tools: string[];
   latency_ms: number;
   status: PodcastAgentExecutionStatus;

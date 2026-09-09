@@ -6,3 +6,8 @@
 - [First-publish database readiness](first-publish-database-readiness.md) — Keep liveness independent; fail podcast routes closed until durable production hydration succeeds.
 - [Legacy comparison presets](legacy-comparison-presets.md) — Ownerless presets stay visible and applicable during ownership migration, but authenticated producers cannot rename or remove them.
 - [Public podcast manifests](public-podcast-manifests.md) — Public Cut Keys are self-hashed, bounded proof records; keep room decisions and private provenance out.
+- [Podcast current-run linkage](podcast-current-run-linkage.md) — Gate 00 and development plans must use the editorial selection’s exact grounded run, never an independent fallback snapshot.
+- [Grounded source admission](grounded-source-admission.md) — Treat social canonical URLs and editorial paraphrases as retained claims; validate both before persisting a live run.
+- [Cut Key canonical JSON](cut-key-canonical-json.md) — Hash nested evidence field-by-field because PostgreSQL JSONB may reorder object keys during persistence.
+- [Podcast agentic envelope](podcast-agentic-envelope.md) — New live Cut Keys require one Google ADK parent across research, synthesis, script approval, and Gemini audio.
+- [Duplicate source recovery](duplicate-source-recovery.md) — Remove appended copies; dead-code guards may pass TypeScript while Rollup still rejects duplicate declarations.
