@@ -18,6 +18,7 @@ import {
   Target,
   X,
   Activity,
+  History,
 } from 'lucide-react';
 import {
   getGetPodcastRoomQueryKey,
@@ -48,6 +49,7 @@ import {
   type PodcastAudioClip,
   type PodcastContextSearchResponse,
   type PodcastDevelopmentPlan,
+  type PodcastDecisionHistoryEntry,
 } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -288,6 +290,52 @@ function BriefSection({ label, children }: { label: string; children: React.Reac
     <section className="border-b border-[#544d48] py-5 last:border-b-0">
       <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#c7a481]">{label}</p>
       {children}
+    </section>
+  );
+}
+
+function DecisionHistoryPanel({ entries }: { entries: PodcastDecisionHistoryEntry[] }) {
+  return (
+    <section className="podcast-panel p-5" data-testid="panel-decision-history">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="podcast-kicker">Decision history</p>
+          <h2 className="mt-1 font-serif text-2xl text-[#201b19]">Review trail</h2>
+        </div>
+        <History className="h-5 w-5 text-[#365f67]" strokeWidth={1.5} />
+      </div>
+      <p className="mt-2 text-xs leading-5 text-[#73675f]">
+        Read-only brief and script decisions for the selected workspace.
+      </p>
+      {entries.length ? (
+        <ol className="mt-4 space-y-3" data-testid="list-decision-history">
+          {entries.map((entry, index) => (
+            <li key={`${entry.artifact_type}-${entry.artifact_id}-${entry.decided_at}-${index}`} className="border-l-2 border-[#365f67] bg-[#eee7dc]/70 px-3 py-3" data-testid={`decision-history-${index}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <strong className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#201b19]">
+                  {entry.artifact_type} · {entry.decision}
+                </strong>
+                <time className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#73675f]" dateTime={entry.decided_at}>
+                  {new Date(entry.decided_at).toLocaleString()}
+                </time>
+              </div>
+              <p className="mt-2 text-xs text-[#5f554e]">
+                Reviewer <span className="font-medium text-[#201b19]">{entry.reviewer}</span>
+              </p>
+              <p className="mt-1 break-all font-mono text-[9px] uppercase tracking-[0.07em] text-[#73675f]">
+                {entry.artifact_id}
+              </p>
+              <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] text-[#9e3e2d]">
+                Artifact creation boundary · none
+              </p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="mt-4 border border-dashed border-[#b8a99b] p-4 text-center text-xs leading-5 text-[#73675f]" data-testid="empty-decision-history">
+          No brief or script decisions have been recorded for this workspace.
+        </p>
+      )}
     </section>
   );
 }
@@ -908,7 +956,11 @@ export function Podcast() {
   });
   const decideScript = useDecidePodcastScript({
     mutation: {
-      onSuccess: (nextScript) => { setScript(nextScript); setLocalError(''); },
+      onSuccess: (nextScript) => {
+        setScript(nextScript);
+        setLocalError('');
+        queryClient.invalidateQueries({ queryKey: getGetPodcastRoomQueryKey() });
+      },
     },
   });
   const createReleaseKit = useCreatePodcastReleaseKit({
@@ -1133,6 +1185,7 @@ export function Podcast() {
                 )}
                  <BriefPanel brief={brief} concept={selectedConcept} onDecide={(decision) => brief && decideBrief.mutate({ id: brief.id, data: { decision } })} isDeciding={decideBrief.isPending} evidenceSufficient={evidenceSufficient} />
                   <ScriptWorkspacePanel script={script} releaseKit={script?.release_kit ?? null} audioClip={script?.audio_clip ?? null} canCreate={brief?.status === 'approved'} isCreating={createScript.isPending} isDeciding={decideScript.isPending} isCreatingReleaseKit={createReleaseKit.isPending} isDecidingAudio={decideAudio.isPending} isGeneratingAudio={generateAudio.isPending} onCreate={() => brief && createScript.mutate({ id: brief.id })} onCreateReleaseKit={() => script && createReleaseKit.mutate({ id: script.id })} onDecide={(decision) => script && decideScript.mutate({ id: script.id, data: { decision } })} onAudioDecision={(decision) => script && decideAudio.mutate({ id: script.id, data: { decision } })} onGenerateAudio={() => script && generateAudio.mutate({ id: script.id })} />
+                 <DecisionHistoryPanel entries={room?.decision_history ?? []} />
                 <div className="podcast-panel p-5" data-testid="panel-next-action">
                   <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#b34b36]" strokeWidth={1.5} /><p className="podcast-kicker">Next editorial action</p></div>
                   <p className="mt-3 text-sm leading-6 text-[#5f554e]">You are looking at <strong className="font-medium text-[#201b19]">{selectedConcept?.title || 'the shortlist'}</strong>. Synthesize the development plan first, then generate its brief only when the source trail is sufficient for a producer review.</p>

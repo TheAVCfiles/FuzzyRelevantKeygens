@@ -215,6 +215,18 @@ test("synthetic approved cut produces private-safe, superseding Cut Keys only af
   if (created.kind !== "created") return;
   assert.equal(decidePodcastScript(created.script.id, "approve")?.status, "approved");
   recordPodcastDecision("script", created.script.id, "approve", "script-reviewer");
+  assert.deepEqual(
+    getPodcastRoom().decision_history.slice(0, 2).map((entry) => ({
+      artifact_type: entry.artifact_type,
+      reviewer: entry.reviewer,
+      decision: entry.decision,
+      artifact_creation: entry.artifact_creation,
+    })),
+    [
+      { artifact_type: "script", reviewer: "script-reviewer", decision: "approve", artifact_creation: "none" },
+      { artifact_type: "brief", reviewer: "brief-reviewer", decision: "approve", artifact_creation: "none" },
+    ],
+  );
   assert.equal(createPodcastReleaseKit(created.script.id).kind, "created");
   assert.equal((await generatePodcastAudio(created.script.id)).kind, "not_approved");
   assert.equal(getPodcastCutKey("not-a-key"), null);

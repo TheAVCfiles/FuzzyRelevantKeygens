@@ -739,6 +739,27 @@ export function getReceipts() {
   return receipts;
 }
 
+export function getPodcastDecisionHistory(
+  workspace: { briefId: string | null; scriptId: string | null },
+) {
+  const workspaceIds = new Set(
+    [workspace.briefId, workspace.scriptId].filter((id): id is string => Boolean(id)),
+  );
+  return receipts.flatMap((receipt) => {
+    const action = /^Podcast (brief|script) (approve|reject) decision$/.exec(receipt.action);
+    const artifactId = /(?:^| · )id: ([^·]+?)(?: · |$)/.exec(receipt.result)?.[1]?.trim();
+    if (!action || !artifactId || !workspaceIds.has(artifactId)) return [];
+    return [{
+      artifact_type: action[1] as "brief" | "script",
+      artifact_id: artifactId,
+      reviewer: receipt.actor,
+      decision: action[2] as "approve" | "reject",
+      decided_at: receipt.ts,
+      artifact_creation: "none" as const,
+    }];
+  });
+}
+
 export function getPilotReport() {
   const triageStart = receipts.find((entry) => entry.action === "Signal flood read")?.ts;
   const triageEnd = receipts.find((entry) => entry.action === "Action evaluated")?.ts;

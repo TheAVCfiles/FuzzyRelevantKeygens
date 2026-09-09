@@ -354,6 +354,38 @@ export interface PodcastFilterPreset {
   communities: string[];
 }
 
+export type PodcastDecisionHistoryEntryArtifactType = typeof PodcastDecisionHistoryEntryArtifactType[keyof typeof PodcastDecisionHistoryEntryArtifactType];
+
+
+export const PodcastDecisionHistoryEntryArtifactType = {
+  brief: 'brief',
+  script: 'script',
+} as const;
+
+export type PodcastDecisionHistoryEntryDecision = typeof PodcastDecisionHistoryEntryDecision[keyof typeof PodcastDecisionHistoryEntryDecision];
+
+
+export const PodcastDecisionHistoryEntryDecision = {
+  approve: 'approve',
+  reject: 'reject',
+} as const;
+
+export type PodcastDecisionHistoryEntryArtifactCreation = typeof PodcastDecisionHistoryEntryArtifactCreation[keyof typeof PodcastDecisionHistoryEntryArtifactCreation];
+
+
+export const PodcastDecisionHistoryEntryArtifactCreation = {
+  none: 'none',
+} as const;
+
+export interface PodcastDecisionHistoryEntry {
+  artifact_type: PodcastDecisionHistoryEntryArtifactType;
+  artifact_id: string;
+  reviewer: string;
+  decision: PodcastDecisionHistoryEntryDecision;
+  decided_at: string;
+  artifact_creation: PodcastDecisionHistoryEntryArtifactCreation;
+}
+
 export interface PodcastRoom {
   sources: PodcastSource[];
   concepts: PodcastConcept[];
@@ -362,6 +394,7 @@ export interface PodcastRoom {
   rendering_status: PodcastRoomRenderingStatus;
   /** @nullable */
   selected_brief_id: string | null;
+  decision_history: PodcastDecisionHistoryEntry[];
 }
 
 export type PodcastLiveSnapshotSourceMode = typeof PodcastLiveSnapshotSourceMode[keyof typeof PodcastLiveSnapshotSourceMode];

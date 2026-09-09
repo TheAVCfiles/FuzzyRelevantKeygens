@@ -21,7 +21,12 @@ import type {
   PodcastSource,
 } from "@workspace/api-zod";
 
-import { getLiveObservationSnapshot, recordAgentStage, recordHumanDecision } from "./autography-fixtures";
+import {
+  getLiveObservationSnapshot,
+  getPodcastDecisionHistory,
+  recordAgentStage,
+  recordHumanDecision,
+} from "./autography-fixtures";
 import { logger } from "./logger";
 import {
   getPodcastAudioFile,
@@ -954,6 +959,9 @@ export function buildSafePodcastDraft(
 }
 
 export function getPodcastRoom() {
+  const selectedBriefId = currentBrief?.id ?? null;
+  const selectedScriptId =
+    currentScript && currentScript.brief_id === selectedBriefId ? currentScript.id : null;
   return {
     sources: allPodcastSources(),
     concepts: allPodcastConcepts(),
@@ -961,7 +969,11 @@ export function getPodcastRoom() {
     data_notice:
       "Public-source path only · summaries are pattern-level · comments are never copied verbatim · provenance is retained per item.",
     rendering_status: "blocked_until_approval" as const,
-    selected_brief_id: currentBrief?.id ?? null,
+    selected_brief_id: selectedBriefId,
+    decision_history: getPodcastDecisionHistory({
+      briefId: selectedBriefId,
+      scriptId: selectedScriptId,
+    }),
   };
 }
 

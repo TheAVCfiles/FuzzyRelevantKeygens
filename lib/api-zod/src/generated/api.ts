@@ -312,7 +312,15 @@ export const GetPodcastRoomResponse = zod.object({
 })),
   "data_notice": zod.string(),
   "rendering_status": zod.enum(['blocked_until_approval']),
-  "selected_brief_id": zod.string().nullable()
+  "selected_brief_id": zod.string().nullable(),
+  "decision_history": zod.array(zod.object({
+  "artifact_type": zod.enum(['brief', 'script']),
+  "artifact_id": zod.string(),
+  "reviewer": zod.string(),
+  "decision": zod.enum(['approve', 'reject']),
+  "decided_at": zod.string(),
+  "artifact_creation": zod.enum(['none'])
+}))
 })
 
 
@@ -371,7 +379,15 @@ export const AddPodcastSourceResponse = zod.object({
 })),
   "data_notice": zod.string(),
   "rendering_status": zod.enum(['blocked_until_approval']),
-  "selected_brief_id": zod.string().nullable()
+  "selected_brief_id": zod.string().nullable(),
+  "decision_history": zod.array(zod.object({
+  "artifact_type": zod.enum(['brief', 'script']),
+  "artifact_id": zod.string(),
+  "reviewer": zod.string(),
+  "decision": zod.enum(['approve', 'reject']),
+  "decided_at": zod.string(),
+  "artifact_creation": zod.enum(['none'])
+}))
 })
 
 
@@ -1512,7 +1528,15 @@ export const ResetPodcastDemoResponse = zod.object({
 })),
   "data_notice": zod.string(),
   "rendering_status": zod.enum(['blocked_until_approval']),
-  "selected_brief_id": zod.string().nullable()
+  "selected_brief_id": zod.string().nullable(),
+  "decision_history": zod.array(zod.object({
+  "artifact_type": zod.enum(['brief', 'script']),
+  "artifact_id": zod.string(),
+  "reviewer": zod.string(),
+  "decision": zod.enum(['approve', 'reject']),
+  "decided_at": zod.string(),
+  "artifact_creation": zod.enum(['none'])
+}))
 }),
   "pre_staged_input": zod.object({
   "query": zod.string().min(resetPodcastDemoResponsePreStagedInputQueryMin).max(resetPodcastDemoResponsePreStagedInputQueryMax),

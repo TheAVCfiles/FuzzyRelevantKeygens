@@ -1005,7 +1005,7 @@ components:
         freshness_label: { type: string }
     PodcastRoom:
       type: object
-      required: [sources, concepts, filter_presets, data_notice, rendering_status, selected_brief_id]
+      required: [sources, concepts, filter_presets, data_notice, rendering_status, selected_brief_id, decision_history]
       properties:
         sources:
           type: array
@@ -1021,6 +1021,25 @@ components:
           type: string
           enum: [blocked_until_approval]
         selected_brief_id: { type: ["string", "null"] }
+        decision_history:
+          type: array
+          items: { $ref: "#/components/schemas/PodcastDecisionHistoryEntry" }
+    PodcastDecisionHistoryEntry:
+      type: object
+      required: [artifact_type, artifact_id, reviewer, decision, decided_at, artifact_creation]
+      properties:
+        artifact_type:
+          type: string
+          enum: [brief, script]
+        artifact_id: { type: string }
+        reviewer: { type: string }
+        decision:
+          type: string
+          enum: [approve, reject]
+        decided_at: { type: string }
+        artifact_creation:
+          type: string
+          enum: [none]
     PodcastLiveSnapshot:
       type: object
       required: [source_mode, source_status, source_id, source_class, consent_reference, policy_review_reference, freshness, refreshed_at, observation_window, aggregate_observations, signal_label, data_notice]
