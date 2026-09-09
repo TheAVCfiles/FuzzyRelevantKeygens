@@ -9,6 +9,11 @@
 export interface PodcastFilterPreset {
   id: string;
   name: string;
+  /**
+     * Authenticated producer who owns the preset; null identifies a legacy shared preset.
+     * @nullable
+     */
+  owner_id: string | null;
   platforms: string[];
   communities: string[];
 }

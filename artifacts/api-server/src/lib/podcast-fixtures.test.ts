@@ -25,7 +25,8 @@ import {
   getPodcastLiveSnapshot,
   getPodcastScriptByBriefId,
   getPodcastScriptById,
-  getPodcastRoom,
+  getPodcastRoom as getScopedPodcastRoom,
+  getUnscopedPodcastRoom as getPodcastRoom,
   searchPodcastContexts,
   isPodcastEvidenceSufficient,
   isPodcastDevelopmentReady,
@@ -63,6 +64,21 @@ function previewProducerHeaders(userId = "route-regression-test") {
   };
 }
 
+async function withApiServer(run: (baseUrl: string) => Promise<void>) {
+  const server = createServer(app);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    await run(`http://127.0.0.1:${address.port}/api`);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+}
+
 test("comparison filter presets persist, can be renamed, and do not alter source counts", { concurrency: false }, () => {
   const before = getPodcastRoom();
   const preset = createPodcastFilterPreset("Reddit communities", ["Reddit"], ["r/television"]);
@@ -75,6 +91,117 @@ test("comparison filter presets persist, can be renamed, and do not alter source
   assert.equal(renamed?.name, "Television signal");
   assert.equal(deletePodcastFilterPreset(preset.id), true);
   assert.equal(getPodcastRoom().filter_presets.some((item) => item.id === preset.id), false);
+});
+
+test("comparison filter presets are private to their producer while legacy presets remain shared", { concurrency: false }, () => {
+  const legacy = createPodcastFilterPreset("Legacy shared", ["YouTube"], []);
+  const producerA = createPodcastFilterPreset("Producer A", ["Reddit"], [], "producer-a");
+  const producerB = createPodcastFilterPreset("Producer B", ["TikTok"], [], "producer-b");
+
+  assert.deepEqual(
+    getScopedPodcastRoom("producer-a").filter_presets.map((preset) => preset.id),
+    [legacy.id, producerA.id],
+  );
+  assert.deepEqual(
+    getScopedPodcastRoom("producer-b").filter_presets.map((preset) => preset.id),
+    [legacy.id, producerB.id],
+  );
+  assert.equal(renamePodcastFilterPreset(producerB.id, "Not mine", "producer-a"), null);
+  assert.equal(deletePodcastFilterPreset(producerB.id, "producer-a"), false);
+  assert.equal(renamePodcastFilterPreset(legacy.id, "Cannot claim legacy", "producer-a"), null);
+  assert.equal(deletePodcastFilterPreset(legacy.id, "producer-a"), false);
+  assert.equal(renamePodcastFilterPreset(producerA.id, "Mine", "producer-a")?.name, "Mine");
+  assert.equal(deletePodcastFilterPreset(producerA.id, "producer-a"), true);
+
+  deletePodcastFilterPreset(legacy.id);
+  deletePodcastFilterPreset(producerB.id);
+});
+
+test("preset routes enforce producer ownership for list, rename, and delete", { concurrency: false }, async () => {
+  await withApiServer(async (baseUrl) => {
+    const legacyPreset = createPodcastFilterPreset("Legacy route preset", ["YouTube"], []);
+    const otherProducerPreset = createPodcastFilterPreset("Other producer preset", ["TikTok"], [], "other-producer");
+    const createResponse = await fetch(`${baseUrl}/podcast/presets`, {
+      method: "POST",
+      headers: {
+        ...previewProducerHeaders("preset-owner"),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Owner preset",
+        platforms: ["Reddit"],
+        communities: ["r/television"],
+      }),
+    });
+    assert.equal(createResponse.status, 201);
+    const preset = await createResponse.json() as { id: string; owner_id: string };
+    assert.equal(preset.owner_id, "preset-owner");
+
+    const otherRoomResponse = await fetch(`${baseUrl}/podcast/sources`, {
+      headers: previewProducerHeaders("other-producer"),
+    });
+    assert.equal(otherRoomResponse.status, 200);
+    const otherRoom = await otherRoomResponse.json() as { filter_presets: { id: string }[] };
+    assert.equal(otherRoom.filter_presets.some((item) => item.id === preset.id), false);
+    assert.equal(otherRoom.filter_presets.some((item) => item.id === legacyPreset.id), true);
+    assert.equal(otherRoom.filter_presets.some((item) => item.id === otherProducerPreset.id), true);
+
+    const sourceAddResponse = await fetch(`${baseUrl}/podcast/sources`, {
+      method: "POST",
+      headers: {
+        ...previewProducerHeaders("other-producer"),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ source_url: "https://example.com/private-preset-check" }),
+    });
+    assert.equal(sourceAddResponse.status, 200);
+    const sourceAddRoom = await sourceAddResponse.json() as { filter_presets: { id: string }[] };
+    assert.equal(sourceAddRoom.filter_presets.some((item) => item.id === preset.id), false);
+    assert.equal(sourceAddRoom.filter_presets.some((item) => item.id === legacyPreset.id), true);
+    assert.equal(sourceAddRoom.filter_presets.some((item) => item.id === otherProducerPreset.id), true);
+
+    const resetResponse = await fetch(`${baseUrl}/podcast/reset`, {
+      method: "POST",
+      headers: previewProducerHeaders("other-producer"),
+    });
+    assert.equal(resetResponse.status, 200);
+    const resetResult = await resetResponse.json() as { room: { filter_presets: { id: string }[] } };
+    assert.equal(resetResult.room.filter_presets.some((item) => item.id === preset.id), false);
+    assert.equal(resetResult.room.filter_presets.some((item) => item.id === legacyPreset.id), true);
+    assert.equal(resetResult.room.filter_presets.some((item) => item.id === otherProducerPreset.id), true);
+
+    const otherRenameResponse = await fetch(`${baseUrl}/podcast/presets/${preset.id}`, {
+      method: "PATCH",
+      headers: {
+        ...previewProducerHeaders("other-producer"),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "Unauthorized rename" }),
+    });
+    assert.equal(otherRenameResponse.status, 404);
+
+    const otherDeleteResponse = await fetch(`${baseUrl}/podcast/presets/${preset.id}`, {
+      method: "DELETE",
+      headers: previewProducerHeaders("other-producer"),
+    });
+    assert.equal(otherDeleteResponse.status, 404);
+
+    const ownerRoomResponse = await fetch(`${baseUrl}/podcast/sources`, {
+      headers: previewProducerHeaders("preset-owner"),
+    });
+    assert.equal(ownerRoomResponse.status, 200);
+    const ownerRoom = await ownerRoomResponse.json() as { filter_presets: { id: string }[] };
+    assert.equal(ownerRoom.filter_presets.some((item) => item.id === preset.id), true);
+
+    const ownerDeleteResponse = await fetch(`${baseUrl}/podcast/presets/${preset.id}`, {
+      method: "DELETE",
+      headers: previewProducerHeaders("preset-owner"),
+    });
+    assert.equal(ownerDeleteResponse.status, 204);
+
+    deletePodcastFilterPreset(legacyPreset.id);
+    deletePodcastFilterPreset(otherProducerPreset.id);
+  });
 });
 
 test("brief fallback preserves URL and retrieval provenance", { concurrency: false }, async () => {

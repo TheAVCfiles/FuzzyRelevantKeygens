@@ -420,8 +420,10 @@ router.post("/flood/observations", requirePermission("ingest"), (req, res): void
   }));
 });
 
-router.get("/podcast/sources", (_req, res): void => {
-  res.json(GetPodcastRoomResponse.parse(getPodcastRoom()));
+router.get("/podcast/sources", (req, res): void => {
+  res.json(GetPodcastRoomResponse.parse(getPodcastRoom(
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
+  )));
 });
 
 router.post("/podcast/sources", requirePermission("stage"), (req, res): void => {
@@ -430,7 +432,10 @@ router.post("/podcast/sources", requirePermission("stage"), (req, res): void => 
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const room = addPodcastSource(body.data.source_url);
+  const room = addPodcastSource(
+    body.data.source_url,
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
+  );
   if (!room) {
     res.status(400).json({ error: "Only valid public http(s) source URLs are accepted." });
     return;
@@ -483,8 +488,10 @@ router.post("/podcast/runs/:id/attestation", requirePermission("sign"), (req, re
   res.json(AttestPodcastCuttingRoomResponse.parse(attestation));
 });
 
-router.post("/podcast/reset", requirePermission("stage"), (_req, res): void => {
-  res.json(ResetPodcastDemoResponse.parse(resetPodcastDemo()));
+router.post("/podcast/reset", requirePermission("stage"), (req, res): void => {
+  res.json(ResetPodcastDemoResponse.parse(resetPodcastDemo(
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
+  )));
 });
 
 router.get("/podcast/live-snapshot", (_req, res): void => {
@@ -548,6 +555,7 @@ router.post("/podcast/presets", requirePermission("stage"), (req, res): void => 
     body.data.name,
     body.data.platforms,
     body.data.communities,
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
   )));
 });
 
@@ -558,7 +566,11 @@ router.patch("/podcast/presets/:id", requirePermission("stage"), (req, res): voi
     res.status(400).json({ error: "Invalid podcast filter preset rename" });
     return;
   }
-  const preset = renamePodcastFilterPreset(params.data.id, body.data.name);
+  const preset = renamePodcastFilterPreset(
+    params.data.id,
+    body.data.name,
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
+  );
   if (!preset) {
     res.status(404).json({ error: "Podcast filter preset not found" });
     return;
@@ -572,7 +584,10 @@ router.delete("/podcast/presets/:id", requirePermission("stage"), (req, res): vo
     res.status(400).json({ error: "Invalid podcast filter preset id" });
     return;
   }
-  if (!deletePodcastFilterPreset(params.data.id)) {
+  if (!deletePodcastFilterPreset(
+    params.data.id,
+    (req as AutographyRequest).autographyPrincipal!.reviewerId,
+  )) {
     res.status(404).json({ error: "Podcast filter preset not found" });
     return;
   }

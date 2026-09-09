@@ -302,7 +302,9 @@ let currentBrief: PodcastBrief | null = null;
 let currentScript: PodcastWorkspaceWithCompatibility | null = null;
 const podcastBriefs = new Map<string, PodcastBrief>();
 const podcastScripts = new Map<string, PodcastWorkspaceWithCompatibility>();
-const podcastFilterPresets = new Map<string, PodcastFilterPreset>();
+
+type OwnedPodcastFilterPreset = PodcastFilterPreset & { owner_id: string | null };
+const podcastFilterPresets = new Map<string, OwnedPodcastFilterPreset>();
 const podcastDevelopmentPlans = new Map<string, PodcastDevelopmentPlan>();
 const podcastGroundedRuns = new Map<string, PodcastGroundedRun>();
 const podcastAttestations = new Map<string, PodcastCuttingRoomAttestation & { raw_text?: string }>();
@@ -330,7 +332,7 @@ export type PodcastMutationLock = {
 type PersistedPodcastState = {
   briefs: PodcastBrief[];
   scripts: PodcastWorkspaceWithCompatibility[];
-  filterPresets?: PodcastFilterPreset[];
+  filterPresets?: OwnedPodcastFilterPreset[];
   developmentPlans?: PodcastDevelopmentPlan[];
   currentBriefId: string | null;
   currentScriptId: string | null;
@@ -760,7 +762,12 @@ export function rehydratePodcastState(input: unknown) {
       }
     }
     for (const preset of saved.filterPresets ?? []) {
-      if (preset?.id) podcastFilterPresets.set(preset.id, preset);
+      if (preset?.id) {
+        podcastFilterPresets.set(preset.id, {
+          ...preset,
+          owner_id: typeof preset.owner_id === "string" ? preset.owner_id : null,
+        });
+      }
     }
     for (const plan of saved.developmentPlans ?? []) {
       if (plan?.id) podcastDevelopmentPlans.set(plan.id, plan);
@@ -958,14 +965,14 @@ export function buildSafePodcastDraft(
   };
 }
 
-export function getPodcastRoom() {
+function buildPodcastRoom(presetVisible: (preset: OwnedPodcastFilterPreset) => boolean) {
   const selectedBriefId = currentBrief?.id ?? null;
   const selectedScriptId =
     currentScript && currentScript.brief_id === selectedBriefId ? currentScript.id : null;
   return {
     sources: allPodcastSources(),
     concepts: allPodcastConcepts(),
-    filter_presets: [...podcastFilterPresets.values()],
+    filter_presets: [...podcastFilterPresets.values()].filter(presetVisible),
     data_notice:
       "Public-source path only · summaries are pattern-level · comments are never copied verbatim · provenance is retained per item.",
     rendering_status: "blocked_until_approval" as const,
@@ -976,7 +983,15 @@ export function getPodcastRoom() {
     }),
   };
 }
+export function getPodcastRoom(producerId: string) {
+  return buildPodcastRoom(
+    (preset) => preset.owner_id === null || preset.owner_id === producerId,
+  );
+}
 
+export function getUnscopedPodcastRoom() {
+  return buildPodcastRoom(() => true);
+}
 export function getPodcastLiveSnapshot(): PodcastLiveSnapshot {
   const live = getLiveObservationSnapshot();
   const refreshedAt = now();
@@ -1205,10 +1220,12 @@ export function createPodcastFilterPreset(
   name: string,
   platforms: string[],
   communities: string[],
+  producerId?: string,
 ) {
-  const preset: PodcastFilterPreset = {
-    id: `preset-${Date.now()}`,
+  const preset: OwnedPodcastFilterPreset = {
+    id: `preset-${randomUUID()}`,
     name: name.trim(),
+    owner_id: producerId ?? null,
     platforms: [...new Set(platforms)],
     communities: [...new Set(communities)],
   };
@@ -1217,16 +1234,18 @@ export function createPodcastFilterPreset(
   return preset;
 }
 
-export function renamePodcastFilterPreset(id: string, name: string) {
+export function renamePodcastFilterPreset(id: string, name: string, producerId?: string) {
   const preset = podcastFilterPresets.get(id);
-  if (!preset) return null;
+  if (!preset || (producerId !== undefined && preset.owner_id !== producerId)) return null;
   const renamed = { ...preset, name: name.trim() };
   podcastFilterPresets.set(id, renamed);
   persistPodcastState("rename", "filter_preset");
   return renamed;
 }
 
-export function deletePodcastFilterPreset(id: string) {
+export function deletePodcastFilterPreset(id: string, producerId?: string) {
+  const preset = podcastFilterPresets.get(id);
+  if (!preset || (producerId !== undefined && preset.owner_id !== producerId)) return false;
   if (!podcastFilterPresets.delete(id)) return false;
   persistPodcastState("delete", "filter_preset");
   return true;
@@ -1780,7 +1799,7 @@ export function attestPodcastCuttingRoom(
   return safe;
 }
 
-export function resetPodcastDemo() {
+export function resetPodcastDemo(producerId: string) {
   currentBrief = null;
   currentScript = null;
   podcastBriefs.clear();
@@ -1794,7 +1813,7 @@ export function resetPodcastDemo() {
   activeGroundedConcepts.splice(0);
   persistPodcastState("reset", "podcast_demo");
   return {
-    room: getPodcastRoom(),
+    room: getPodcastRoom(producerId),
     pre_staged_input: { query: "editing context and audience trust", audience: "consumers" as const, use_case: "recap" as const },
   };
 }
@@ -2151,7 +2170,7 @@ function activeGeneratedPodcastClip(clipId: string) {
   )?.audio_clip ?? null;
 }
 
-export function addPodcastSource(sourceUrl: string) {
+export function addPodcastSource(sourceUrl: string, producerId: string) {
   let parsed: URL;
   try {
     parsed = new URL(sourceUrl);
@@ -2175,7 +2194,7 @@ export function addPodcastSource(sourceUrl: string) {
     access_mode: "manual_url" as const,
   };
   podcastSources.unshift(source);
-  return getPodcastRoom();
+  return getPodcastRoom(producerId);
 }
 
 export async function generatePodcastBrief(

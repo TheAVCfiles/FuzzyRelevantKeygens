@@ -1249,10 +1249,13 @@ components:
               safest_next_reviewer: { type: string }
     PodcastFilterPreset:
       type: object
-      required: [id, name, platforms, communities]
+      required: [id, name, platforms, communities, owner_id]
       properties:
         id: { type: string }
         name: { type: string }
+        owner_id:
+          type: ["string", "null"]
+          description: Authenticated producer who owns the preset; null identifies a legacy shared preset.
         platforms:
           type: array
           items: { type: string }
@@ -1813,4 +1816,3 @@ components:
         call_id: { type: string }
         result: { type: string }
         rule_fired: { type: ["string", "null"] }
-
