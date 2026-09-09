@@ -72,6 +72,9 @@ function statusLabel(status?: string) {
 
 function evidenceLabel(source: PodcastSource) {
   if (source.access_mode === 'manual_url') return { label: 'manual-only', className: 'text-[#9e3e2d]' };
+  if (source.access_mode === 'approved_live') return { label: 'approved live', className: 'text-[#365f67]' };
+  if (source.access_mode === 'fixture') return { label: 'synthetic fixture', className: 'text-[#73675f]' };
+  if (source.access_mode === 'public_url') return { label: 'legacy / unverified', className: 'text-[#9e3e2d]' };
   if (!source.source_id || source.post_title.toLowerCase().includes('pending')) return { label: 'thin evidence', className: 'text-[#9e3e2d]' };
   return { label: 'retrieved', className: 'text-[#365f67]' };
 }
@@ -82,7 +85,7 @@ function hasSufficientEvidence(brief: PodcastBrief, sources: PodcastSource[]) {
     const source = sources.find((item) => item.id === link.source_id);
     return Boolean(
       source &&
-      source.access_mode !== 'manual_url' &&
+      (source.access_mode === 'approved_live' || source.access_mode === 'fixture') &&
       !source.post_title.toLowerCase().includes('retrieval pending'),
     );
   });
@@ -95,6 +98,7 @@ function scoreTone(value: number) {
 }
 
 function SourceRow({ source }: { source: PodcastSource }) {
+  const evidence = evidenceLabel(source);
   return (
     <div className="grid grid-cols-[1fr_auto] gap-3 border-b border-[#c7b9aa] py-4 last:border-b-0" data-testid={`row-source-${source.id}`}>
       <div className="min-w-0">
@@ -111,7 +115,14 @@ function SourceRow({ source }: { source: PodcastSource }) {
           <span>{formatNumber(source.engagement?.score)} signal</span>
           <span>{formatNumber(source.engagement?.comments)} responses</span>
           <span className="text-[#365f67]">{source.source_id ? `ID ${source.source_id}` : 'source id pending'}</span>
+          <span className={evidence.className}>{evidence.label}</span>
         </div>
+        {source.access_mode === 'approved_live' && (
+          <div className="mt-2 border-l-2 border-[#365f67] pl-3 text-[11px] leading-5 text-[#5f554e]">
+            <p>Approved live result · {source.source_class?.replaceAll('_', ' ')} · policy {source.policy_reference}</p>
+            {!!source.evidence_gaps?.length && <p className="text-[#9e3e2d]">Gap: {source.evidence_gaps.join(' ')}</p>}
+          </div>
+        )}
       </div>
       <a
         href={source.source_url}
@@ -752,6 +763,10 @@ function GroundedRunDesk({
                 {source.what_remains_uncertain && (
                   <p className="mt-2 border-t border-[#d4c8bb] pt-2 text-[11px] leading-5 text-[#9e3e2d]">Gap: {source.what_remains_uncertain}</p>
                 )}
+                <p className="mt-2 text-[11px] leading-5 text-[#5f554e]">{source.aggregate_summary}</p>
+                <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] text-[#365f67]">
+                  {source.source_identifier} · policy {source.policy_reference} · consent {source.consent_reference ?? 'not applicable'}
+                </p>
               </div>
             ))}
           </div>
@@ -868,11 +883,15 @@ export function Podcast() {
   const [searchQuery, setSearchQuery] = useState('What context did the final cut leave out?');
   const [searchAudience, setSearchAudience] = useState<'consumers' | 'clients' | 'users'>('consumers');
   const [searchUseCase, setSearchUseCase] = useState<'recap' | 'development' | 'publicity' | 'audience_strategy' | 'cultural_context'>('recap');
+  const [searchProvider, setSearchProvider] = useState<'google_public_web'>('google_public_web');
+  const [searchWindow, setSearchWindow] = useState<'past_24_hours' | 'past_7_days' | 'past_30_days'>('past_7_days');
   const [searchResult, setSearchResult] = useState<PodcastContextSearchResponse | null>(null);
+  const [searchInFlight, setSearchInFlight] = useState(false);
   const [localError, setLocalError] = useState('');
 
-  const concepts = searchResult?.results.map((item) => item.concept) ?? room?.concepts ?? [];
-  const sources = room?.sources ?? [];
+  const concepts = searchInFlight ? [] : searchResult?.results.map((item) => item.concept) ?? room?.concepts ?? [];
+  const searchedSources = searchInFlight ? [] : searchResult?.results.flatMap((item) => item.sources) ?? [];
+  const sources = [...new Map([...(room?.sources ?? []), ...searchedSources].map((source) => [source.id, source])).values()];
   const selectedConcept = useMemo(() => concepts.find((concept) => concept.id === selectedConceptId) ?? concepts[0], [concepts, selectedConceptId]);
   const createPreset = useCreatePodcastFilterPreset({
     mutation: {
@@ -973,8 +992,20 @@ export function Podcast() {
   });
   const searchContexts = useSearchPodcastContexts({
     mutation: {
+      onMutate: () => {
+        setSearchInFlight(true);
+        setSearchResult(null);
+        setSelectedConceptId(null);
+        setVisibleSourceIds([]);
+        setIsDevValidated(false);
+        setDevelopmentPlan(null);
+        setBrief(null);
+        setScript(null);
+        setLocalError('');
+      },
       onSuccess: (result) => {
         setSearchResult(result);
+        queryClient.invalidateQueries({ queryKey: getGetPodcastRoomQueryKey() });
         const first = result.results[0]?.concept;
         if (first) {
           setSelectedConceptId(first.id);
@@ -986,6 +1017,7 @@ export function Podcast() {
         }
         setLocalError('');
       },
+      onSettled: () => setSearchInFlight(false),
     },
   });
   const decideAudio = useDecidePodcastAudio({
@@ -1006,6 +1038,8 @@ export function Podcast() {
         queryClient.invalidateQueries({ queryKey: getGetPodcastRoomQueryKey() });
         setSearchResult(null);
         setSearchQuery(data.pre_staged_input.query || 'What context did the final cut leave out?');
+        setSearchProvider(data.pre_staged_input.provider);
+        setSearchWindow(data.pre_staged_input.window);
         setSelectedConceptId(null);
         setVisibleSourceIds([]);
         setDevelopmentPlan(null);
@@ -1048,7 +1082,7 @@ export function Podcast() {
   };
 
   const roomError = roomQuery.error ? 'The intelligence room could not be loaded. Try again to reconnect to the source desk.' : '';
-  const mutationError = localError || (searchContexts.error ? 'The context search could not be completed. The existing source room is unchanged.' : '') || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (createPreset.error ? 'This comparison preset could not be saved.' : '') || (renamePreset.error ? 'This comparison preset could not be renamed.' : '') || (deletePreset.error ? 'This comparison preset could not be removed.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '') || (createReleaseKit.error ? 'The release kit could not be prepared. Audio and publishing remain blocked.' : '') || (decideAudio.error ? 'The audio decision was not recorded.' : '') || (generateAudio.error ? 'The house voice could not render this clip. The approval and source trail are unchanged.' : '') || (scriptWorkspaceQuery.error && room?.selected_brief_id ? 'The saved script workspace could not be retrieved. It may no longer be approved.' : '');
+  const mutationError = localError || (searchContexts.error ? 'The context search could not be completed. The previous saved room is restored and no new results were approved.' : '') || (addSource.error ? 'This source could not be added. Check the URL and try again.' : '') || (createPreset.error ? 'This comparison preset could not be saved.' : '') || (renamePreset.error ? 'This comparison preset could not be renamed.' : '') || (deletePreset.error ? 'This comparison preset could not be removed.' : '') || (generateBrief.error ? 'The brief could not be generated. Your source room is unchanged.' : '') || (decideBrief.error ? 'The decision was not recorded. Nothing was moved forward.' : '') || (createScript.error ? 'Only an approved brief can open a script workspace.' : '') || (decideScript.error ? 'The script review was not recorded.' : '') || (createReleaseKit.error ? 'The release kit could not be prepared. Audio and publishing remain blocked.' : '') || (decideAudio.error ? 'The audio decision was not recorded.' : '') || (generateAudio.error ? 'The house voice could not render this clip. The approval and source trail are unchanged.' : '') || (scriptWorkspaceQuery.error && room?.selected_brief_id ? 'The saved script workspace could not be retrieved. It may no longer be approved.' : '');
   const evidenceSufficient = brief ? hasSufficientEvidence(brief, sources) : false;
 
   return (
@@ -1107,13 +1141,16 @@ export function Podcast() {
                     <h2 className="mt-2 font-serif text-3xl">Search beyond the reaction.</h2>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-[#b7aaa0]">Rank public-community patterns, trade context, interviews, audience research, and expert commentary into an auditable editorial package.</p>
                   </div>
-                  <form className="grid min-w-0 gap-3 bg-[#f4eee5] p-5 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]" onSubmit={(event) => { event.preventDefault(); searchContexts.mutate({ data: { query: searchQuery.trim(), audience: searchAudience, use_case: searchUseCase } }); }}>
+                  <form className="grid min-w-0 gap-3 bg-[#f4eee5] p-5 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto_auto]" onSubmit={(event) => { event.preventDefault(); searchContexts.mutate({ data: { query: searchQuery.trim(), audience: searchAudience, use_case: searchUseCase, provider: searchProvider, window: searchWindow } }); }}>
                     <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} minLength={2} required className="h-11 min-w-0 border-[#b9aa9b] bg-[#fffaf2] text-[#201b19]" aria-label="Entertainment context search" data-testid="input-context-search" />
                     <select value={searchAudience} onChange={(event) => setSearchAudience(event.target.value as typeof searchAudience)} className="h-11 min-w-0 w-full border border-[#b9aa9b] bg-[#fffaf2] px-3 text-sm text-[#201b19]" aria-label="Audience"><option value="consumers">Consumers</option><option value="clients">Clients</option><option value="users">Users</option></select>
                     <select value={searchUseCase} onChange={(event) => setSearchUseCase(event.target.value as typeof searchUseCase)} className="h-11 min-w-0 w-full border border-[#b9aa9b] bg-[#fffaf2] px-3 text-sm text-[#201b19]" aria-label="Use case"><option value="recap">Recap</option><option value="development">Development</option><option value="publicity">Publicity</option><option value="audience_strategy">Audience strategy</option><option value="cultural_context">Cultural context</option></select>
+                    <select value={searchProvider} onChange={(event) => setSearchProvider(event.target.value as typeof searchProvider)} className="h-11 min-w-0 w-full border border-[#b9aa9b] bg-[#fffaf2] px-3 text-sm text-[#201b19]" aria-label="Approved current-source provider" data-testid="select-current-provider"><option value="google_public_web">Google public web · approved</option></select>
+                    <select value={searchWindow} onChange={(event) => setSearchWindow(event.target.value as typeof searchWindow)} className="h-11 min-w-0 w-full border border-[#b9aa9b] bg-[#fffaf2] px-3 text-sm text-[#201b19]" aria-label="Current context window" data-testid="select-current-window"><option value="past_24_hours">Past 24 hours</option><option value="past_7_days">Past 7 days</option><option value="past_30_days">Past 30 days</option></select>
                     <Button type="submit" disabled={searchContexts.isPending} className="h-11 bg-[#b34b36] text-[#fffaf2]" data-testid="button-search-contexts">{searchContexts.isPending ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}Search</Button>
                   </form>
-                  {searchResult && <div className="border-t border-[#c7b9aa] px-5 py-3 font-mono text-[9px] uppercase tracking-[.1em] text-[#365f67]" data-testid="status-context-search">{searchResult.results.length} ranked packages · {searchResult.search_mode.replaceAll('_', ' ')} · tailored for {searchResult.audience}</div>}
+                  {searchResult && <div className="border-t border-[#c7b9aa] px-5 py-3 font-mono text-[9px] uppercase tracking-[.1em] text-[#365f67]" data-testid="status-context-search">{searchResult.results.length} ranked packages · {searchResult.provider.replaceAll('_', ' ')} · {searchResult.window.replaceAll('_', ' ')} · policy {searchResult.policy_reference}</div>}
+                  {searchContexts.error && <div className="border-t border-[#c7b9aa] px-5 py-3 font-mono text-[9px] uppercase tracking-[.1em] text-[#9e3e2d]" data-testid="status-context-search-failed">Search failed · previous saved room restored · no new results approved</div>}
                 </div>
                 <div className="podcast-panel podcast-gridline mb-6 p-5 sm:p-6" data-testid="panel-source-loader">
                   <div className="flex flex-wrap items-start justify-between gap-4">

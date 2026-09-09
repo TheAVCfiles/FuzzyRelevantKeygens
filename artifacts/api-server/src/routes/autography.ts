@@ -454,6 +454,8 @@ router.post("/podcast/search", requirePermission("stage"), async (req, res): Pro
       body.data.query,
       body.data.audience,
       body.data.use_case,
+      body.data.provider,
+      body.data.window,
       body.data.source_classes,
     )));
   } catch (error) {

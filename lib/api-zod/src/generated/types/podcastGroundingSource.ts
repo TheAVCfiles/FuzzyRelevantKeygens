@@ -10,10 +10,17 @@ import type { PodcastGroundingSourceClassification } from './podcastGroundingSou
 export interface PodcastGroundingSource {
   id: string;
   url: string;
+  source_identifier: string;
   title: string;
   retrieved_at: string;
   snippet?: string;
   source_type: string;
+  /** @nullable */
+  consent_reference: string | null;
+  policy_reference: string;
+  aggregate_summary: string;
+  /** @minItems 1 */
+  evidence_gaps: string[];
   classification: PodcastGroundingSourceClassification;
   what_it_supports: string;
   what_remains_uncertain: string;

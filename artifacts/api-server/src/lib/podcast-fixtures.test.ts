@@ -267,14 +267,37 @@ test("production paths fail closed and structured editors reject malformed outpu
     await assert.rejects(() => generatePodcastBrief(concept.id, concept.source_ids), /grounded concept|not configured/i);
     assert.throws(() => strictPodcastDraft({ topic_angle: "only one field" }, podcastSources.slice(0, 1)), /Malformed Gemini brief/i);
     assert.throws(() => strictPodcastEvidenceConcept({ title: "only one field" }), /malformed structured output/i);
+    assert.throws(
+      () => strictPodcastEvidenceConcept({
+        title: "A cautious concept",
+        summary: "\"Copied provider headline with a named person\"",
+        observed_signal: "A bounded topic signal.",
+        supported_context: "Public-web metadata.",
+        unresolved_questions: ["Representativeness remains unknown."],
+      }),
+      /malformed structured output/i,
+    );
+    assert.throws(
+      () => strictPodcastEvidenceConcept({
+        title: "A cautious concept",
+        summary: "A bounded aggregate signal.",
+        observed_signal: "A bounded topic signal.",
+        supported_context: "A u/example identifier remains.",
+        unresolved_questions: ["Representativeness remains unknown."],
+      }, [], ["Allison Example"]),
+      /malformed structured output/i,
+    );
     const sources = ["live-source-a", "live-source-b", "live-source-c"].map((id) => ({
       id, url: `https://example.test/${id}`, title: id, retrieved_at: "2026-01-01T00:00:00.000Z",
       snippet: "", source_type: "test", classification: "source_backed" as const,
+      source_identifier: id, consent_reference: "test-consent", policy_reference: "podcast-current-context-policy-v1",
+      aggregate_summary: "Aggregate test summary.", evidence_gaps: ["Test evidence gap."],
       what_it_supports: "test", what_remains_uncertain: "test",
     }));
     const liveConcept = { ...concept, id: "live-only-concept", source_ids: sources.map((source) => source.id) };
     const run = {
-      id: "run-validator", query: "specific query", runtime_status: "Live Gemini" as const,
+      id: "run-validator", query: "specific query", provider: "google_public_web" as const,
+      window: "past_7_days" as const, policy_reference: "podcast-current-context-policy-v1", runtime_status: "Live Gemini" as const,
       sources, concept: liveConcept, uncertainties: ["A visible uncertainty"], grounding_support: "test", agent_executions: [],
     };
     const persistedDemoRun = { ...run, id: "persisted-demo-run", runtime_status: "Synthetic Demo" as const };
@@ -287,6 +310,26 @@ test("production paths fail closed and structured editors reject malformed outpu
     assert.deepEqual(room.concepts.map((item) => item.id), [liveConcept.id]);
     assert.equal(room.sources.some((source) => podcastSources.some((fixture) => fixture.id === source.id)), false);
     assert.equal(room.concepts.some((item) => podcastConcepts.some((fixture) => fixture.id === item.id)), false);
+    const legacyRun = {
+      ...run,
+      id: "legacy-unverified-run",
+      sources: run.sources.map(({ source_identifier: _identifier, consent_reference: _consent, policy_reference: _policy, aggregate_summary: _summary, evidence_gaps: _gaps, ...source }) => source),
+    } as any;
+    delete legacyRun.provider;
+    delete legacyRun.window;
+    delete legacyRun.policy_reference;
+    assert.equal(rehydratePodcastState({ briefs: [], scripts: [], groundedRuns: [legacyRun], currentBriefId: null, currentScriptId: null }), true);
+    const legacyRoom = getPodcastRoom();
+    assert.equal(legacyRoom.sources.every((source) => source.access_mode === "public_url"), true);
+    assert.equal(legacyRoom.sources.every((source) => source.policy_reference === "legacy-unverified-provenance"), true);
+    const legacyBrief = {
+      source_links: legacyRoom.sources.map((source) => ({
+        source_id: source.id,
+        url: source.source_url,
+        retrieved_at: source.retrieved_at ?? source.timestamp,
+      })),
+    } as any;
+    assert.equal(isPodcastEvidenceSufficient(legacyBrief), false);
     assert.throws(() => validateGeneratedScript({ title: "bad", sections: [] }, run, { id: "a", run_id: run.id, decision: "decline", attested: false, signer: null, permitted_public_summary: null, authorized_uses: [], created_at: new Date().toISOString() }), /Malformed Gemini script/i);
   } finally {
     process.env.PODCAST_SYNTHETIC_DEMO = demo ?? "true";
@@ -314,7 +357,19 @@ test("synthetic approved cut produces private-safe, superseding Cut Keys only af
     snippet: "", source_type: "test", classification: "source_backed" as const,
     what_it_supports: "A bounded public context claim.", what_remains_uncertain: "Intent remains unresolved.",
   }));
-  const run = { id: "cut-key-run", query: "cut-key exact query", runtime_status: "Synthetic Demo" as const, sources, concept, uncertainties: concept.unresolved_questions, grounding_support: "test", agent_executions: [] };
+  const run = {
+    id: "cut-key-run",
+    query: "cut-key exact query",
+    provider: "synthetic_fixture" as const,
+    window: "past_7_days" as const,
+    policy_reference: "synthetic-fixture-policy-v1",
+    runtime_status: "Synthetic Demo" as const,
+    sources,
+    concept,
+    uncertainties: concept.unresolved_questions,
+    grounding_support: "test",
+    agent_executions: [],
+  };
   assert.equal(rehydratePodcastState({ briefs: [], scripts: [], developmentPlans: [], groundedRuns: [run], currentBriefId: null, currentScriptId: null }), true);
   const rawMarker = "PRIVATE-CUTTING-ROOM-MARKER-DO-NOT-PUBLISH";
   const attestationInput = {
@@ -424,7 +479,19 @@ test("entertainment context search ranks cited packages and keeps speculation ex
   );
   assert.equal(result.search_mode, "synthetic_demo");
   assert.equal(result.audience, "clients");
+  assert.equal(result.provider, "synthetic_fixture");
+  assert.equal(result.window, "past_7_days");
+  assert.equal(result.policy_reference, "podcast-current-context-policy-v1");
   assert.ok(result.results.length > 0);
+  assert.ok(result.grounded_run.sources.length <= 5);
+  for (const source of result.grounded_run.sources) {
+    assert.ok(source.source_identifier.length > 0);
+    assert.ok(source.retrieved_at.length > 0);
+    assert.ok(source.policy_reference.length > 0);
+    assert.ok(source.aggregate_summary.length > 0);
+    assert.ok(source.evidence_gaps.length > 0);
+    assert.equal(source.snippet, "Synthetic demonstration source; not a live web retrieval.");
+  }
   for (const item of result.results) {
     assert.ok(item.sources.length > 0);
     assert.ok(item.concept.source_ids.every((id) => podcastSources.some((source) => source.id === id)));

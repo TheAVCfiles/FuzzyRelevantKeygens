@@ -15,6 +15,7 @@ import type {
   PodcastDevelopmentPlan,
   PodcastFilterPreset,
   PodcastFormatVariant,
+  PodcastGroundingSource,
   PodcastLiveSnapshot,
   PodcastReleaseKit,
   PodcastScriptWorkspace,
@@ -37,6 +38,8 @@ import {
 } from "./podcast-persistence";
 
 const model = "gemini-3.6-flash";
+const currentContextPolicyReference = "podcast-current-context-policy-v1";
+const publicWebConsentReference = "public-web-metadata-only-v1";
 
 const now = () => new Date().toISOString();
 
@@ -692,12 +695,78 @@ function normalizePersistedReleaseKit(
   };
 }
 
+function normalizeGroundingSource(
+  source: PodcastGroundingSource,
+  fallbackPolicyReference: string,
+): PodcastGroundingSource {
+  const uncertainty = source.what_remains_uncertain?.trim()
+    || "The available source does not settle identity, intent, representativeness, or platform-wide opinion.";
+  return {
+    ...source,
+    source_identifier: source.source_identifier
+      ?? createHash("sha256").update(source.url).digest("hex").slice(0, 16),
+    consent_reference: source.consent_reference ?? null,
+    policy_reference: source.policy_reference ?? fallbackPolicyReference,
+    aggregate_summary: source.aggregate_summary
+      ?? (fallbackPolicyReference === "legacy-unverified-provenance"
+        ? "Legacy citation; aggregate-only handling was not recorded."
+        : "Topic-level source metadata only; no identity or copied comment text is retained."),
+    evidence_gaps: source.evidence_gaps?.length ? source.evidence_gaps : [uncertainty],
+  };
+}
+
+function normalizeGroundedRun(run: PodcastGroundedRun): PodcastGroundedRun {
+  let provider = run.provider ?? "legacy_unverified";
+  let policyReference = run.policy_reference
+    ?? (provider === "synthetic_fixture" ? "synthetic-fixture-policy-v1" : "legacy-unverified-provenance");
+  if (provider === "google_public_web" && policyReference === currentContextPolicyReference) {
+    try {
+      strictPodcastEvidenceConcept(run.concept, run.sources.map((source) => source.title));
+    } catch {
+      provider = "legacy_unverified";
+      policyReference = "legacy-unverified-provenance";
+    }
+  }
+  return {
+    ...run,
+    provider,
+    window: run.window ?? "not_recorded",
+    policy_reference: policyReference,
+    sources: run.sources.map((source, index) => {
+      const normalized = normalizeGroundingSource(source, policyReference);
+      return provider === "google_public_web"
+        ? { ...normalized, title: `Approved public-web result ${index + 1}`, snippet: "" }
+        : normalized;
+    }),
+  };
+}
+
+function normalizeCutKeyGroundingSources(cutKey: PodcastCutKey): PodcastCutKey {
+  return {
+    ...cutKey,
+    citations: cutKey.citations.map((source, index) => {
+      const normalized = normalizeGroundingSource(source, "legacy-unverified-provenance");
+      return normalized.policy_reference === currentContextPolicyReference
+        ? { ...normalized, title: `Approved public-web citation ${index + 1}`, snippet: "" }
+        : normalized;
+    }),
+  };
+}
+
 function groundedRunRoomSources(run: PodcastGroundedRun): PodcastSource[] {
+  const accessMode = run.provider === "google_public_web" && run.policy_reference === currentContextPolicyReference
+    ? "approved_live" as const
+    : run.provider === "synthetic_fixture"
+      ? "fixture" as const
+      : "public_url" as const;
   return run.sources.map((source) => ({
     id: source.id, source_url: source.url, platform: "Public web", community: new URL(source.url).hostname,
     post_title: source.title, timestamp: source.retrieved_at, retrieved_at: source.retrieved_at,
-    engagement: { score: 0, comments: 0 }, source_id: source.id, access_mode: "public_url" as const,
+    engagement: { score: 0, comments: 0 }, source_id: source.source_identifier, access_mode: accessMode,
     source_class: source.source_type, evidence_type: source.classification,
+    consent_reference: source.consent_reference,
+    policy_reference: source.policy_reference,
+    evidence_gaps: source.evidence_gaps,
   }));
 }
 
@@ -772,7 +841,9 @@ export function rehydratePodcastState(input: unknown) {
     for (const plan of saved.developmentPlans ?? []) {
       if (plan?.id) podcastDevelopmentPlans.set(plan.id, plan);
     }
-    for (const run of saved.groundedRuns ?? []) if (run?.id) podcastGroundedRuns.set(run.id, run);
+    for (const run of saved.groundedRuns ?? []) {
+      if (run?.id) podcastGroundedRuns.set(run.id, normalizeGroundedRun(run));
+    }
     for (const attestation of saved.attestations ?? []) {
       if (attestation?.id && attestation.run_id) {
         podcastAttestations.set(attestation.run_id, attestation);
@@ -782,13 +853,13 @@ export function rehydratePodcastState(input: unknown) {
       if (!cutKey?.key) continue;
       const persisted = cutKey as PodcastCutKey & { superseded_by?: string | null };
       const legacySuperseded = typeof persisted.supersedes === "string" && persisted.supersedes.startsWith("superseded-by-");
-      podcastCutKeys.set(persisted.key, {
+      podcastCutKeys.set(persisted.key, normalizeCutKeyGroundingSources({
         ...persisted,
         run_id: persisted.run_id ?? null,
         attestation_id: persisted.attestation_id ?? null,
         supersedes: legacySuperseded ? null : persisted.supersedes ?? null,
         superseded_by: persisted.superseded_by ?? (legacySuperseded ? persisted.supersedes : null),
-      });
+      }));
     }
     for (const asset of saved.audioAssets ?? []) {
       if (asset?.clipId && /^[a-f0-9]{64}$/.test(asset.sha256)) {
@@ -891,8 +962,35 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-export function strictPodcastEvidenceConcept(input: unknown) {
+function containsUnsafeCurrentContextText(
+  value: string,
+  forbiddenSourceTitles: string[],
+  forbiddenIdentities: string[] = [],
+) {
+  const normalized = value.toLowerCase();
+  return /[@“”"]|\b(?:u|r)\/[a-z0-9_-]+|https?:\/\//i.test(value)
+    || forbiddenIdentities.some((identity) => normalized.includes(identity.toLowerCase()))
+    || forbiddenSourceTitles.some((title) => {
+      const normalizedTitle = title.trim().toLowerCase();
+      return normalizedTitle.length > 20 && normalized.includes(normalizedTitle);
+    });
+}
+
+export function strictPodcastEvidenceConcept(
+  input: unknown,
+  forbiddenSourceTitles: string[] = [],
+  forbiddenIdentities: string[] = [],
+) {
   const parsed = input as Partial<PodcastConcept>;
+  const returnedText = [
+    parsed.title,
+    parsed.summary,
+    parsed.observed_signal,
+    parsed.supported_context,
+    ...(Array.isArray(parsed.unresolved_questions) ? parsed.unresolved_questions : []),
+  ].filter(nonEmptyString);
+  const containsUnsafeProviderText = returnedText.some((value) =>
+    containsUnsafeCurrentContextText(value, forbiddenSourceTitles, forbiddenIdentities));
   if (
     !nonEmptyString(parsed.title) ||
     !nonEmptyString(parsed.summary) ||
@@ -900,7 +998,8 @@ export function strictPodcastEvidenceConcept(input: unknown) {
     !nonEmptyString(parsed.supported_context) ||
     !Array.isArray(parsed.unresolved_questions) ||
     parsed.unresolved_questions.length === 0 ||
-    !parsed.unresolved_questions.every(nonEmptyString)
+    !parsed.unresolved_questions.every(nonEmptyString) ||
+    containsUnsafeProviderText
   ) {
     throw new Error("Evidence editor returned malformed structured output.");
   }
@@ -1636,6 +1735,8 @@ export async function searchPodcastContexts(
   query: string,
   audience: string,
   useCase: string,
+  provider: "google_public_web" = "google_public_web",
+  window: "past_24_hours" | "past_7_days" | "past_30_days" = "past_7_days",
   sourceClasses: string[] = [],
 ): Promise<PodcastContextSearchResponse> {
   if (process.env.PODCAST_SYNTHETIC_DEMO !== "true") {
@@ -1643,53 +1744,180 @@ export async function searchPodcastContexts(
     if (!apiKey) throw new Error("Google Search grounded podcast search is not configured; set PODCAST_SYNTHETIC_DEMO=true only for an explicit demo.");
     const started = Date.now();
     const ai = new GoogleGenAI({ apiKey });
+    const windowLabel = {
+      past_24_hours: "the past 24 hours",
+      past_7_days: "the past 7 days",
+      past_30_days: "the past 30 days",
+    }[window];
+    const windowDays = { past_24_hours: 1, past_7_days: 7, past_30_days: 30 }[window];
+    const before = new Date();
+    before.setUTCDate(before.getUTCDate() + 1);
+    const after = new Date();
+    after.setUTCDate(after.getUTCDate() - windowDays);
+    const googleDateOperators = `after:${after.toISOString().slice(0, 10)} before:${before.toISOString().slice(0, 10)}`;
     const scout = await yieldPodcastMutationLock(() => ai.models.generateContent({
       model,
-      contents: `Search the public web for this exact podcast development query: ${query}. Return only a concise, non-alleging evidence inventory with uncertainties.`,
+      contents: `Search the public web for current context about this exact podcast development topic: ${query}. Restrict every Google query to ${windowLabel} by including these date operators: ${googleDateOperators}. Return only a concise, aggregate, non-alleging evidence inventory. Do not return identities, usernames, raw comments, quotations, or copied post text.`,
       config: { tools: [{ googleSearch: {} }] },
     }));
     const chunks = scout.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-    const web = chunks.flatMap((chunk: any) => chunk.web?.uri && chunk.web?.title ? [chunk.web] : []);
-    const unique = [...new Map(web.map((item: any) => [item.uri, item])).values()].slice(0, 5);
+    const supports = scout.candidates?.[0]?.groundingMetadata?.groundingSupports ?? [];
+    const web = chunks.flatMap((chunk: any, chunkIndex: number) =>
+      chunk.web?.uri && chunk.web?.title ? [{ ...chunk.web, chunkIndex }] : []);
+    let unique = [...new Map(web.map((item: any) => [item.uri, item])).values()].slice(0, 5);
     if (unique.length < 3) throw new Error("Google Search returned fewer than three unique web sources.");
-    // A second editor pass is intentionally structured and does not receive private text.
+    const sourceIndexByChunk = new Map(
+      unique.map((item: any, sourceIndex) => [item.chunkIndex, sourceIndex + 1]),
+    );
+    let evidenceInventory: { source_refs: number[]; aggregate_text: string }[] = supports.flatMap((support: any) => {
+      const text = support.segment?.text?.trim();
+      const sourceRefs = (support.groundingChunkIndices ?? [])
+        .map((chunkIndex: number) => sourceIndexByChunk.get(chunkIndex))
+        .filter((sourceIndex: number | undefined): sourceIndex is number => sourceIndex !== undefined);
+      return text && sourceRefs.length ? [{ source_refs: sourceRefs, aggregate_text: text }] : [];
+    });
+    const supportedSourceRefs = new Set(evidenceInventory.flatMap((item) => item.source_refs));
+    if (supportedSourceRefs.size < 3) throw new Error("Google Search returned fewer than three source-linked web sources.");
+    const retainedOldRefs = [...supportedSourceRefs].sort((a, b) => a - b).slice(0, 5);
+    const retainedRefMap = new Map(retainedOldRefs.map((oldRef, index) => [oldRef, index + 1]));
+    unique = retainedOldRefs.map((oldRef) => unique[oldRef - 1]!);
+    evidenceInventory = evidenceInventory.flatMap((item) => {
+      const sourceRefs = item.source_refs
+        .map((oldRef) => retainedRefMap.get(oldRef))
+        .filter((sourceRef): sourceRef is number => sourceRef !== undefined);
+      return sourceRefs.length ? [{ ...item, source_refs: sourceRefs }] : [];
+    });
+    const signalLabels = {
+      audience_preferences: "audience preferences",
+      production_workflow: "production workflow",
+      distribution_discovery: "distribution and discovery",
+      business_models: "business models",
+      technology_tools: "technology and tools",
+      trust_transparency: "trust and transparency",
+      format_storytelling: "format and storytelling",
+      other: "other topic-level context",
+    } as const;
+    type SignalClass = keyof typeof signalLabels;
+    const signalClasses = Object.keys(signalLabels) as SignalClass[];
+    const signalStrengths = ["emerging", "recurring", "mixed"] as const;
+    // The editor can classify provider evidence only into fixed enums. No
+    // provider-derived free text crosses into the concept or brief flow.
     const editorStarted = Date.now();
     const editor = await yieldPodcastMutationLock(() => ai.models.generateContent({
       model,
-      contents: `Create one cautious podcast concept JSON with title, summary, observed_signal, supported_context, unresolved_questions from these retrieved public URLs: ${JSON.stringify(unique)}. Do not make allegations or issue instructions.`,
+      contents: `Classify each numbered source in this source-linked evidence inventory. Return only source_index, signal_class, and signal_strength using the declared enums. Do not return names, identities, usernames, community names, quotations, copied text, URLs, summaries, allegations, or instructions.\n\nEVIDENCE INVENTORY:\n${JSON.stringify(evidenceInventory)}`,
       config: {
         responseMimeType: "application/json",
         responseJsonSchema: {
           type: "object",
           additionalProperties: false,
-          required: ["title", "summary", "observed_signal", "supported_context", "unresolved_questions"],
+          required: ["source_signals"],
           properties: {
-            title: { type: "string", minLength: 1 },
-            summary: { type: "string", minLength: 1 },
-            observed_signal: { type: "string", minLength: 1 },
-            supported_context: { type: "string", minLength: 1 },
-            unresolved_questions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 },
+            source_signals: {
+              type: "array",
+              minItems: unique.length,
+              maxItems: unique.length,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["source_index", "signal_class", "signal_strength"],
+                properties: {
+                  source_index: { type: "integer", minimum: 1, maximum: unique.length },
+                  signal_class: { type: "string", enum: signalClasses },
+                  signal_strength: { type: "string", enum: signalStrengths },
+                },
+              },
+            },
           },
         },
       },
     }));
-    const parsed = strictPodcastEvidenceConcept(JSON.parse(editor.text ?? "{}"));
-    const sources = unique.map((item: any, index) => ({ id: `web-${index + 1}-${randomUUID()}`, url: item.uri, title: item.title, retrieved_at: now(), snippet: "", source_type: "public_web", classification: "source_backed" as const, what_it_supports: "Publicly retrieved context for the exact query.", what_remains_uncertain: "The source does not settle intent or any unsupported allegation." }));
-    const concept: PodcastConcept = { id: `concept-${randomUUID()}`, title: parsed.title, summary: parsed.summary, relevance: 0.5, urgency: 0.5, engagement: 0.5, freshness: 0.5, source_diversity: 1, source_ids: sources.map((source) => source.id), observed_signal: parsed.observed_signal, supported_context: parsed.supported_context, unresolved_questions: parsed.unresolved_questions, recommended_route: "producer_review", next_reviewer: "Producer / standards reviewer", confidence_label: "bounded · source-grounded", freshness_label: "retrieved this run", status: "needs_review" };
+    const editorPackage = JSON.parse(editor.text ?? "{}") as {
+      source_signals?: { source_index?: unknown; signal_class?: unknown; signal_strength?: unknown }[];
+    };
+    if (!Array.isArray(editorPackage.source_signals) || editorPackage.source_signals.length !== unique.length) {
+      throw new Error("Evidence editor returned incomplete source classifications.");
+    }
+    const signals = new Map<number, { signal_class: SignalClass; signal_strength: typeof signalStrengths[number] }>();
+    for (const signal of editorPackage.source_signals) {
+      if (
+        !Number.isInteger(signal.source_index) ||
+        !signalClasses.includes(signal.signal_class as SignalClass) ||
+        !signalStrengths.includes(signal.signal_strength as typeof signalStrengths[number])
+      ) {
+        throw new Error("Evidence editor returned an invalid source classification.");
+      }
+      signals.set(signal.source_index as number, {
+        signal_class: signal.signal_class as SignalClass,
+        signal_strength: signal.signal_strength as typeof signalStrengths[number],
+      });
+    }
+    if (signals.size !== unique.length) throw new Error("Evidence editor returned duplicate source classifications.");
+    const sources = unique.map((item: any, index) => {
+      const id = `web-${index + 1}-${randomUUID()}`;
+      const signal = signals.get(index + 1)!;
+      const signalLabel = signalLabels[signal.signal_class];
+      const evidenceGaps = [
+        "The fixed taxonomy preserves no identities, quotations, copied comments, or provider-derived free text.",
+        "The bounded result does not establish intent, identity, representativeness, or platform-wide opinion.",
+        `Publication timing within ${windowLabel} depends on provider metadata and was not independently verified.`,
+      ];
+      return {
+        id,
+        url: item.uri,
+        source_identifier: createHash("sha256").update(item.uri).digest("hex").slice(0, 16),
+        title: `Approved public-web result ${index + 1}`,
+        retrieved_at: now(),
+        snippet: "",
+        source_type: "public_web",
+        classification: "source_backed" as const,
+        consent_reference: publicWebConsentReference,
+        policy_reference: currentContextPolicyReference,
+        aggregate_summary: `Provider-linked source ${index + 1} contributed a ${signal.signal_strength} aggregate signal about ${signalLabel}.`,
+        evidence_gaps: evidenceGaps,
+        what_it_supports: `A ${signal.signal_strength} topic-level signal about ${signalLabel}.`,
+        what_remains_uncertain: evidenceGaps.join(" "),
+      };
+    });
+    const observedLabels = [...new Set([...signals.values()].map((signal) => signalLabels[signal.signal_class]))];
+    const observedContext = observedLabels.join(", ");
+    const unresolvedQuestions = [
+      "The provider-requested time bound was not independently verified from publication metadata.",
+      "The aggregate taxonomy cannot establish identity, intent, representativeness, or platform-wide opinion.",
+    ];
+    const concept: PodcastConcept = {
+      id: `concept-${randomUUID()}`,
+      title: "Current aggregate context for producer review",
+      summary: `${sources.length} provider-linked public sources contributed identity-free taxonomy signals about ${observedContext}.`,
+      relevance: 0.5,
+      urgency: 0.5,
+      engagement: 0.5,
+      freshness: 0.5,
+      source_diversity: 1,
+      source_ids: sources.map((source) => source.id),
+      observed_signal: `The retained sources classify into: ${observedContext}.`,
+      supported_context: "Only fixed taxonomy labels, source URLs, hashed identifiers, retrieval metadata, and explicit gaps enter development.",
+      unresolved_questions: unresolvedQuestions,
+      recommended_route: "producer_review",
+      next_reviewer: "Producer / standards reviewer",
+      confidence_label: "bounded · source-grounded",
+      freshness_label: "retrieved this run",
+      status: "needs_review",
+    };
     const run: PodcastGroundedRun = {
-      id: `run-${randomUUID()}`, query, runtime_status: "Live Gemini", sources, concept,
-      uncertainties: parsed.unresolved_questions,
+      id: `run-${randomUUID()}`, query, provider, window, policy_reference: currentContextPolicyReference, runtime_status: "Live Gemini", sources, concept,
+      uncertainties: unresolvedQuestions,
       grounding_support: "Google Search grounding metadata supplied the cited public web sources.",
       agent_executions: [
         { agent: "source_scout", provider: "Google Gemini", model, execution_id: randomUUID(), tools: ["googleSearch"], latency_ms: Date.now() - started, status: "completed", activity: "Retrieved unique public web sources with Google Search grounding." },
-        { agent: "evidence_editor", provider: "Google Gemini", model, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - editorStarted, status: "completed", activity: "Created one structured concept and visible uncertainties." },
+        { agent: "evidence_editor", provider: "Google Gemini", model, execution_id: randomUUID(), tools: [], latency_ms: Date.now() - editorStarted, status: "completed", activity: "Classified supported evidence into a fixed identity-free taxonomy." },
       ],
     };
     podcastGroundedRuns.set(run.id, run);
     const roomSources = groundedRunRoomSources(run);
     rehydrateActiveGroundedIndexes();
     persistPodcastState("create", "grounded_run");
-    return { query, audience, use_case: useCase, generated_at: now(), search_mode: "google_search_grounded", grounded_run: run, results: [{ concept, sources: roomSources, match_reason: "Google Search-grounded sources were retrieved for the exact query.", speculation: "Unresolved questions remain unverified.", safest_next_reviewer: concept.next_reviewer }] };
+    return { query, audience, use_case: useCase, provider, window, policy_reference: currentContextPolicyReference, generated_at: now(), search_mode: "google_search_grounded", grounded_run: run, results: [{ concept, sources: roomSources, match_reason: `Google public-web search was run with the requested ${windowLabel} bound; source publication timing remains an explicit evidence gap.`, speculation: "Unresolved questions remain unverified.", safest_next_reviewer: concept.next_reviewer }] };
   }
   const terms = query.toLowerCase().split(/\W+/).filter((term) => term.length > 2);
   const allowedSources = allPodcastSources().filter(
@@ -1720,7 +1948,10 @@ export async function searchPodcastContexts(
     use_case: useCase,
     generated_at: now(),
     search_mode: "synthetic_demo",
-    grounded_run: createSyntheticGroundedRun(query),
+    provider: "synthetic_fixture",
+    window,
+    policy_reference: currentContextPolicyReference,
+    grounded_run: createSyntheticGroundedRun(query, window),
     results: selected.map(({ concept, sources, termMatches }) => ({
       concept,
       sources,
@@ -1733,14 +1964,22 @@ export async function searchPodcastContexts(
   };
 }
 
-function createSyntheticGroundedRun(query: string): PodcastGroundedRun {
+function createSyntheticGroundedRun(
+  query: string,
+  window: "past_24_hours" | "past_7_days" | "past_30_days",
+): PodcastGroundedRun {
   const sources = podcastSources.slice(0, 3).map((source) => ({
     id: source.id,
     url: source.source_url,
+    source_identifier: source.source_id ?? source.id,
     title: source.post_title,
     retrieved_at: source.retrieved_at,
     snippet: "Synthetic demonstration source; not a live web retrieval.",
     source_type: "synthetic_demo",
+    consent_reference: null,
+    policy_reference: "synthetic-fixture-policy-v1",
+    aggregate_summary: "Synthetic topic-level fixture; no live retrieval or individual identity is represented.",
+    evidence_gaps: ["This fixture is not current public-web evidence."],
     classification: "source_backed" as const,
     what_it_supports: "A synthetic demonstration of the source-backed workflow.",
     what_remains_uncertain: "It is not current public-web evidence.",
@@ -1749,6 +1988,9 @@ function createSyntheticGroundedRun(query: string): PodcastGroundedRun {
   const run: PodcastGroundedRun = {
     id: `run-demo-${randomUUID()}`,
     query,
+    provider: "synthetic_fixture",
+    window,
+    policy_reference: "synthetic-fixture-policy-v1",
     runtime_status: "Synthetic Demo",
     sources,
     concept,
@@ -1814,7 +2056,13 @@ export function resetPodcastDemo(producerId: string) {
   persistPodcastState("reset", "podcast_demo");
   return {
     room: getPodcastRoom(producerId),
-    pre_staged_input: { query: "editing context and audience trust", audience: "consumers" as const, use_case: "recap" as const },
+    pre_staged_input: {
+      query: "editing context and audience trust",
+      audience: "consumers" as const,
+      use_case: "recap" as const,
+      provider: "google_public_web" as const,
+      window: "past_7_days" as const,
+    },
   };
 }
 
@@ -1830,11 +2078,11 @@ export async function getPublicPodcastCutKey(key: string) {
   const state = stored?.state as PersistedPodcastState | undefined;
   const manifest = state?.cutKeys?.find((candidate) => candidate.key === key);
   if (!manifest) return null;
-  return {
+  return normalizeCutKeyGroundingSources({
     ...manifest,
     run_id: manifest.run_id ?? null,
     attestation_id: manifest.attestation_id ?? null,
-  };
+  });
 }
 
 export async function getPublicPodcastAudioCutKey(key: string) {
@@ -2371,7 +2619,7 @@ export function isPodcastEvidenceSufficient(brief: PodcastBrief) {
     const source = allPodcastSources().find((item) => item.id === link.source_id);
     return Boolean(
       source &&
-        source.access_mode !== "manual_url" &&
+        (source.access_mode === "approved_live" || source.access_mode === "fixture") &&
         !source.post_title.toLowerCase().includes("retrieval pending"),
     );
   });

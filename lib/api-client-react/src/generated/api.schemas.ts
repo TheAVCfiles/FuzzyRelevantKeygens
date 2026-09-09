@@ -291,6 +291,7 @@ export type PodcastSourceAccessMode = typeof PodcastSourceAccessMode[keyof typeo
 
 export const PodcastSourceAccessMode = {
   fixture: 'fixture',
+  approved_live: 'approved_live',
   public_url: 'public_url',
   manual_url: 'manual_url',
 } as const;
@@ -309,6 +310,11 @@ export interface PodcastSource {
   access_mode: PodcastSourceAccessMode;
   source_class?: string;
   evidence_type?: string;
+  /** @nullable */
+  consent_reference?: string | null;
+  /** @nullable */
+  policy_reference?: string | null;
+  evidence_gaps?: string[];
 }
 
 export type PodcastConceptStatus = typeof PodcastConceptStatus[keyof typeof PodcastConceptStatus];
@@ -631,6 +637,22 @@ export const PodcastContextSearchInputUseCase = {
   cultural_context: 'cultural_context',
 } as const;
 
+export type PodcastContextSearchInputProvider = typeof PodcastContextSearchInputProvider[keyof typeof PodcastContextSearchInputProvider];
+
+
+export const PodcastContextSearchInputProvider = {
+  google_public_web: 'google_public_web',
+} as const;
+
+export type PodcastContextSearchInputWindow = typeof PodcastContextSearchInputWindow[keyof typeof PodcastContextSearchInputWindow];
+
+
+export const PodcastContextSearchInputWindow = {
+  past_24_hours: 'past_24_hours',
+  past_7_days: 'past_7_days',
+  past_30_days: 'past_30_days',
+} as const;
+
 export interface PodcastContextSearchInput {
   /**
      * @minLength 2
@@ -639,8 +661,27 @@ export interface PodcastContextSearchInput {
   query: string;
   audience: PodcastContextSearchInputAudience;
   use_case: PodcastContextSearchInputUseCase;
+  provider: PodcastContextSearchInputProvider;
+  window: PodcastContextSearchInputWindow;
   source_classes?: string[];
 }
+
+export type PodcastContextSearchResponseProvider = typeof PodcastContextSearchResponseProvider[keyof typeof PodcastContextSearchResponseProvider];
+
+
+export const PodcastContextSearchResponseProvider = {
+  google_public_web: 'google_public_web',
+  synthetic_fixture: 'synthetic_fixture',
+} as const;
+
+export type PodcastContextSearchResponseWindow = typeof PodcastContextSearchResponseWindow[keyof typeof PodcastContextSearchResponseWindow];
+
+
+export const PodcastContextSearchResponseWindow = {
+  past_24_hours: 'past_24_hours',
+  past_7_days: 'past_7_days',
+  past_30_days: 'past_30_days',
+} as const;
 
 export type PodcastContextSearchResponseSearchMode = typeof PodcastContextSearchResponseSearchMode[keyof typeof PodcastContextSearchResponseSearchMode];
 
@@ -657,6 +698,25 @@ export type PodcastContextSearchResponseResultsItem = {
   speculation: string;
   safest_next_reviewer: string;
 };
+
+export type PodcastGroundedRunProvider = typeof PodcastGroundedRunProvider[keyof typeof PodcastGroundedRunProvider];
+
+
+export const PodcastGroundedRunProvider = {
+  google_public_web: 'google_public_web',
+  synthetic_fixture: 'synthetic_fixture',
+  legacy_unverified: 'legacy_unverified',
+} as const;
+
+export type PodcastGroundedRunWindow = typeof PodcastGroundedRunWindow[keyof typeof PodcastGroundedRunWindow];
+
+
+export const PodcastGroundedRunWindow = {
+  past_24_hours: 'past_24_hours',
+  past_7_days: 'past_7_days',
+  past_30_days: 'past_30_days',
+  not_recorded: 'not_recorded',
+} as const;
 
 export type PodcastGroundedRunRuntimeStatus = typeof PodcastGroundedRunRuntimeStatus[keyof typeof PodcastGroundedRunRuntimeStatus];
 
@@ -680,10 +740,17 @@ export const PodcastGroundingSourceClassification = {
 export interface PodcastGroundingSource {
   id: string;
   url: string;
+  source_identifier: string;
   title: string;
   retrieved_at: string;
   snippet?: string;
   source_type: string;
+  /** @nullable */
+  consent_reference: string | null;
+  policy_reference: string;
+  aggregate_summary: string;
+  /** @minItems 1 */
+  evidence_gaps: string[];
   classification: PodcastGroundingSourceClassification;
   what_it_supports: string;
   what_remains_uncertain: string;
@@ -723,6 +790,9 @@ export interface PodcastAgentExecution {
 export interface PodcastGroundedRun {
   id: string;
   query: string;
+  provider: PodcastGroundedRunProvider;
+  window: PodcastGroundedRunWindow;
+  policy_reference: string;
   runtime_status: PodcastGroundedRunRuntimeStatus;
   /**
      * @minItems 3
@@ -741,6 +811,9 @@ export interface PodcastContextSearchResponse {
   query: string;
   audience: string;
   use_case: string;
+  provider: PodcastContextSearchResponseProvider;
+  window: PodcastContextSearchResponseWindow;
+  policy_reference: string;
   generated_at: string;
   search_mode: PodcastContextSearchResponseSearchMode;
   grounded_run: PodcastGroundedRun;

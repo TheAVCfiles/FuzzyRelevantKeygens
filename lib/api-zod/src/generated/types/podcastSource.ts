@@ -22,4 +22,9 @@ export interface PodcastSource {
   access_mode: PodcastSourceAccessMode;
   source_class?: string;
   evidence_type?: string;
+  /** @nullable */
+  consent_reference?: string | null;
+  /** @nullable */
+  policy_reference?: string | null;
+  evidence_gaps?: string[];
 }

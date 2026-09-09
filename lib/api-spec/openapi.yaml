@@ -116,8 +116,8 @@ paths:
     post:
       operationId: searchPodcastContexts
       tags: [autography]
-      summary: Search the curated entertainment context desk
-      description: Returns ranked, source-backed context packages. It does not scrape, identify people, or create production artifacts.
+      summary: Search an explicitly approved current-context provider
+      description: Returns a bounded, aggregate-only context package from an approved provider. It does not scrape autonomously, expose identities, copy comments, or create production artifacts.
       requestBody:
         required: true
         content:
@@ -973,9 +973,14 @@ components:
         source_id: { type: ["string", "null"] }
         access_mode:
           type: string
-          enum: [fixture, public_url, manual_url]
+          enum: [fixture, approved_live, public_url, manual_url]
         source_class: { type: string }
         evidence_type: { type: string }
+        consent_reference: { type: ["string", "null"] }
+        policy_reference: { type: ["string", "null"] }
+        evidence_gaps:
+          type: array
+          items: { type: string }
     PodcastConcept:
       type: object
       required: [id, title, summary, relevance, urgency, engagement, freshness, source_diversity, source_ids, status, observed_signal, supported_context, unresolved_questions, recommended_route, next_reviewer, confidence_label, freshness_label]
@@ -1209,7 +1214,7 @@ components:
         format_id: { type: string }
     PodcastContextSearchInput:
       type: object
-      required: [query, audience, use_case]
+      required: [query, audience, use_case, provider, window]
       properties:
         query: { type: string, minLength: 2, maxLength: 240 }
         audience:
@@ -1218,16 +1223,29 @@ components:
         use_case:
           type: string
           enum: [recap, development, publicity, audience_strategy, cultural_context]
+        provider:
+          type: string
+          enum: [google_public_web]
+        window:
+          type: string
+          enum: [past_24_hours, past_7_days, past_30_days]
         source_classes:
           type: array
           items: { type: string }
     PodcastContextSearchResponse:
       type: object
-      required: [query, audience, use_case, generated_at, search_mode, results, grounded_run]
+      required: [query, audience, use_case, provider, window, policy_reference, generated_at, search_mode, results, grounded_run]
       properties:
         query: { type: string }
         audience: { type: string }
         use_case: { type: string }
+        provider:
+          type: string
+          enum: [google_public_web, synthetic_fixture]
+        window:
+          type: string
+          enum: [past_24_hours, past_7_days, past_30_days]
+        policy_reference: { type: string }
         generated_at: { type: string }
         search_mode:
           type: string
@@ -1505,14 +1523,22 @@ components:
         activity: { type: string }
     PodcastGroundingSource:
       type: object
-      required: [id, url, title, retrieved_at, source_type, classification, what_it_supports, what_remains_uncertain]
+      required: [id, url, source_identifier, title, retrieved_at, source_type, classification, consent_reference, policy_reference, aggregate_summary, evidence_gaps, what_it_supports, what_remains_uncertain]
       properties:
         id: { type: string }
         url: { type: string }
+        source_identifier: { type: string }
         title: { type: string }
         retrieved_at: { type: string }
         snippet: { type: string }
         source_type: { type: string }
+        consent_reference: { type: ["string", "null"] }
+        policy_reference: { type: string }
+        aggregate_summary: { type: string }
+        evidence_gaps:
+          type: array
+          minItems: 1
+          items: { type: string }
         classification:
           type: string
           enum: [source_backed, first_party_attested, disputed, unresolved]
@@ -1520,10 +1546,17 @@ components:
         what_remains_uncertain: { type: string }
     PodcastGroundedRun:
       type: object
-      required: [id, query, runtime_status, sources, concept, uncertainties, agent_executions, grounding_support]
+      required: [id, query, provider, window, policy_reference, runtime_status, sources, concept, uncertainties, agent_executions, grounding_support]
       properties:
         id: { type: string }
         query: { type: string }
+        provider:
+          type: string
+          enum: [google_public_web, synthetic_fixture, legacy_unverified]
+        window:
+          type: string
+          enum: [past_24_hours, past_7_days, past_30_days, not_recorded]
+        policy_reference: { type: string }
         runtime_status:
           type: string
           enum: [Live Gemini, Synthetic Demo, Failed]

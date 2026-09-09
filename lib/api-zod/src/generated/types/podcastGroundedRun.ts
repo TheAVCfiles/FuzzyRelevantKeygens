@@ -7,12 +7,17 @@
  */
 import type { PodcastAgentExecution } from './podcastAgentExecution';
 import type { PodcastConcept } from './podcastConcept';
+import type { PodcastGroundedRunProvider } from './podcastGroundedRunProvider';
 import type { PodcastGroundedRunRuntimeStatus } from './podcastGroundedRunRuntimeStatus';
+import type { PodcastGroundedRunWindow } from './podcastGroundedRunWindow';
 import type { PodcastGroundingSource } from './podcastGroundingSource';
 
 export interface PodcastGroundedRun {
   id: string;
   query: string;
+  provider: PodcastGroundedRunProvider;
+  window: PodcastGroundedRunWindow;
+  policy_reference: string;
   runtime_status: PodcastGroundedRunRuntimeStatus;
   /**
      * @minItems 3

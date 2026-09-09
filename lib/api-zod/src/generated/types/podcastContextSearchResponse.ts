@@ -5,14 +5,19 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PodcastContextSearchResponseProvider } from './podcastContextSearchResponseProvider';
 import type { PodcastContextSearchResponseResultsItem } from './podcastContextSearchResponseResultsItem';
 import type { PodcastContextSearchResponseSearchMode } from './podcastContextSearchResponseSearchMode';
+import type { PodcastContextSearchResponseWindow } from './podcastContextSearchResponseWindow';
 import type { PodcastGroundedRun } from './podcastGroundedRun';
 
 export interface PodcastContextSearchResponse {
   query: string;
   audience: string;
   use_case: string;
+  provider: PodcastContextSearchResponseProvider;
+  window: PodcastContextSearchResponseWindow;
+  policy_reference: string;
   generated_at: string;
   search_mode: PodcastContextSearchResponseSearchMode;
   grounded_run: PodcastGroundedRun;

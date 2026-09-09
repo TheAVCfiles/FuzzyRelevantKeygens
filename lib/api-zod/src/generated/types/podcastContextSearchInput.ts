@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { PodcastContextSearchInputAudience } from './podcastContextSearchInputAudience';
+import type { PodcastContextSearchInputProvider } from './podcastContextSearchInputProvider';
 import type { PodcastContextSearchInputUseCase } from './podcastContextSearchInputUseCase';
+import type { PodcastContextSearchInputWindow } from './podcastContextSearchInputWindow';
 
 export interface PodcastContextSearchInput {
   /**
@@ -16,5 +18,7 @@ export interface PodcastContextSearchInput {
   query: string;
   audience: PodcastContextSearchInputAudience;
   use_case: PodcastContextSearchInputUseCase;
+  provider: PodcastContextSearchInputProvider;
+  window: PodcastContextSearchInputWindow;
   source_classes?: string[];
 }

@@ -11,6 +11,7 @@ export type PodcastSourceAccessMode = typeof PodcastSourceAccessMode[keyof typeo
 
 export const PodcastSourceAccessMode = {
   fixture: 'fixture',
+  approved_live: 'approved_live',
   public_url: 'public_url',
   manual_url: 'manual_url',
 } as const;

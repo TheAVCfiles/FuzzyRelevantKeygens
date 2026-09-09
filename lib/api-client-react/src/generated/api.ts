@@ -563,8 +563,8 @@ export const getSearchPodcastContextsUrl = () => {
 }
 
 /**
- * Returns ranked, source-backed context packages. It does not scrape, identify people, or create production artifacts.
- * @summary Search the curated entertainment context desk
+ * Returns a bounded, aggregate-only context package from an approved provider. It does not scrape autonomously, expose identities, copy comments, or create production artifacts.
+ * @summary Search an explicitly approved current-context provider
  */
 export const searchPodcastContexts = async (podcastContextSearchInput: PodcastContextSearchInput, options?: Parameters<typeof customFetch>[1]): Promise<PodcastContextSearchResponse> => {
 
@@ -613,7 +613,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SearchPodcastContextsMutationError = ErrorType<unknown>
 
     /**
- * @summary Search the curated entertainment context desk
+ * @summary Search an explicitly approved current-context provider
  */
 export const useSearchPodcastContexts = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof searchPodcastContexts>>, TError,{data: BodyType<PodcastContextSearchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

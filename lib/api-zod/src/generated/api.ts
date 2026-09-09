@@ -145,6 +145,7 @@ export const ingestLiveObservationsBodyObservationsItemTextMax = 2000;
 export const ingestLiveObservationsBodyObservationsMax = 100;
 
 
+
 export const IngestLiveObservationsBody = zod.object({
   "source_id": zod.enum(['consented-newsroom-v1']),
   "source_class": zod.enum(['consented_newsroom']),
@@ -266,6 +267,7 @@ export const IngestLiveObservationsResponse = zod.object({
  */
 
 
+
 export const GetPodcastRoomResponse = zod.object({
   "sources": zod.array(zod.object({
   "id": zod.string(),
@@ -280,9 +282,12 @@ export const GetPodcastRoomResponse = zod.object({
   "comments": zod.number()
 }),
   "source_id": zod.string().nullable(),
-  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url']),
+  "access_mode": zod.enum(['fixture', 'approved_live', 'public_url', 'manual_url']),
   "source_class": zod.string().optional(),
-  "evidence_type": zod.string().optional()
+  "evidence_type": zod.string().optional(),
+  "consent_reference": zod.string().nullish(),
+  "policy_reference": zod.string().nullish(),
+  "evidence_gaps": zod.array(zod.string()).optional()
 })),
   "concepts": zod.array(zod.object({
   "id": zod.string(),
@@ -332,6 +337,8 @@ export const AddPodcastSourceBody = zod.object({
 })
 
 
+
+
 export const AddPodcastSourceResponse = zod.object({
   "sources": zod.array(zod.object({
   "id": zod.string(),
@@ -346,9 +353,12 @@ export const AddPodcastSourceResponse = zod.object({
   "comments": zod.number()
 }),
   "source_id": zod.string().nullable(),
-  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url']),
+  "access_mode": zod.enum(['fixture', 'approved_live', 'public_url', 'manual_url']),
   "source_class": zod.string().optional(),
-  "evidence_type": zod.string().optional()
+  "evidence_type": zod.string().optional(),
+  "consent_reference": zod.string().nullish(),
+  "policy_reference": zod.string().nullish(),
+  "evidence_gaps": zod.array(zod.string()).optional()
 })),
   "concepts": zod.array(zod.object({
   "id": zod.string(),
@@ -391,44 +401,62 @@ export const AddPodcastSourceResponse = zod.object({
 
 
 /**
- * Returns ranked, source-backed context packages. It does not scrape, identify people, or create production artifacts.
- * @summary Search the curated entertainment context desk
+ * Returns a bounded, aggregate-only context package from an approved provider. It does not scrape autonomously, expose identities, copy comments, or create production artifacts.
+ * @summary Search an explicitly approved current-context provider
  */
 export const searchPodcastContextsBodyQueryMin = 2;
 export const searchPodcastContextsBodyQueryMax = 240;
+
 
 
 export const SearchPodcastContextsBody = zod.object({
   "query": zod.string().min(searchPodcastContextsBodyQueryMin).max(searchPodcastContextsBodyQueryMax),
   "audience": zod.enum(['consumers', 'clients', 'users']),
   "use_case": zod.enum(['recap', 'development', 'publicity', 'audience_strategy', 'cultural_context']),
+  "provider": zod.enum(['google_public_web']),
+  "window": zod.enum(['past_24_hours', 'past_7_days', 'past_30_days']),
   "source_classes": zod.array(zod.string()).optional()
 })
+
 
 export const searchPodcastContextsResponseGroundedRunSourcesMin = 3;
 export const searchPodcastContextsResponseGroundedRunSourcesMax = 5;
 
 
+
 export const searchPodcastContextsResponseGroundedRunAgentExecutionsMin = 2;
+
+
 
 
 export const SearchPodcastContextsResponse = zod.object({
   "query": zod.string(),
   "audience": zod.string(),
   "use_case": zod.string(),
+  "provider": zod.enum(['google_public_web', 'synthetic_fixture']),
+  "window": zod.enum(['past_24_hours', 'past_7_days', 'past_30_days']),
+  "policy_reference": zod.string(),
   "generated_at": zod.string(),
   "search_mode": zod.enum(['google_search_grounded', 'synthetic_demo']),
   "grounded_run": zod.object({
   "id": zod.string(),
   "query": zod.string(),
+  "provider": zod.enum(['google_public_web', 'synthetic_fixture', 'legacy_unverified']),
+  "window": zod.enum(['past_24_hours', 'past_7_days', 'past_30_days', 'not_recorded']),
+  "policy_reference": zod.string(),
   "runtime_status": zod.enum(['Live Gemini', 'Synthetic Demo', 'Failed']),
   "sources": zod.array(zod.object({
   "id": zod.string(),
   "url": zod.string(),
+  "source_identifier": zod.string(),
   "title": zod.string(),
   "retrieved_at": zod.string(),
   "snippet": zod.string().optional(),
   "source_type": zod.string(),
+  "consent_reference": zod.string().nullable(),
+  "policy_reference": zod.string(),
+  "aggregate_summary": zod.string(),
+  "evidence_gaps": zod.array(zod.string()).min(1),
   "classification": zod.enum(['source_backed', 'first_party_attested', 'disputed', 'unresolved']),
   "what_it_supports": zod.string(),
   "what_remains_uncertain": zod.string()
@@ -498,9 +526,12 @@ export const SearchPodcastContextsResponse = zod.object({
   "comments": zod.number()
 }),
   "source_id": zod.string().nullable(),
-  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url']),
+  "access_mode": zod.enum(['fixture', 'approved_live', 'public_url', 'manual_url']),
   "source_class": zod.string().optional(),
-  "evidence_type": zod.string().optional()
+  "evidence_type": zod.string().optional(),
+  "consent_reference": zod.string().nullish(),
+  "policy_reference": zod.string().nullish(),
+  "evidence_gaps": zod.array(zod.string()).optional()
 })),
   "match_reason": zod.string(),
   "speculation": zod.string(),
@@ -515,6 +546,10 @@ export const SearchPodcastContextsResponse = zod.object({
 export const AttestPodcastCuttingRoomParams = zod.object({
   "id": zod.coerce.string()
 })
+
+
+
+
 
 
 export const AttestPodcastCuttingRoomBody = zod.object({
@@ -565,12 +600,15 @@ export const GetPodcastLiveSnapshotResponse = zod.object({
  */
 
 
+
 export const CreatePodcastDevelopmentBody = zod.object({
   "concept_id": zod.string(),
   "source_ids": zod.array(zod.string()).min(1),
   "audience": zod.enum(['consumers', 'clients', 'users']),
   "use_case": zod.enum(['recap', 'development', 'publicity', 'audience_strategy', 'cultural_context'])
 })
+
+
 
 
 export const createPodcastDevelopmentResponseFormatVariantsItemSegmentSpineMin = 3;
@@ -580,6 +618,7 @@ export const createPodcastDevelopmentResponseFormatVariantsItemMethodologyFactor
 export const createPodcastDevelopmentResponseFormatVariantsItemMethodologyFactorsItemScoreMax = 100;
 
 export const createPodcastDevelopmentResponseFormatVariantsMin = 2;
+
 
 
 export const CreatePodcastDevelopmentResponse = zod.object({
@@ -675,6 +714,8 @@ export const RecordPodcastDevelopmentValidationBody = zod.object({
 })
 
 
+
+
 export const recordPodcastDevelopmentValidationResponseFormatVariantsItemSegmentSpineMin = 3;
 
 
@@ -682,6 +723,7 @@ export const recordPodcastDevelopmentValidationResponseFormatVariantsItemMethodo
 export const recordPodcastDevelopmentValidationResponseFormatVariantsItemMethodologyFactorsItemScoreMax = 100;
 
 export const recordPodcastDevelopmentValidationResponseFormatVariantsMin = 2;
+
 
 
 export const RecordPodcastDevelopmentValidationResponse = zod.object({
@@ -768,6 +810,7 @@ export const RecordPodcastDevelopmentValidationResponse = zod.object({
  */
 
 
+
 export const CreatePodcastFilterPresetBody = zod.object({
   "name": zod.string().min(1),
   "platforms": zod.array(zod.string()),
@@ -789,6 +832,8 @@ export const CreatePodcastFilterPresetResponse = zod.object({
 export const RenamePodcastFilterPresetParams = zod.object({
   "id": zod.coerce.string()
 })
+
+
 
 
 export const RenamePodcastFilterPresetBody = zod.object({
@@ -820,6 +865,7 @@ export const DeletePodcastFilterPresetResponse = zod.void()
  */
 
 
+
 export const GeneratePodcastBriefBody = zod.object({
   "concept_id": zod.string(),
   "source_ids": zod.array(zod.string()).min(1).describe('Source IDs currently visible in the producer\'s comparison selection.'),
@@ -832,6 +878,7 @@ export const generatePodcastBriefResponseSelectedFormatSegmentSpineMin = 3;
 
 export const generatePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMin = 0;
 export const generatePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMax = 100;
+
 
 
 export const GeneratePodcastBriefResponse = zod.object({
@@ -917,6 +964,7 @@ export const decidePodcastBriefResponseSelectedFormatSegmentSpineMin = 3;
 
 export const decidePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMin = 0;
 export const decidePodcastBriefResponseSelectedFormatMethodologyFactorsItemScoreMax = 100;
+
 
 
 export const DecidePodcastBriefResponse = zod.object({
@@ -1461,6 +1509,7 @@ export const resetPodcastDemoResponsePreStagedInputQueryMin = 2;
 export const resetPodcastDemoResponsePreStagedInputQueryMax = 240;
 
 
+
 export const ResetPodcastDemoResponse = zod.object({
   "room": zod.object({
   "sources": zod.array(zod.object({
@@ -1476,9 +1525,12 @@ export const ResetPodcastDemoResponse = zod.object({
   "comments": zod.number()
 }),
   "source_id": zod.string().nullable(),
-  "access_mode": zod.enum(['fixture', 'public_url', 'manual_url']),
+  "access_mode": zod.enum(['fixture', 'approved_live', 'public_url', 'manual_url']),
   "source_class": zod.string().optional(),
-  "evidence_type": zod.string().optional()
+  "evidence_type": zod.string().optional(),
+  "consent_reference": zod.string().nullish(),
+  "policy_reference": zod.string().nullish(),
+  "evidence_gaps": zod.array(zod.string()).optional()
 })),
   "concepts": zod.array(zod.object({
   "id": zod.string(),
@@ -1522,6 +1574,8 @@ export const ResetPodcastDemoResponse = zod.object({
   "query": zod.string().min(resetPodcastDemoResponsePreStagedInputQueryMin).max(resetPodcastDemoResponsePreStagedInputQueryMax),
   "audience": zod.enum(['consumers', 'clients', 'users']),
   "use_case": zod.enum(['recap', 'development', 'publicity', 'audience_strategy', 'cultural_context']),
+  "provider": zod.enum(['google_public_web']),
+  "window": zod.enum(['past_24_hours', 'past_7_days', 'past_30_days']),
   "source_classes": zod.array(zod.string()).optional()
 })
 })
@@ -1534,8 +1588,10 @@ export const GetPodcastCutKeyParams = zod.object({
   "key": zod.coerce.string()
 })
 
+
 export const getPodcastCutKeyResponseApprovalReceiptsMin = 4;
 export const getPodcastCutKeyResponseApprovalReceiptsMax = 4;
+
 
 
 export const GetPodcastCutKeyResponse = zod.object({
@@ -1547,10 +1603,15 @@ export const GetPodcastCutKeyResponse = zod.object({
   "citations": zod.array(zod.object({
   "id": zod.string(),
   "url": zod.string(),
+  "source_identifier": zod.string(),
   "title": zod.string(),
   "retrieved_at": zod.string(),
   "snippet": zod.string().optional(),
   "source_type": zod.string(),
+  "consent_reference": zod.string().nullable(),
+  "policy_reference": zod.string(),
+  "aggregate_summary": zod.string(),
+  "evidence_gaps": zod.array(zod.string()).min(1),
   "classification": zod.enum(['source_backed', 'first_party_attested', 'disputed', 'unresolved']),
   "what_it_supports": zod.string(),
   "what_remains_uncertain": zod.string()
@@ -1702,6 +1763,7 @@ export const GetPullRequestParams = zod.object({
 
 export const getPullRequestResponseMovesMin = 3;
 export const getPullRequestResponseMovesMax = 3;
+
 
 
 export const GetPullRequestResponse = zod.object({
@@ -1898,4 +1960,3 @@ export const GetReceiptsResponseItem = zod.object({
   "rule_fired": zod.string().nullable()
 })
 export const GetReceiptsResponse = zod.array(GetReceiptsResponseItem)
-
