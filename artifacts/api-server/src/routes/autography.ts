@@ -131,6 +131,9 @@ import {
 import { requirePodcastPersistenceReady } from "../lib/podcast-readiness";
 
 const router: IRouter = Router();
+const producerEmailAllowlist = new Set([
+  "avancura@globalavcsystems.com",
+]);
 
 router.use("/podcast", requirePodcastPersistenceReady);
 
@@ -230,11 +233,18 @@ function previewRoleModeEnabled() {
 export function principalFromVerifiedClerkUser(
   userId: string,
   publicMetadata: Record<string, unknown>,
+  verifiedPrimaryEmail?: string | null,
 ): AutographyPrincipal {
   const metadataRole = publicMetadata.autography_role;
-  const role = typeof metadataRole === "string" && rolePermissions[metadataRole as PilotRole]
-    ? metadataRole as PilotRole
-    : "viewer";
+  const normalizedEmail = verifiedPrimaryEmail?.trim().toLowerCase();
+  const allowlistedProducer = normalizedEmail
+    ? producerEmailAllowlist.has(normalizedEmail)
+    : false;
+  const role = allowlistedProducer
+    ? "producer"
+    : typeof metadataRole === "string" && rolePermissions[metadataRole as PilotRole]
+      ? metadataRole as PilotRole
+      : "viewer";
   return { role, reviewerId: userId, source: "verified_session" };
 }
 
@@ -250,9 +260,15 @@ async function requestedPrincipal(req: Request): Promise<AutographyPrincipal | n
   const auth = getAuth(req);
   if (auth.userId) {
     const user = await clerkClient.users.getUser(auth.userId);
+    const verifiedPrimaryEmail = user.emailAddresses.find(
+      (address) =>
+        address.id === user.primaryEmailAddressId &&
+        address.verification?.status === "verified",
+    )?.emailAddress;
     return principalFromVerifiedClerkUser(
       auth.userId,
       user.publicMetadata as Record<string, unknown>,
+      verifiedPrimaryEmail,
     );
   }
 

@@ -64,14 +64,33 @@ test("shared environments ignore caller-supplied producer headers", { concurrenc
   }
 });
 
-test("verified Clerk users require server-controlled producer metadata", { concurrency: false }, () => {
-  const viewer = principalFromVerifiedClerkUser("user_unassigned", {});
+test("verified Clerk users receive only server-controlled producer authority", { concurrency: false }, () => {
+  const viewer = principalFromVerifiedClerkUser(
+    "user_unassigned",
+    {},
+    "other-verified@example.com",
+  );
   assert.equal(viewer.role, "viewer");
   assert.equal(viewer.reviewerId, "user_unassigned");
+
+  const allowlistedProducer = principalFromVerifiedClerkUser(
+    "user_allowlisted",
+    {},
+    "AVANCURA@GLOBALAVCSYSTEMS.COM",
+  );
+  assert.equal(allowlistedProducer.role, "producer");
+  assert.equal(allowlistedProducer.reviewerId, "user_allowlisted");
+
+  const unverifiedAllowlistedAddress = principalFromVerifiedClerkUser(
+    "user_unverified_address",
+    {},
+  );
+  assert.equal(unverifiedAllowlistedAddress.role, "viewer");
 
   const producer = principalFromVerifiedClerkUser(
     "user_verified_producer",
     { autography_role: "producer" },
+    "metadata-producer@example.com",
   );
   assert.equal(producer.role, "producer");
   assert.equal(producer.reviewerId, "user_verified_producer");
