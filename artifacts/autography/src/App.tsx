@@ -31,6 +31,7 @@ import { Verify } from '@/pages/verify';
 import { Receipts } from '@/pages/receipts';
 import Podcast from '@/pages/podcast';
 import { CutKeyView } from '@/pages/cut';
+import { JudgeView } from '@/pages/judge';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -168,6 +169,10 @@ function PublicCutKeyRoute() {
   return <PublicRegistryRoute><CutKeyView /></PublicRegistryRoute>;
 }
 
+function PublicJudgeRoute() {
+  return <JudgeView />;
+}
+
 function SignInPage() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-[#100c0d] px-4">
@@ -230,6 +235,7 @@ function Router() {
       <Route path="/verify" component={PublicVerifyRoute} />
       <Route path="/drop/:id" component={PublicDropRoute} />
       <Route path="/cut/:key" component={PublicCutKeyRoute} />
+      <Route path="/judge" component={PublicJudgeRoute} />
       <Route path="/" component={HomeRoute} />
       <Route component={ProtectedRoutes} />
     </Switch>

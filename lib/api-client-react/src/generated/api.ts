@@ -2170,6 +2170,83 @@ export function useStreamPodcastCutKeyAudio<TData = Awaited<ReturnType<typeof st
 
 
 
+export const getGetPodcastJudgeManifestUrl = () => {
+
+
+
+
+  return `/api/podcast/judge-manifest`
+}
+
+/**
+ * @summary Get the newest active non-synthetic Cut Key manifest for the public judge walkthrough
+ */
+export const getPodcastJudgeManifest = async ( options?: Parameters<typeof customFetch>[1]): Promise<PodcastCutKey> => {
+
+  return customFetch<PodcastCutKey>(getGetPodcastJudgeManifestUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPodcastJudgeManifestQueryKey = () => {
+    return [
+    `/api/podcast/judge-manifest`
+    ] as const;
+    }
+
+
+export const getGetPodcastJudgeManifestQueryOptions = <TData = Awaited<ReturnType<typeof getPodcastJudgeManifest>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastJudgeManifest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPodcastJudgeManifestQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPodcastJudgeManifest>>> = ({ signal }) => getPodcastJudgeManifest({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPodcastJudgeManifest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPodcastJudgeManifestQueryResult = NonNullable<Awaited<ReturnType<typeof getPodcastJudgeManifest>>>
+export type GetPodcastJudgeManifestQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the newest active non-synthetic Cut Key manifest for the public judge walkthrough
+ */
+
+export function useGetPodcastJudgeManifest<TData = Awaited<ReturnType<typeof getPodcastJudgeManifest>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPodcastJudgeManifest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPodcastJudgeManifestQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetContextUrl = () => {
 
 

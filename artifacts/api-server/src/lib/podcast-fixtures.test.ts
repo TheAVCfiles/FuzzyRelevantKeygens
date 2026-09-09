@@ -47,6 +47,7 @@ import {
   getPodcastAudioPath,
   getPodcastCutKey,
   getPublicPodcastCutKey,
+  getPublicPodcastJudgeManifest,
   getPublicPodcastAudioCutKey,
   recordPodcastDecision,
   recordPodcastDevelopmentReceipt,
@@ -451,6 +452,7 @@ test("synthetic approved cut produces a canonical, private-safe Cut Key only aft
   assert.equal(getPodcastCutKey(firstManifest.key)?.key, firstManifest.key);
   assert.notEqual(secondManifest.key, firstManifest.key);
   assert.equal((await getPublicPodcastCutKey(firstManifest.key))?.manifest_sha256, firstManifest.manifest_sha256);
+  assert.equal(await getPublicPodcastJudgeManifest(), null);
   assert.ok(getPodcastAudioPathByCutKey(secondManifest.key));
   const omitted = { ...secondManifest } as any;
   delete omitted.transcript_sha256;
@@ -521,6 +523,58 @@ test("synthetic approved cut produces a canonical, private-safe Cut Key only aft
     currentScriptId: null,
   }), true);
   assert.equal(await getPublicPodcastCutKey(secondManifest.key), null);
+});
+
+test("judge manifest returns an active canonical non-synthetic cut without private state", { concurrency: false }, async () => {
+  const canonicalPayload = {
+    clip_id: "clip-judge-live",
+    transcript: "FRONT ROW: What changed? BACKSTAGE: Here is the sourced context.",
+    transcript_sha256: createHash("sha256").update("FRONT ROW: What changed? BACKSTAGE: Here is the sourced context.").digest("hex"),
+    source_ids: ["public-source-1", "public-source-2"],
+    generated_at: "2026-09-09T00:00:00.000Z",
+    production: {
+      synthetic: false,
+      provider: "Google Gemini",
+      model: "gemini-2.5-flash-tts",
+    },
+    voice_disclosure: "Synthetic house voices; no voice cloning.",
+    format_disclosure: "Approved evidence-backed performed sample.",
+    audio_sha256: createHash("sha256").update("approved-public-audio").digest("hex"),
+    integrity_disclaimer: "This manifest verifies artifact lineage and integrity, not the truth of any claim.",
+  };
+  const manifestSha256 = createHash("sha256").update(JSON.stringify(canonicalPayload)).digest("hex");
+  const key = `cut-${manifestSha256}`;
+  const manifest = {
+    key,
+    manifest_sha256: manifestSha256,
+    audio_url: `/api/podcast/cut-keys/${key}/audio`,
+    ...canonicalPayload,
+  };
+
+  assert.equal(rehydratePodcastState({
+    briefs: [],
+    scripts: [{
+      id: "judge-live-script",
+      brief_id: "judge-live-brief",
+      audio_status: "generated",
+      audio_clip: { id: canonicalPayload.clip_id },
+    }],
+    cutKeys: [manifest],
+    currentBriefId: null,
+    currentScriptId: "judge-live-script",
+  }), true);
+
+  const publicManifest = await getPublicPodcastJudgeManifest();
+  assert.ok(publicManifest);
+  assert.equal(publicManifest.key, key);
+  assert.equal(publicManifest.production.synthetic, false);
+  assert.deepEqual(Object.keys(publicManifest).sort(), [
+    "audio_sha256", "audio_url", "clip_id", "format_disclosure", "generated_at",
+    "integrity_disclaimer", "key", "manifest_sha256", "production", "source_ids",
+    "transcript", "transcript_sha256", "voice_disclosure",
+  ]);
+  assert.equal("approval_receipts" in publicManifest, false);
+  assert.equal("private_attestation" in publicManifest, false);
 });
 
 test("exact run resolver never binds an artifact to the newest unrelated run", { concurrency: false }, () => {

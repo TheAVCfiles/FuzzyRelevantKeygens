@@ -67,6 +67,7 @@ import {
   AttestPodcastCuttingRoomResponse,
   GetPodcastCutKeyParams,
   GetPodcastCutKeyResponse,
+  GetPodcastJudgeManifestResponse,
   ResetPodcastDemoResponse,
 } from "@workspace/api-zod";
 
@@ -120,6 +121,7 @@ import {
   getPodcastAudioFileForCutKey,
   getPodcastStoredAudioFile,
   getPublicPodcastCutKey,
+  getPublicPodcastJudgeManifest,
   getPublicPodcastAudioCutKey,
   flushPodcastPersistence,
   acquirePodcastMutationLock,
@@ -136,7 +138,10 @@ router.use("/podcast", async (req, res, next): Promise<void> => {
   const publicCutKeyRead =
     (req.method === "GET" || req.method === "HEAD") &&
     /\/podcast\/cut-keys\/[^/?]+(?:\/audio)?(?:\?|$)/.test(req.originalUrl);
-  if (publicCutKeyRead) {
+  const publicJudgeManifestRead =
+    (req.method === "GET" || req.method === "HEAD") &&
+    /\/podcast\/judge-manifest(?:\?|$)/.test(req.originalUrl);
+  if (publicCutKeyRead || publicJudgeManifestRead) {
     next();
     return;
   }
@@ -378,6 +383,15 @@ router.get("/podcast/cut-keys/:key/audio", async (req, res): Promise<void> => {
   res.type("audio/wav").sendFile(path, { dotfiles: "allow" }, (error) => {
     if (error && !res.headersSent) res.status(404).json({ error: "Current Cut Key audio not found" });
   });
+});
+
+router.get("/podcast/judge-manifest", async (_req, res): Promise<void> => {
+  const manifest = await getPublicPodcastJudgeManifest();
+  if (!manifest) {
+    res.status(404).json({ error: "No approved public judge manifest is available" });
+    return;
+  }
+  res.json(GetPodcastJudgeManifestResponse.parse(manifest));
 });
 
 // Every production-room read is authenticated; development keeps the existing

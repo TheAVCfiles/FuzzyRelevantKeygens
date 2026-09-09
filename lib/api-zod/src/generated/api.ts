@@ -1629,6 +1629,39 @@ export const StreamPodcastCutKeyAudioResponse = zod.unknown()
 
 
 /**
+ * @summary Get the newest active non-synthetic Cut Key manifest for the public judge walkthrough
+ */
+export const getPodcastJudgeManifestResponseManifestSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getPodcastJudgeManifestResponseTranscriptMax = 20000;
+
+export const getPodcastJudgeManifestResponseTranscriptSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getPodcastJudgeManifestResponseSourceIdsMax = 20;
+
+export const getPodcastJudgeManifestResponseAudioSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const GetPodcastJudgeManifestResponse = zod.object({
+  "key": zod.string(),
+  "manifest_sha256": zod.string().regex(getPodcastJudgeManifestResponseManifestSha256RegExp),
+  "clip_id": zod.string(),
+  "audio_url": zod.string(),
+  "transcript": zod.string().max(getPodcastJudgeManifestResponseTranscriptMax),
+  "transcript_sha256": zod.string().regex(getPodcastJudgeManifestResponseTranscriptSha256RegExp),
+  "source_ids": zod.array(zod.string()).max(getPodcastJudgeManifestResponseSourceIdsMax),
+  "generated_at": zod.string(),
+  "production": zod.object({
+  "synthetic": zod.boolean(),
+  "provider": zod.string(),
+  "model": zod.string()
+}),
+  "voice_disclosure": zod.string(),
+  "format_disclosure": zod.string(),
+  "audio_sha256": zod.string().regex(getPodcastJudgeManifestResponseAudioSha256RegExp),
+  "integrity_disclaimer": zod.string()
+})
+
+
+/**
  * @summary Get the context repository
  */
 export const GetContextResponse = zod.object({

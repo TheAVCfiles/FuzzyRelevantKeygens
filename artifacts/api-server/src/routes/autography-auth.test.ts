@@ -31,6 +31,9 @@ test("shared environments ignore caller-supplied producer headers", { concurrenc
   delete process.env.AUTOGRAPHY_PREVIEW_ROLE_MODE;
   try {
     await withServer(async (baseUrl) => {
+      const publicJudgeResponse = await fetch(`${baseUrl}/podcast/judge-manifest`);
+      assert.equal(publicJudgeResponse.status, 404);
+
       const response = await fetch(`${baseUrl}/podcast/sources`, {
         headers: {
           "x-autography-role": "producer",

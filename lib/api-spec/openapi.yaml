@@ -495,6 +495,20 @@ paths:
               schema:
                 type: string
                 format: binary
+  /podcast/judge-manifest:
+    get:
+      operationId: getPodcastJudgeManifest
+      tags: [autography]
+      summary: Get the newest active non-synthetic Cut Key manifest for the public judge walkthrough
+      responses:
+        "200":
+          description: Privacy-safe approved manifest for the public judge walkthrough
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PodcastCutKey"
+        "404":
+          description: No eligible approved public Cut Key is available
   /context:
     get:
       operationId: getContext

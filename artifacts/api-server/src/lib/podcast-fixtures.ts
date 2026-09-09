@@ -2132,6 +2132,40 @@ export async function getPublicPodcastCutKey(key: string) {
   return isValidPodcastCutKey(manifest) ? manifest : null;
 }
 
+function latestEligibleJudgeManifest(
+  cutKeys: Iterable<PodcastCutKey>,
+  activeClipIds: ReadonlySet<string>,
+) {
+  return [...cutKeys]
+    .filter(
+      (manifest) =>
+        isValidPodcastCutKey(manifest) &&
+        manifest.production.synthetic === false &&
+        activeClipIds.has(manifest.clip_id),
+    )
+    .sort((left, right) => Date.parse(right.generated_at) - Date.parse(left.generated_at))[0] ?? null;
+}
+
+export async function getPublicPodcastJudgeManifest() {
+  if (process.env.PODCAST_DURABILITY_DISABLED === "true") {
+    const activeClipIds = new Set(
+      [...podcastScripts.values()]
+        .filter((script) => script.audio_status === "generated" && script.audio_clip)
+        .map((script) => script.audio_clip!.id),
+    );
+    return latestEligibleJudgeManifest(podcastCutKeys.values(), activeClipIds);
+  }
+  const stored = await loadPodcastStateFromDatabase();
+  const state = stored?.state as PersistedPodcastState | undefined;
+  if (!state) return null;
+  const activeClipIds = new Set(
+    state.scripts
+      .filter((script) => script.audio_status === "generated" && script.audio_clip)
+      .map((script) => script.audio_clip!.id),
+  );
+  return latestEligibleJudgeManifest(state.cutKeys ?? [], activeClipIds);
+}
+
 export async function getPublicPodcastAudioCutKey(key: string) {
   if (process.env.PODCAST_DURABILITY_DISABLED === "true") {
     const manifest = podcastCutKeys.get(key);
